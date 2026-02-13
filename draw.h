@@ -1,0 +1,18 @@
+#include "raylib.h"
+#include "util.h"
+
+void DrawLineFancy(float x1, float y1, float x2, float y2, Color color);
+void DrawTriangleFancy(const triangleMtx& triangle, Color color);
+
+void DrawPyramidFancy(const pyramidMtx& pyramid, camera& cam, float screenW, float screenH, Color color);
+void XYZRotatePyramidAboutSelf(pyramidMtx& pyramid, float angleX, float angleY, float angleZ);
+void XYZRotatePyramidAboutPoint(pyramidMtx& pyramid, float px, float py, float pz, float ix, float iy, float iz);
+void XYZScalePyramidAroundCenter(pyramidMtx& pyramid, float scaleFactor);
+// void ZRotatePyramidAboutPoint(pyramidMtx& pyramid, float px, float py, float angle);
+
+void ZRotatePointAround(float cx, float cy, float& x, float& y, float angle);
+void ZRotateTriangleAboutSelf(triangleMtx& triangle, float angle);
+void ZRotateTriangleAboutPoint(triangleMtx& triangle, float px, float py, float angle);
+void XYScaleTriangleAroundCenter(triangleMtx& triangle, float scaleFactor);
+
+Color ColorFromHex(const char *hex);
