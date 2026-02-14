@@ -3,7 +3,41 @@
 #include "camera.h"
 #include <math.h>
 #include <iostream>
-#include <vector>
+
+/**
+
+* Author: Maxim Jovanovic
+
+* Assignment: Simple 2D Scene
+
+* Date due: 02/14/2026
+
+* I pledge that I have completed this assignment without
+
+* collaborating with anyone else, in conformance with the
+
+* NYU School of Engineering Policies and Procedures on
+
+* Academic Misconduct.
+
+**/
+
+/* 3 objects are:
+ * 1. face 1 of pyramid
+ * 2. face 2 of pyramid
+ * 3. face 3 of pyramid
+ * 4. HM: face 4 of pyramid
+ *
+ * The camera orbits the pyramid/plane.
+ * The camera is still in screen space but constantly rotating in object space
+ * The faces are technically constantly scaling in screen space, but remain stationary in object space
+ * The entire pyramid translates along the y-axis in object space and because the camera has no-
+ * vertical movement it also translates along the y-axis in screen space!
+ *
+ * The background shifts from gray to white as the camera completes a full orbit!
+ *
+ */
+
 
 
 float p = 200;
@@ -12,18 +46,17 @@ float size = 15;
 // Enums
 enum AppStatus { TERMINATED, RUNNING };
 
-constexpr char EDELGARD_FP[]  = "demon_days.png";
+constexpr char EDELGARD_FP[]  = "test2.png";
 
-Texture2D gTexture;
 
 // Global Constants
-constexpr int SCREEN_WIDTH        = 800 * 1.5f,
-              SCREEN_HEIGHT       = 600 * 1.5f,
+constexpr int SCREEN_WIDTH        = 400 * 1.5f,
+              SCREEN_HEIGHT       = 300 * 1.5f,
               FPS                 = 60;
 
 Vector2 gPosition = { SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2 };
 Vector2 gScale = { 250.0f, 250.0f };
-float gAngle = 0.0f;
+// float gAngle = 0.0f;
 
 
 Vector2 lastMousePos = {
@@ -41,16 +74,17 @@ float z = 0.0f;      // pyramidPosZ
 float s = 2.0f;      // base size
 float h = 2.0f;      // height
 
-pyramidMtx pyramid = {
-  x,     0.0f, z,        // v0 base
-  x + s, 0.0f, z,        // v1 base
-  x + s *0.5f,     0.0f, z + s,    // v2 base
-  x + s*0.5f, h, z + s*0.5f  // v3 apex
-};
+float px = -3.f;
+float pz = -3.f;
+float ps = 6.f;
+float ph = 0.f;
+
+static pyramidMtx pyramid;
+static planeMtx plane;
 
 static camera cam = {
-    .camPos = { x + s*0.5f, h,      z + s*3.0f },
-    .camTarget = { x + s*0.5f, h*0.5f, z + s*0.5f },
+    .camPos = { x, h, z },
+    .camTarget = { 0, h, 0 },
     .up = {0, 1, 0},
     .aspect = (float)SCREEN_WIDTH / (float)SCREEN_HEIGHT,
     .fov = 90.0f * M_PI / 180.0f
@@ -73,7 +107,41 @@ void initialise()
 {
     InitWindow(SCREEN_WIDTH, SCREEN_HEIGHT, "Hello raylib!");
 
-    gTexture = LoadTexture(EDELGARD_FP);
+    Texture2D texo = LoadTexture(EDELGARD_FP);
+
+    pyramid = {
+        { // pyramid object-space coordinates
+            x,     0.0f, z,        // v0 base
+            x + s, 0.0f, z,        // v1 base
+            x + s *0.5f,     0.0f, z + s,    // v2 base
+            x + s*0.5f, h, z + s*0.5f  // v3 apex
+        },
+        WHITE, // ignored for now
+        { // texture coordinates (absolute not additive)
+            { 0.0f, 0.0f, 0.25f, 0.25f, 0.0f, 0.25f },
+            { 0.25f, 0.0f, 0.5f, 0.0f, 0.25f, 0.25f },
+            { 0.5f, 0.0f, 0.75f, 0.0f, 0.5f, 0.25f },
+            { 0.75f, 0.0f, 1.0f, 0.0f, 0.75f, 0.25f },
+        },
+        texo // texture
+    };
+
+    plane = {
+        { // plane object-space coordinates
+            px,     0.0f, pz,        // v0 base
+            px + ps, 0.0f, pz,        // v1 base
+            px + ps, 0.0f, pz + ps,    // v2 base
+            px, 0.f, pz + ps  // v3 apex
+        },
+        WHITE, // ignored for now
+        { // texture coordinates (absolute not additive)
+                { 0.0f, 0.0f },
+                { 0.25f, 0.0f },
+                { 0.5f, 0.0f},
+                { 0.75f, 0.0f },
+            },
+            texo // texture
+        };
 
     SetTargetFPS(FPS);
 }
@@ -84,34 +152,41 @@ void processInput()
 }
 
 static bool pRot = true;
-static Rectangle textureArea = {
-        // top-left corner
-        0.0f, 0.0f,
-
-        // bottom-right corner (of texture)
-        static_cast<float>(gTexture.width),
-        static_cast<float>(gTexture.height)
-    };
 
 
-float i = 0;
+float i = 1;
 int g = 1;
+float floating = 1;
     
 void update() {
 
-    float ticks = (float) GetTime();          // step 1
+    float ticks = static_cast<float>(GetTime());          // step 1
     float deltaTime = ticks - gPreviousTicks; // step 2
     gPreviousTicks = ticks;                   // step 3
 
-    std::cout << "update" << std::endl;
-
-    i += 0.1 * g;
-
-    cam.camPos    = { x + s*0.5f + i, h,      z + s*3.0f };
-    std::cout << "full camera position: " << cam.camPos.x << ", " << cam.camPos.y << ", " << cam.camPos.z << std::endl;
-    if (i > 10 || i < 0) {
-        g *= -1;
+    if (g == -1) {
+        DrawRectangle(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, RAYWHITE);
     }
+    else {
+        DrawRectangle(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, DARKGRAY);
+    }
+
+    i += 60 * deltaTime;
+
+    cam.camPos = { (float)(6 * cos(i * M_PI / 180.f)), 5, (float)(6 * sin(i * M_PI / 180.f)) }; // orbit x + z
+    // height of pyramid follows sin ease
+    pyramid.m[0][1] += sin((i-1)/1000 * M_PI / 180.f) * g;
+    pyramid.m[1][1] += sin((i-1)/1000 * M_PI / 180.f) * g;
+    pyramid.m[2][1] += sin((i-1)/1000 * M_PI / 180.f) * g;
+    pyramid.m[3][1] += sin((i-1)/1000 * M_PI / 180.f) * g;
+    // std::cout << "full camera position: " << cam.camPos.x << ", " << cam.camPos.y << ", " << cam.camPos.z << std::endl;
+    // std::cout << i << std::endl;
+    // std::cout << (int)abs(i) % 90 << std::endl;
+    if (i > 361 || i < 0) {
+        g *= -1;
+        i = 0;
+    }
+
 
 //     if (IsKeyPressed(KEY_E)) {
 //         // XYZRotatePyramidAboutSelf(pyramid, -25.0f, -25.0f, 0.0f);
@@ -141,15 +216,6 @@ void update() {
 //         gScale.x *= 1.0f + g/10;
 //         gScale.y *= 1.0f + g/10;
 //         if (i > 3) {
-//             textureArea = {
-//                 // top-left corner
-//                 (gTexture.width)/2,
-//                 (gTexture.height)/2,
-
-//                 // bottom-right corner (of texture)
-//                 (gTexture.width)/2,
-//                 (gTexture.height)/2
-//             };
 //         }
 //         else if (i > 2) {
 //             textureArea = {
@@ -211,32 +277,12 @@ void render()
 
     ClearBackground(RAYWHITE);
 
-    DrawPyramidFancy(pyramid, cam, SCREEN_WIDTH, SCREEN_HEIGHT, RED);
+    DrawPlaneFancy(plane, cam, SCREEN_WIDTH, SCREEN_HEIGHT, BLACK);
+    DrawPyramidFancy(pyramid, cam, SCREEN_WIDTH, SCREEN_HEIGHT, BLACK);
 
     // DrawTriangleFancy(triangle, RED);
 
     // DrawPyramidFancy(pyramid2, RED);
-
-    // Rectangle destinationArea = {
-    //     gPosition.x,
-    //     gPosition.y,
-    //     static_cast<float>(gScale.x),
-    //     static_cast<float>(gScale.y)
-    // };
-
-    // Vector2 originOffset = {
-    //     static_cast<float>(gScale.x) / 2.0f,
-    //     static_cast<float>(gScale.y) / 2.0f
-    // };
-
-    // DrawTexturePro(
-    //     gTexture, 
-    //     textureArea, 
-    //     destinationArea, 
-    //     originOffset, 
-    //     gAngle, 
-    //     WHITE
-    // );
 
     DrawFPS(10, 10);
 
@@ -246,7 +292,7 @@ void render()
 void shutdown() 
 { 
     CloseWindow(); // Close window and OpenGL context
-    UnloadTexture(gTexture);  // right here!
+    UnloadTexture(pyramid.texture);  // right here!
 }
 
 int main(void)

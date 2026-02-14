@@ -3,7 +3,7 @@
 
 // World to Screen
 
-bool worldToScreen(vector3& wpos, mtx44& world, mtx44& view, mtx44& projection, float screenW, float screenH, vector2& scpos) {
+bool worldToScreen(vector3& wpos, mtx44& world, mtx44& view, mtx44& projection, float screenW, float screenH, vector3& scpos) {
     mtx44 first = mmult4(projection, view);
     mtx44 second = mmult4(first, world);
 
@@ -23,6 +23,7 @@ bool worldToScreen(vector3& wpos, mtx44& world, mtx44& view, mtx44& projection, 
 
         scpos.x = (x_ndc + 1.0f) * 0.5f * screenW;
         scpos.y = (1.0f - y_ndc) * 0.5f * screenH;
+        scpos.z = (z_ndc * 0.5f) + 0.5f; // idk, needed for texture clipping :/
         return true;
     }
     else {

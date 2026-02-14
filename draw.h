@@ -5,6 +5,7 @@ void DrawLineFancy(float x1, float y1, float x2, float y2, Color color);
 void DrawTriangleFancy(const triangleMtx& triangle, Color color);
 
 void DrawPyramidFancy(const pyramidMtx& pyramid, camera& cam, float screenW, float screenH, Color color);
+void DrawPlaneFancy(const planeMtx& plane, camera& cam, float screenW, float screenH, Color color);
 void XYZRotatePyramidAboutSelf(pyramidMtx& pyramid, float angleX, float angleY, float angleZ);
 void XYZRotatePyramidAboutPoint(pyramidMtx& pyramid, float px, float py, float pz, float ix, float iy, float iz);
 void XYZScalePyramidAroundCenter(pyramidMtx& pyramid, float scaleFactor);

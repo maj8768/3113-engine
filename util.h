@@ -10,6 +10,15 @@ struct triangleMtx {
 struct pyramidMtx {
     float m[4][3];
     Color color;
+    float textureArea[4][6];
+    Texture2D texture;
+};
+
+struct planeMtx {
+    float m[4][3];
+    Color color;
+    float textureArea[4][2];
+    Texture2D texture;
 };
 
 struct vector4 {
@@ -48,4 +57,6 @@ float len3(const vector3&);
 
 vector3 normalize3(const vector3&);
 
-vector4 extendV3(const vector3& v);
+vector4 extendV3(const vector3&);
+
+float lerp_sin(float, float, float);

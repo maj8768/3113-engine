@@ -1,4 +1,5 @@
 #include "raylib.h"
+#include "rlgl.h"
 #include "draw.h"
 #include "camera.h"
 #include <cmath>
@@ -23,6 +24,45 @@ void DrawTriangleFancy(const triangleMtx& triangle, Color color) {
 
 //worldToScreen(vector3& wpos, mtx44& world, mtx44& view, mtx44& projection, float screenW, float screenH, vector2& scpos)
 
+void DrawPlaneFancy(const planeMtx& plane, camera& cam, float screenW, float screenH, Color color) {
+    mtx44 world = {};
+    planeMtx screenCoords;
+
+    for (int k = 0; k < 4; k++) {
+        // std::cout << k << std::endl;
+
+        world.m[0][0] = 1; world.m[1][1] = 1; world.m[2][2] = 1; world.m[3][3] = 1; // identity mtx
+
+        vector3 object_coords;
+        object_coords.x = plane.m[k][0];
+        object_coords.y = plane.m[k][1];
+        object_coords.z = plane.m[k][2];
+
+        modmmult(world, extendV3(object_coords));
+        mtx44 view = viewMtx44(cam.camPos, cam.camTarget, cam.up);
+        mtx44 proj = projMtx44(cam.fov, cam.aspect, 0.1f, 1000.0f);
+
+        vector3 screen;
+        bool sing_ok = worldToScreen(object_coords, world, view, proj, screenW, screenH, screen);
+
+        if (sing_ok) {
+            screenCoords.m[k][0] = screen.x;
+            screenCoords.m[k][1] = screen.y;
+            screenCoords.m[k][2] = screen.z;
+            //std::cout << screen.z << ", " << std::endl;
+        } else {
+            std::cout << "Point is behind camera or outside the view" << std::endl;
+        }
+    }
+
+    DrawLineFancy(screenCoords.m[0][0], screenCoords.m[0][1], screenCoords.m[1][0], screenCoords.m[1][1], color);
+    DrawLineFancy(screenCoords.m[1][0], screenCoords.m[1][1], screenCoords.m[2][0], screenCoords.m[2][1], color);
+    DrawLineFancy(screenCoords.m[2][0], screenCoords.m[2][1], screenCoords.m[0][0], screenCoords.m[0][1], color);
+    DrawLineFancy(screenCoords.m[0][0], screenCoords.m[0][1], screenCoords.m[3][0], screenCoords.m[3][1], color);
+    DrawLineFancy(screenCoords.m[1][0], screenCoords.m[1][1], screenCoords.m[3][0], screenCoords.m[3][1], color);
+    DrawLineFancy(screenCoords.m[2][0], screenCoords.m[2][1], screenCoords.m[3][0], screenCoords.m[3][1], color);
+}
+
 void DrawPyramidFancy(const pyramidMtx& pyramid, camera& cam, float screenW, float screenH, Color color) {
     
     mtx44 world = {};
@@ -42,47 +82,119 @@ void DrawPyramidFancy(const pyramidMtx& pyramid, camera& cam, float screenW, flo
         mtx44 view = viewMtx44(cam.camPos, cam.camTarget, cam.up);
         mtx44 proj = projMtx44(cam.fov, cam.aspect, 0.1f, 1000.0f);
 
-        vector2 screen;
+        vector3 screen;
         bool sing_ok = worldToScreen(object_coords, world, view, proj, screenW, screenH, screen);
 
         if (sing_ok) {
             screenCoords.m[k][0] = screen.x;
             screenCoords.m[k][1] = screen.y;
-            screenCoords.m[k][2] = 1.0f;
+            screenCoords.m[k][2] = screen.z;
+            //std::cout << screen.z << ", " << std::endl;
         } else {
             std::cout << "Point is behind camera or outside the view" << std::endl;
         }
     }
+    //std::cout << "next" << std::endl;
 
     // Draw the base triangles
-    
-    // for (int i = 0; i < 12; i++) {
-    //     screenCoords.m[i/4][i%4] = worldToScreen(pyramid.m[i/4][i%4]; // copy the x and y values
-    // }
 
-    // std::cout << "Drawing pyramid with coords: ";
-    for (int i = 0; i < 4; i++) {
-        // std::cout << "(" << screenCoords.m[i][0] << ", " << screenCoords.m[i][1] << ", " << screenCoords.m[i][2] << ") ";
-    }
-    // std::cout << std::endl;
-    // std::cout << "Built with world coords: ";
-    for (int j = 0; j < 4; j++) {
-        // std::cout << "(" << pyramid.m[j][0] << ", " << pyramid.m[j][1] << ", " << pyramid.m[j][2] << ") ";
-    }
-    // std::cout << std::endl;
-    // std::cout << "Campos: ";
-    for (int k = 0; k < 4; k++) {
-        // std::cout << "(" << cam.camPos.x << ", " << cam.camPos.y << ", " << cam.camPos.z << ") ";
-    }
-    // std::cout << std::endl;
-
-    DrawLineFancy(screenCoords.m[0][0], screenCoords.m[0][1], screenCoords.m[1][0], screenCoords.m[1][1], color);
-    DrawLineFancy(screenCoords.m[1][0], screenCoords.m[1][1], screenCoords.m[2][0], screenCoords.m[2][1], color);
-    DrawLineFancy(screenCoords.m[2][0], screenCoords.m[2][1], screenCoords.m[0][0], screenCoords.m[0][1], color);
-    DrawLineFancy(screenCoords.m[0][0], screenCoords.m[0][1], screenCoords.m[3][0], screenCoords.m[3][1], color);
-    DrawLineFancy(screenCoords.m[1][0], screenCoords.m[1][1], screenCoords.m[3][0], screenCoords.m[3][1], color);
-    DrawLineFancy(screenCoords.m[2][0], screenCoords.m[2][1], screenCoords.m[3][0], screenCoords.m[3][1], color);
+    //DrawLineFancy(screenCoords.m[0][0], screenCoords.m[0][1], screenCoords.m[1][0], screenCoords.m[1][1], color);
+    //DrawLineFancy(screenCoords.m[1][0], screenCoords.m[1][1], screenCoords.m[2][0], screenCoords.m[2][1], color);
+    //DrawLineFancy(screenCoords.m[2][0], screenCoords.m[2][1], screenCoords.m[0][0], screenCoords.m[0][1], color);
+    //DrawLineFancy(screenCoords.m[0][0], screenCoords.m[0][1], screenCoords.m[3][0], screenCoords.m[3][1], color);
+    //DrawLineFancy(screenCoords.m[1][0], screenCoords.m[1][1], screenCoords.m[3][0], screenCoords.m[3][1], color);
+    //DrawLineFancy(screenCoords.m[2][0], screenCoords.m[2][1], screenCoords.m[3][0], screenCoords.m[3][1], color);
     // std::cout << "ended" << std::endl;
+
+    // painters (back->front) (no true z bcz no depth layer)
+
+    /*
+     * I'm choosing painters because the alternatives require math outside my
+     * realm of understanding
+    */
+
+    int faceTri[4][3] = {
+        {0, 2, 1}, // bottom
+        {0, 1, 3}, // side 1
+        {1, 2, 3}, // side 2
+        {2, 0, 3}, // side 3
+    };
+
+    // find barycentric z by averaging z at each coord for each triangle
+    float faceZ[4];
+    int faceOrder[4] = {0, 1, 2, 3};
+
+    for (int f = 0; f < 4; f++) {
+        int a = faceTri[f][0], b = faceTri[f][1], c = faceTri[f][2];
+        faceZ[f] = (screenCoords.m[a][2] + screenCoords.m[b][2] + screenCoords.m[c][2]) / 3.0f;
+    }
+
+    // sorts faces by z and stores position of farthest face in screencoords first in tri
+    for (int i = 0; i < 4; i++) {
+        for (int j = i + 1; j < 4; j++) {
+            if (faceZ[faceOrder[i]] > faceZ[faceOrder[j]]) {
+                int tmp = faceOrder[i];
+                faceOrder[i] = faceOrder[j];
+                faceOrder[j] = tmp;
+            }
+        }
+    }
+
+    //rlDrawRenderBatchActive();
+    rlDisableDepthTest();
+    rlDisableColorBlend();
+    rlDisableBackfaceCulling();
+
+    rlBegin(RL_TRIANGLES);
+    rlSetTexture(pyramid.texture.id);
+    rlColor4f(1, 1, 1, 1);
+
+    for (int t = 0; t < 4; t++) { // draws screencoords in order of tri (which stores position of verticies in order of faces far->close)
+        int f = faceOrder[t];          // face id
+        int a = faceTri[f][0];
+        int b = faceTri[f][1];
+        int c = faceTri[f][2];
+
+        rlTexCoord2f(pyramid.textureArea[f][0], pyramid.textureArea[f][1]);
+        rlVertex2f(screenCoords.m[c][0], screenCoords.m[c][1]);
+
+        rlTexCoord2f(pyramid.textureArea[f][2], pyramid.textureArea[f][3]);
+        rlVertex2f(screenCoords.m[b][0], screenCoords.m[b][1]);
+
+        rlTexCoord2f(pyramid.textureArea[f][4], pyramid.textureArea[f][5]);
+        rlVertex2f(screenCoords.m[a][0], screenCoords.m[a][1]);
+
+        //std::cout << t << ": " << std::endl;
+        //std:: cout << pyramid.textureArea[t][0] << ", " << pyramid.textureArea[t][1] << std::endl;
+        //std:: cout << pyramid.textureArea[t][2] << ", " << pyramid.textureArea[t][3] << std::endl;
+        //std:: cout << pyramid.textureArea[t][4] << ", " << pyramid.textureArea[t][5] << std::endl;
+    }
+    //std::cout << "===" << std::endl;
+
+    rlEnd();
+    rlSetTexture(0);
+
+    rlEnableColorBlend();
+    rlEnableDepthTest();
+    rlEnableBackfaceCulling();
+
+    //Vector2 originOffset = {
+        //static_cast<float>(gScale.x) / 2.0f,
+        // static_cast<float>(gScale.y) / 2.0f
+    //    0.f,
+    //    0.f
+    //};
+
+    //DrawTexturePro(
+     //   gTexture,
+      //  textureArea,
+       // destinationArea,
+      //  originOffset,
+      //  gAngle,
+      //  WHITE
+    //);
+
+
 }
 
 
