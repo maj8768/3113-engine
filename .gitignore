@@ -1,0 +1,41 @@
+.idea
+app
+main
+
+# Compiled Object files
+*.o
+*.obj
+
+# Executables
+# Linux/macOS executables often have no extension
+# If your executables are in a 'bin' directory, ignore the entire directory
+bin/
+# If they are in the root directory, you can add their specific names, e.g. 'myprogram'
+# myprogram
+
+# Precompiled Headers
+*.gch
+*.pch
+
+# Libraries
+*.lib
+*.a
+*.dll
+*.so
+*.dylib
+
+# Build directories (Common for Makefiles, CMake, etc.)
+build/
+dist/
+bin/
+
+# Dependency files
+*.d
+
+# Miscellaneous
+# Log files, temporary files, editor-specific files, etc.
+*.log
+*.tmp
+*.swp
+.DS_Store # macOS
+Thumbs.db # Windows
