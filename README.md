@@ -1,5 +1,9 @@
 # 3113-engine
 
+Functionality:
+
+![functionality](https://github.com/maj8768/3113-engine/blob/main/ezgif-51388f346d925919.gif)
+
 3 objects are:
 * 1. face 1 of pyramid
 * 2. face 2 of pyramid
