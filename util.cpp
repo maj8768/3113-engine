@@ -42,6 +42,50 @@ vector3 normalize3(const vector3& v) {
   return { v.x/l, v.y/l, v.z/l };
 }
 
+vector3 extendV2(const vector2& v) {
+    return { v.x, v.y, 1.0f };
+}
+
 vector4 extendV3(const vector3& v) {
   return { v.x, v.y, v.z, 1.0f };
+}
+
+void calculateGon2D(const int n, gonalMtx& out, const bool vertical, const int size) {
+    out.size = n;
+    const float d = 2*M_PI/(float)n;
+
+    for (int i = 0; i < n; i++) {
+        out.mtx[i].x = cos(d * i) * size; // remove 200
+        out.mtx[i].y = sin(d * i) * size;
+        out.mtx[i].z = 0.f;
+    }
+
+    if (!vertical) {
+        for (int j = 0; j < n; j++) {
+            const int t = out.mtx[j].y;
+            out.mtx[j].z = t;
+            out.mtx[j].y = 0;
+        }
+    }
+}
+
+void spinGon2D(spungonMtx& out, const float size) {
+    int n = out.size;
+    const float d = 2*M_PI/(float)n;
+
+    for (int i = 0; i < n; i++) {
+        for (int j = 0; j < n; j++) {
+            out.mtxarr[i].mtx[j].x = cosf(d * i) * cosf(d * j) * size;
+            out.mtxarr[i].mtx[j].y = sinf(d * i) * size;
+            out.mtxarr[i].mtx[j].z = 0 - cosf(d * i) * sinf(d * j) * size;
+        }
+    }
+
+    // if (!vertical) {
+    //     for (int j = 0; j < n; j++) {
+    //         const int t = out.mtx[j].y;
+    //         out.mtx[j].z = t;
+    //         out.mtx[j].y = 0;
+    //     }
+    // }
 }

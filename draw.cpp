@@ -19,10 +19,84 @@ void DrawTriangleFancy(const triangleMtx& triangle, Color color) {
     DrawLineFancy(triangle.x3, triangle.y3, triangle.x1, triangle.y1, color);
 }
 
+void DrawGon(const int size, gonalMtx& coords) {
+    //calculateGon2D(coords.size, coords, true, size);
+    for (int i = 0; i < coords.size; i++) {
+        if (i == coords.size-1) {
+            std::cout << coords.mtx[i].x << ", " << coords.mtx[i].y << std::endl;
+            std::cout << coords.mtx[0].x << ", " << coords.mtx[0].y << std::endl;
+            DrawLineFancy(coords.mtx[i].x,coords.mtx[i].y,coords.mtx[0].x,coords.mtx[0].y, BLACK);
+            // DrawLine3D({coords.mtx[i].x,coords.mtx[i].y,coords.mtx[i].z},{coords.mtx[0].x,coords.mtx[].y,coords.mtx[i].z},BLACK)
+        }
+        else {
+            DrawLineFancy(coords.mtx[i].x,coords.mtx[i].y,coords.mtx[i+1].x,coords.mtx[i+1].y, BLACK);
+        }
+    }
+}
+
+
 // 3D
 
 
 //worldToScreen(vector3& wpos, mtx44& world, mtx44& view, mtx44& projection, float screenW, float screenH, vector2& scpos)
+
+void DrawPolyHedron(spungonMtx mtxmtx, float n, camera& cam, float screenW, float screenH) {
+    spinGon2D(mtxmtx,n);
+    mtx44 world = {};
+    vector2 verts[mtxmtx.size][mtxmtx.mtxarr[0].size];
+
+    for (int i = 0; i < mtxmtx.size; i++) {
+        for (int j = 0; j < mtxmtx.mtxarr[i].size; j++) {
+            world.m[0][0] = 1; world.m[1][1] = 1; world.m[2][2] = 1; world.m[3][3] = 1; // identity mtx
+
+            vector3 object_coords;
+            object_coords.x = mtxmtx.mtxarr[i].mtx[j].x;
+            object_coords.y = mtxmtx.mtxarr[i].mtx[j].y;
+            object_coords.z = mtxmtx.mtxarr[i].mtx[j].z;
+
+            modmmult(world, extendV3(object_coords));
+            mtx44 view = viewMtx44(cam.camPos, cam.camTarget, cam.up);
+            mtx44 proj = projMtx44(cam.fov, cam.aspect, 0.1f, 1000.0f);
+
+            vector3 screen;
+            bool sing_ok = worldToScreen(object_coords, world, view, proj, screenW, screenH, screen);
+
+            if (sing_ok) {
+                // mtxmtx.mtxarr[i].mtx[j].x = screen.x;
+                // mtxmtx.mtxarr[i].mtx[j].y = screen.y;
+                // mtxmtx.mtxarr[i].mtx[j].z = screen.z;
+                verts[i][j].x = screen.x;
+                verts[i][j].y = screen.y;
+
+            }
+            // std::cout << "i: " << i << std::endl;
+            // std::cout << screen.x << ", " << screen.y << ", " << screen.z << std::endl;
+            // DrawGon(50, mtxmtx.mtxarr[i]);
+        }
+    }
+
+    // draw calls
+
+    for (int p = 0; p < mtxmtx.size; p ++) {
+        for (int k = 0; k < mtxmtx.mtxarr[p].size; k++) {
+            if (k == mtxmtx.mtxarr[p].size-1) {
+                if (p == mtxmtx.size-1) {
+                    DrawLineFancy(verts[k][p].x,verts[k][p].y,verts[0][0].x,verts[0][0].y,BLACK);
+                    DrawLineFancy(verts[p][k].x,verts[p][k].y,verts[0][0].x,verts[0][0].y,BLACK);
+                }
+                else {
+                    DrawLineFancy(verts[p][k].x,verts[p][k].y,verts[p][0].x,verts[p][0].y,BLACK);
+                    DrawLineFancy(verts[k][p].x,verts[k][p].y,verts[0][p].x,verts[0][p].y,BLACK);
+
+                }
+            }
+            else {
+                DrawLineFancy(verts[p][k].x,verts[p][k].y,verts[p][k+1].x,verts[p][k+1].y,BLACK);
+                DrawLineFancy(verts[k][p].x,verts[k][p].y,verts[k+1][p].x,verts[k+1][p].y,BLACK);
+            }
+        }
+    }
+}
 
 void DrawPlaneFancy(const planeMtx& plane, camera& cam, float screenW, float screenH, Color color) {
     mtx44 world = {};

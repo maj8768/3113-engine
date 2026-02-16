@@ -6,6 +6,8 @@ void DrawTriangleFancy(const triangleMtx& triangle, Color color);
 
 void DrawPyramidFancy(const pyramidMtx& pyramid, camera& cam, float screenW, float screenH, Color color);
 void DrawPlaneFancy(const planeMtx& plane, camera& cam, float screenW, float screenH, Color color);
+void DrawGon(const int size, gonalMtx& coords);
+void DrawPolyHedron(spungonMtx mtxmtx, float n, camera& cam, float screenW, float screenH);
 void XYZRotatePyramidAboutSelf(pyramidMtx& pyramid, float angleX, float angleY, float angleZ);
 void XYZRotatePyramidAboutPoint(pyramidMtx& pyramid, float px, float py, float pz, float ix, float iy, float iz);
 void XYZScalePyramidAroundCenter(pyramidMtx& pyramid, float scaleFactor);

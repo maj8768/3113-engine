@@ -81,6 +81,8 @@ float ph = 0.f;
 
 static pyramidMtx pyramid;
 static planeMtx plane;
+static gonalMtx ngonTest;
+static spungonMtx ngonSpun;
 
 static camera cam = {
     .camPos = { x, h, z },
@@ -139,9 +141,24 @@ void initialise()
                 { 0.25f, 0.0f },
                 { 0.5f, 0.0f},
                 { 0.75f, 0.0f },
-            },
-            texo // texture
-        };
+        },
+        texo // texture
+    };
+
+
+    // static auto ngonVerts = new vector3[16];
+    int faces = 16;
+    ngonTest = {
+        new vector3[faces], faces
+    };
+
+    ngonSpun.size = faces;
+    ngonSpun.mtxarr = new gonalMtx[faces];
+
+    for (int f = 0; f < faces; f++) {
+        ngonSpun.mtxarr[f].size = faces;
+        ngonSpun.mtxarr[f].mtx  = new vector3[faces];
+    }
 
     SetTargetFPS(FPS);
 }
@@ -279,6 +296,7 @@ void render()
 
     DrawPlaneFancy(plane, cam, SCREEN_WIDTH, SCREEN_HEIGHT, BLACK);
     DrawPyramidFancy(pyramid, cam, SCREEN_WIDTH, SCREEN_HEIGHT, BLACK);
+    DrawPolyHedron(ngonSpun, 3, cam, SCREEN_WIDTH, SCREEN_HEIGHT);
 
     // DrawTriangleFancy(triangle, RED);
 

@@ -37,6 +37,16 @@ struct mtx44 {
     float m[4][4];
 };
 
+struct gonalMtx {
+    vector3* mtx;
+    int size;
+};
+
+struct spungonMtx {
+    gonalMtx* mtxarr;
+    int size;
+};
+
 struct camera {
     vector3 camPos;
     vector3 camTarget;
@@ -57,6 +67,10 @@ float len3(const vector3&);
 
 vector3 normalize3(const vector3&);
 
+vector3 extendV2(const vector2&);
+
 vector4 extendV3(const vector3&);
 
-float lerp_sin(float, float, float);
+void calculateGon2D(const int n, gonalMtx& out, const bool vertical, const int size);
+
+void spinGon2D(spungonMtx& out, const float size);
