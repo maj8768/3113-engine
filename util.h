@@ -47,6 +47,15 @@ struct spungonMtx {
     int size;
 };
 
+struct sphere {
+    spungonMtx spungon_mtx;
+    vector3 location;
+    int depth;
+    float size;
+    vector3 magnitude;
+    vector3 newForce;
+};
+
 struct camera {
     vector3 camPos;
     vector3 camTarget;

@@ -81,8 +81,7 @@ float ph = 0.f;
 
 static pyramidMtx pyramid;
 static planeMtx plane;
-static gonalMtx ngonTest;
-static spungonMtx ngonSpun;
+static sphere ball;
 
 static camera cam = {
     .camPos = { x, h, z },
@@ -103,6 +102,20 @@ void processInput();
 void update();
 void render();
 void shutdown();
+
+void createSphere(sphere& sphere, int depth, float size, vector3 spawnpos) {
+    static spungonMtx ngonSpun;
+    static vector3 location = spawnpos;
+    ngonSpun.size = depth;
+    ngonSpun.mtxarr = new gonalMtx[depth];
+    for (int f = 0; f < depth; f++) {
+        ngonSpun.mtxarr[f].size = depth;
+        ngonSpun.mtxarr[f].mtx  = new vector3[depth];
+    }
+    sphere.spungon_mtx = ngonSpun;
+    sphere.location =location;
+    sphere.size = size;
+}
 
 // Function Definitions
 void initialise()
@@ -145,20 +158,7 @@ void initialise()
         texo // texture
     };
 
-
-    // static auto ngonVerts = new vector3[16];
-    int faces = 16;
-    ngonTest = {
-        new vector3[faces], faces
-    };
-
-    ngonSpun.size = faces;
-    ngonSpun.mtxarr = new gonalMtx[faces];
-
-    for (int f = 0; f < faces; f++) {
-        ngonSpun.mtxarr[f].size = faces;
-        ngonSpun.mtxarr[f].mtx  = new vector3[faces];
-    }
+    createSphere(ball,16,1.5,{0,3,0});
 
     SetTargetFPS(FPS);
 }
@@ -295,8 +295,9 @@ void render()
     ClearBackground(RAYWHITE);
 
     DrawPlaneFancy(plane, cam, SCREEN_WIDTH, SCREEN_HEIGHT, BLACK);
-    DrawPyramidFancy(pyramid, cam, SCREEN_WIDTH, SCREEN_HEIGHT, BLACK);
-    DrawPolyHedron(ngonSpun, 3, cam, SCREEN_WIDTH, SCREEN_HEIGHT);
+    //DrawPyramidFancy(pyramid, cam, SCREEN_WIDTH, SCREEN_HEIGHT, BLACK);
+    DrawSphere(ball,cam,SCREEN_WIDTH,SCREEN_HEIGHT);
+    // DrawPolyHedron(, 0.5, {0, 3, 0}, cam, SCREEN_WIDTH, SCREEN_HEIGHT);
 
     // DrawTriangleFancy(triangle, RED);
 

@@ -40,7 +40,11 @@ void DrawGon(const int size, gonalMtx& coords) {
 
 //worldToScreen(vector3& wpos, mtx44& world, mtx44& view, mtx44& projection, float screenW, float screenH, vector2& scpos)
 
-void DrawPolyHedron(spungonMtx mtxmtx, float n, camera& cam, float screenW, float screenH) {
+void DrawSphere(sphere sphere, camera& cam, float screenW, float screenH) {
+    DrawPolyHedron(sphere.spungon_mtx,sphere.size,sphere.location,cam,screenW,screenH);
+}
+
+void DrawPolyHedron(spungonMtx mtxmtx, float n, vector3 centp, camera& cam, float screenW, float screenH) {
     spinGon2D(mtxmtx,n);
     mtx44 world = {};
     vector2 verts[mtxmtx.size][mtxmtx.mtxarr[0].size];
@@ -50,9 +54,9 @@ void DrawPolyHedron(spungonMtx mtxmtx, float n, camera& cam, float screenW, floa
             world.m[0][0] = 1; world.m[1][1] = 1; world.m[2][2] = 1; world.m[3][3] = 1; // identity mtx
 
             vector3 object_coords;
-            object_coords.x = mtxmtx.mtxarr[i].mtx[j].x;
-            object_coords.y = mtxmtx.mtxarr[i].mtx[j].y;
-            object_coords.z = mtxmtx.mtxarr[i].mtx[j].z;
+            object_coords.x = mtxmtx.mtxarr[i].mtx[j].x + centp.x;
+            object_coords.y = mtxmtx.mtxarr[i].mtx[j].y + centp.y;
+            object_coords.z = mtxmtx.mtxarr[i].mtx[j].z + centp.z;
 
             modmmult(world, extendV3(object_coords));
             mtx44 view = viewMtx44(cam.camPos, cam.camTarget, cam.up);
