@@ -12,4 +12,4 @@ void processPhysics(float deltaTime, int frameRate, sphere& sphere, vector3 magn
 
 }
 
-void applyForce(float deltaTime, int frameRate, )
+// void applyForce(float deltaTime, int frameRate, )
