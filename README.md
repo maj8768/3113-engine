@@ -1,5 +1,7 @@
 # 3113-engine
 
+Project 1:
+
 Functionality:
 
 ![functionality](https://github.com/maj8768/3113-engine/blob/main/ezgif-51388f346d925919.gif)
@@ -23,3 +25,7 @@ Extra Credit:
 Run with:
 
 ``sh build.sh``
+
+Project 2 - WIP:
+
+![newfunctionality](https://github.com/maj8768/3113-engine/blob/main/ezgif-7c280598d37da96a.gif)
