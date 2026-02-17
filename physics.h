@@ -1,13 +1,5 @@
-//
-// Created by admin on 2/17/26.
-//
+void applyForce(vector3 newForce, sphere_& sphere);
 
-#ifndef INC_3D_RENDER_PHYSICS_H
-#define INC_3D_RENDER_PHYSICS_H
+void applyAcceleration(vector3 newAccel, sphere_& sphere);
 
-
-class physics {
-};
-
-
-#endif //INC_3D_RENDER_PHYSICS_H
+void processPhysics(float deltaTime, int frameRate, sphere_& sphere);

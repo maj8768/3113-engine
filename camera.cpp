@@ -17,9 +17,11 @@ bool worldToScreen(vector3& wpos, mtx44& world, mtx44& view, mtx44& projection, 
         float y_ndc = clip.y * invT;
         float z_ndc = clip.z * invT;
 
-        if (x_ndc < -1.0f || x_ndc > 1.0f) return false;
-        if (y_ndc < -1.0f || y_ndc > 1.0f) return false;
-        if (z_ndc < -1.0f || z_ndc > 1.0f) return false;
+        // for now, we bypass (MUST CHANGE)
+
+        // if (x_ndc < -1.0f || x_ndc > 1.0f) return false;
+        // if (y_ndc < -1.0f || y_ndc > 1.0f) return false;
+        // if (z_ndc < -1.0f || z_ndc > 1.0f) return false;
 
         scpos.x = (x_ndc + 1.0f) * 0.5f * screenW;
         scpos.y = (1.0f - y_ndc) * 0.5f * screenH;

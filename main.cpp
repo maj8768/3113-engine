@@ -1,7 +1,8 @@
 #include "raylib.h"
 #include "draw.h"
 #include "camera.h"
-#include <math.h>
+#include "physics.h"
+#include <cmath>
 #include <iostream>
 
 /**
@@ -81,7 +82,7 @@ float ph = 0.f;
 
 static pyramidMtx pyramid;
 static planeMtx plane;
-static sphere ball;
+static sphere_ ball;
 
 static camera cam = {
     .camPos = { x, h, z },
@@ -103,18 +104,26 @@ void update();
 void render();
 void shutdown();
 
-void createSphere(sphere& sphere, int depth, float size, vector3 spawnpos) {
+void createSphere(sphere_& ball, int depth, float size, vector3 spawnpos, int maxAccelForces) {
     static spungonMtx ngonSpun;
     static vector3 location = spawnpos;
+    static vector3* accelForces = new vector3[maxAccelForces];
+    static vector3 newForce;
+    static vector3 magnitude;
     ngonSpun.size = depth;
     ngonSpun.mtxarr = new gonalMtx[depth];
     for (int f = 0; f < depth; f++) {
         ngonSpun.mtxarr[f].size = depth;
         ngonSpun.mtxarr[f].mtx  = new vector3[depth];
     }
-    sphere.spungon_mtx = ngonSpun;
-    sphere.location =location;
-    sphere.size = size;
+    ball.spungon_mtx = ngonSpun;
+    ball.location =location;
+    ball.size = size;
+    ball.newForce = newForce;
+    ball.magnitude = magnitude;
+    ball.accelForces = accelForces;
+    ball.maxAccelForces = maxAccelForces;
+    ball.accelForcesCount = 0;
 }
 
 // Function Definitions
@@ -158,7 +167,15 @@ void initialise()
         texo // texture
     };
 
-    createSphere(ball,16,1.5,{0,3,0});
+    createSphere(ball,
+        16,
+        1.5,
+        {0,3,0},
+        16
+    );
+
+    // gravity :/
+    applyAcceleration({0.f,-9.8f,0.f},ball);
 
     SetTargetFPS(FPS);
 }
@@ -181,21 +198,24 @@ void update() {
     float deltaTime = ticks - gPreviousTicks; // step 2
     gPreviousTicks = ticks;                   // step 3
 
-    if (g == -1) {
-        DrawRectangle(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, RAYWHITE);
-    }
-    else {
-        DrawRectangle(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, DARKGRAY);
-    }
+
+    // if (g == -1) {
+    //     DrawRectangle(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, RAYWHITE);
+    // }
+    // else {
+    //     DrawRectangle(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, DARKGRAY);
+    // }
 
     i += 60 * deltaTime;
 
     cam.camPos = { (float)(6 * cos(i * M_PI / 180.f)), 5, (float)(6 * sin(i * M_PI / 180.f)) }; // orbit x + z
+    processPhysics(deltaTime, GetFPS(), ball);
+
     // height of pyramid follows sin ease
-    pyramid.m[0][1] += sin((i-1)/1000 * M_PI / 180.f) * g;
-    pyramid.m[1][1] += sin((i-1)/1000 * M_PI / 180.f) * g;
-    pyramid.m[2][1] += sin((i-1)/1000 * M_PI / 180.f) * g;
-    pyramid.m[3][1] += sin((i-1)/1000 * M_PI / 180.f) * g;
+    // pyramid.m[0][1] += sin((i-1)/1000 * M_PI / 180.f) * g;
+    // pyramid.m[1][1] += sin((i-1)/1000 * M_PI / 180.f) * g;
+    // pyramid.m[2][1] += sin((i-1)/1000 * M_PI / 180.f) * g;
+    // pyramid.m[3][1] += sin((i-1)/1000 * M_PI / 180.f) * g;
     // std::cout << "full camera position: " << cam.camPos.x << ", " << cam.camPos.y << ", " << cam.camPos.z << std::endl;
     // std::cout << i << std::endl;
     // std::cout << (int)abs(i) % 90 << std::endl;

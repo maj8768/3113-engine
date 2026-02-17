@@ -40,7 +40,7 @@ void DrawGon(const int size, gonalMtx& coords) {
 
 //worldToScreen(vector3& wpos, mtx44& world, mtx44& view, mtx44& projection, float screenW, float screenH, vector2& scpos)
 
-void DrawSphere(sphere sphere, camera& cam, float screenW, float screenH) {
+void DrawSphere(sphere_ sphere, camera& cam, float screenW, float screenH) {
     DrawPolyHedron(sphere.spungon_mtx,sphere.size,sphere.location,cam,screenW,screenH);
 }
 

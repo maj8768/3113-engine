@@ -23,14 +23,17 @@ struct planeMtx {
 
 struct vector4 {
     float x, y, z, t;
+    void murder() { x = 0.0f; y = 0.0f; z = 0.0f; t = 0.0f; }
 };
 
 struct vector3 {
     float x, y, z;
+    void murder() { x = 0.0f; y = 0.0f; z = 0.0f; };
 };
 
 struct vector2 {
     float x, y;
+    void murder() { x = 0.0f; y = 0.0f; }
 };
 
 struct mtx44 {
@@ -47,13 +50,16 @@ struct spungonMtx {
     int size;
 };
 
-struct sphere {
+struct sphere_ {
     spungonMtx spungon_mtx;
     vector3 location;
     int depth;
     float size;
     vector3 magnitude;
     vector3 newForce;
+    vector3* accelForces;
+    int maxAccelForces;
+    int accelForcesCount;
 };
 
 struct camera {
