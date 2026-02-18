@@ -75,9 +75,9 @@ float z = 0.0f;      // pyramidPosZ
 float s = 2.0f;      // base size
 float h = 2.0f;      // height
 
-float px = -3.f;
-float pz = -3.f;
-float ps = 6.f;
+float px = -2.f;
+float pz = -2.f;
+float ps = 4.f;
 float ph = 0.f;
 
 static pyramidMtx pyramid;
@@ -110,7 +110,7 @@ void createSphere(sphere_& ball, int depth, float size, vector3 spawnpos, int ma
     static vector3* accelForces = new vector3[maxAccelForces];
     static vector3 newForce;
     static vector3 magnitude;
-    static vector3 applyAccel = {1,1,1};
+    static vector3 applyAccel = {1,1,1}; // whether or not to apply acceleration (used to nicely stop when acceleration shouldn't affect possition)
     ngonSpun.size = depth;
     ngonSpun.mtxarr = new gonalMtx[depth];
     for (int f = 0; f < depth; f++) {
@@ -171,13 +171,14 @@ void initialise()
 
     createSphere(ball,
         16,
-        1.5,
-        {0,2,0},
+        0.25,
+        {0,5,0},
         16
     );
 
     // gravity :/
-    applyAcceleration({0.f,-9.8f,0.f},ball);
+    applyAcceleration({0.f,-9.80665f,0.f},ball); // apply gravity (normalized to 1 for some reason, idk)
+    applyForce({.25f,0.f,0.f},ball);
 
     SetTargetFPS(FPS);
 }
@@ -210,7 +211,7 @@ void update() {
 
     i += 60 * deltaTime;
 
-    cam.camPos = { (float)(6 * cos(i * M_PI / 180.f)), 5, (float)(6 * sin(i * M_PI / 180.f)) }; // orbit x + z
+    cam.camPos = { (float)(5 * cos(1 * M_PI / 180.f)), 3, (float)(5 * sin(60 * M_PI / 180.f)) }; // orbit x + z
     processPhysics(deltaTime, GetFPS(), ball, plane);
 
     // height of pyramid follows sin ease
