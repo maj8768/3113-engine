@@ -110,6 +110,7 @@ void createSphere(sphere_& ball, int depth, float size, vector3 spawnpos, int ma
     static vector3* accelForces = new vector3[maxAccelForces];
     static vector3 newForce;
     static vector3 magnitude;
+    static vector3 applyAccel = {1,1,1};
     ngonSpun.size = depth;
     ngonSpun.mtxarr = new gonalMtx[depth];
     for (int f = 0; f < depth; f++) {
@@ -124,6 +125,7 @@ void createSphere(sphere_& ball, int depth, float size, vector3 spawnpos, int ma
     ball.accelForces = accelForces;
     ball.maxAccelForces = maxAccelForces;
     ball.accelForcesCount = 0;
+    ball.applyAccel = applyAccel;
 }
 
 // Function Definitions
@@ -170,7 +172,7 @@ void initialise()
     createSphere(ball,
         16,
         1.5,
-        {0,3,0},
+        {0,2,0},
         16
     );
 
@@ -209,7 +211,7 @@ void update() {
     i += 60 * deltaTime;
 
     cam.camPos = { (float)(6 * cos(i * M_PI / 180.f)), 5, (float)(6 * sin(i * M_PI / 180.f)) }; // orbit x + z
-    processPhysics(deltaTime, GetFPS(), ball);
+    processPhysics(deltaTime, GetFPS(), ball, plane);
 
     // height of pyramid follows sin ease
     // pyramid.m[0][1] += sin((i-1)/1000 * M_PI / 180.f) * g;

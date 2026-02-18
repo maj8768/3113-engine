@@ -14,6 +14,9 @@ struct pyramidMtx {
     Texture2D texture;
 };
 
+/**
+ * m[0][~] and m[2][~] are min/max
+ */
 struct planeMtx {
     float m[4][3];
     Color color;
@@ -60,6 +63,7 @@ struct sphere_ {
     vector3* accelForces;
     int maxAccelForces;
     int accelForcesCount;
+    vector3 applyAccel;
 };
 
 struct camera {
