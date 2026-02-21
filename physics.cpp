@@ -3,65 +3,107 @@
 #include <cmath>
 
 /**
- * MDN - Game Techniques (3D collision)
+ * Math from ChatGPT: https://chatgpt.com/share/6999099c-52d0-8001-98f7-31b3df5aa762
+ *
+ *
  */
 bool spherePlaneCollide(sphere_& sphere, planeMtx& plane, vector3& applyAcc, float conservationPercent, float deltaTime) {
-    float x = std::max(plane.m[0][0],std::min(sphere.location.x, plane.m[2][0]));
-    float y = std::max(plane.m[0][1],std::min(sphere.location.y, plane.m[2][1]));
-    float z = std::max(plane.m[0][2],std::min(sphere.location.z, plane.m[2][2]));
 
-    float distance = sqrt(pow((x-sphere.location.x),2) + pow((y-sphere.location.y),2) + pow((z-sphere.location.z),2) );
+    const float eps = 1e-6;
+
+    vector3 p1 = {plane.m[0][0], plane.m[0][1], plane.m[0][2]};
+    vector3 p2 = {plane.m[1][0], plane.m[1][1], plane.m[1][2]};
+    vector3 p3 = {plane.m[2][0], plane.m[2][1], plane.m[2][2]};
+
+    vector3 v1 = p2 - p1;
+    vector3 v2 = p3 - p1;
+
+    vector3 normal = cross3(v1, v2);
+
+    float angleX = epsCheck(normal.y != 0 ? cos(atan2(normal.y, normal.x)) : 0.f,eps);
+    float angleZ = epsCheck(normal.y != 0 ? cos(atan2(normal.y, normal.z)) : 0.f,eps);
+    float angleYX = normal.x != 0 ? normal.y / normal.x : 0.f;
+    float angleYZ = normal.z != 0 ? normal.y / normal.z : 0.f;
+
+    // std::cout << angleX << ", " << angleZ << ", " << angleYX << ", " << angleYZ << std::endl;
+
+    float normalMag = ((normal^2).x + (normal^2).y + (normal^2).z);
+    vector3 post_impact_vel = normal.fmult((dot3(sphere.magnitude,normal)/normalMag));
+    std::cout << dot3(sphere.magnitude,normal) << std::endl;
+    std::cout << normalMag << std::endl;
+    std::cout << sphere.magnitude.x << ", " << sphere.magnitude.y << ", " << sphere.magnitude.z << ", " << std::endl;
+    std::cout << post_impact_vel.x << ", " << post_impact_vel.y << ", " << post_impact_vel.z << ", " << std::endl;
+
+    float tops = normal.x*sphere.location.x + normal.y*sphere.location.y + normal.z*sphere.location.z - (normal.x + normal.y + normal.z);
+    vector3 close_point = sphere.location - normal.fmult(tops/((normal^2).x + (normal^2).y + (normal^2).z));
+    float distance = close_point.dist(sphere.location);
+    std::cout << close_point.x << ", " << close_point.y << ", " << close_point.z << ", " << std::endl;
+    std::cout << "distance: " << (distance) << std::endl;
+
+    if (distance < sphere.size) {
+        sphere.magnitude.x -= post_impact_vel.x * (2);
+        sphere.magnitude.y -= post_impact_vel.y * (2);
+        sphere.magnitude.z -= post_impact_vel.z * (2);
+        return true;
+    }
+
+    return false;
+
+    // float distance = sqrt(pow((x-sphere.location.x),2) + pow((y-sphere.location.y),2) + pow((z-sphere.location.z),2) );
+    // // if (distance < sphere.size) {
+    // //     for (int i = 0; i < sphere.accelForcesCount; i++) {
+    // //         std::cout << "is not still (1=true): " << !(std::abs(sphere.magnitude.y) < .05) << " at: " << sphere.magnitude.y << std::endl;
+    // //         if (!(std::abs(sphere.magnitude.y) < .05)) {
+    // //             sphere.location.y += (-std::abs(sphere.accelForces[i].y)/sphere.accelForces[i].y) *.01 + plane.m[0][1];
+    // //             sphere.magnitude.y = -sphere.magnitude.y;
+    // //         }
+    // //         else {
+    // //             std::cout << "still" << std::endl;
+    // //             sphere.location.y = plane.m[0][1]; // at rest
+    // //         }
+    // //     }
+    // // }
     // if (distance < sphere.size) {
-    //     for (int i = 0; i < sphere.accelForcesCount; i++) {
-    //         std::cout << "is not still (1=true): " << !(std::abs(sphere.magnitude.y) < .05) << " at: " << sphere.magnitude.y << std::endl;
-    //         if (!(std::abs(sphere.magnitude.y) < .05)) {
-    //             sphere.location.y += (-std::abs(sphere.accelForces[i].y)/sphere.accelForces[i].y) *.01 + plane.m[0][1];
-    //             sphere.magnitude.y = -sphere.magnitude.y;
-    //         }
-    //         else {
-    //             std::cout << "still" << std::endl;
-    //             sphere.location.y = plane.m[0][1]; // at rest
-    //         }
+    //     std::cout << "is not still (1=true): " << !(std::abs(sphere.magnitude.y) < .25 - sphere.accelForces[0].y * deltaTime) << " at: " << sphere.magnitude.y - sphere.accelForces[0].y * deltaTime<< std::endl;
+    //     const float planeX = plane.m[0][0];
+    //     const float planeY = plane.m[0][1];
+    //     const float planeZ = plane.m[0][2];
+    //     const float restSpeed = 0.25f;
+    //     const float eps = 0.001f;
+    //
+    //     std::cout << x << ", " << y << ", " << z << std::endl;
+    //     std::cout << cos(atan2(yDisp,zDisp)) << std::endl;
+    //
+    //     float targetX = x + sphere.size + eps;
+    //     float targetY = y + sphere.size + eps;
+    //     float targetZ = z + sphere.size + eps;
+    //
+    //     // snap out of penetration first
+    //     if (sphere.location.x < targetX) sphere.location.x = targetX;
+    //     if (sphere.location.y < targetY) sphere.location.y = targetY;
+    //     if (sphere.location.z < targetZ) sphere.location.z = targetZ;
+    //
+    //     // only bounce if moving down into the plane
+    //     if (std::abs(sphere.magnitude.x) > restSpeed - sphere.accelForces[0].x * deltaTime /* counters applied acceleration in past frame (allows it to reach rest)*/) {
+    //         // sphere.magnitude.x = -sphere.magnitude.x * conservationPercent; // lol i dont do math
+    //     } else {
+    //         // sphere.magnitude.x = 0.0f;
+    //         // applyAcc.x = 0;
+    //     }
+    //     if (std::abs(sphere.magnitude.y) > restSpeed - sphere.accelForces[0].y * deltaTime /* counters applied acceleration in past frame (allows it to reach rest)*/) {
+    //         sphere.magnitude.y = -sphere.magnitude.y * conservationPercent; // lol i dont do math
+    //     } else {
+    //         sphere.magnitude.y = 0.0f;
+    //         applyAcc.y = 0;
+    //     }
+    //     if (std::abs(sphere.magnitude.z) > restSpeed - sphere.accelForces[0].z * deltaTime /* counters applied acceleration in past frame (allows it to reach rest)*/) {
+    //         // sphere.magnitude.z = -sphere.magnitude.z * conservationPercent; // lol i dont do math
+    //     } else {
+    //         // sphere.magnitude.z = 0.0f;
+    //         // applyAcc.z = 0;
     //     }
     // }
-    if (distance < sphere.size) {
-        std::cout << "is not still (1=true): " << !(std::abs(sphere.magnitude.y) < .25 - sphere.accelForces[0].y * deltaTime) << " at: " << sphere.magnitude.y - sphere.accelForces[0].y * deltaTime<< std::endl;
-        const float planeX = plane.m[0][0];
-        const float planeY = plane.m[0][1];
-        const float planeZ = plane.m[0][2];
-        const float restSpeed = 0.25f;
-        const float eps = 0.001f;
-
-        float targetX = planeX + sphere.size + eps;
-        float targetY = planeY + sphere.size + eps;
-        float targetZ = planeZ + sphere.size + eps;
-
-        // snap out of penetration first
-        if (sphere.location.x < targetX) sphere.location.x = targetX;
-        if (sphere.location.y < targetY) sphere.location.y = targetY;
-        if (sphere.location.z < targetZ) sphere.location.z = targetZ;
-
-        // only bounce if moving down into the plane
-        if (std::abs(sphere.magnitude.x) > restSpeed - sphere.accelForces[0].x * deltaTime /* counters applied acceleration in past frame (allows it to reach rest)*/) {
-            // sphere.magnitude.x = -sphere.magnitude.x * conservationPercent; // lol i dont do math
-        } else {
-            // sphere.magnitude.x = 0.0f;
-            // applyAcc.x = 0;
-        }
-        if (std::abs(sphere.magnitude.y) > restSpeed - sphere.accelForces[0].y * deltaTime /* counters applied acceleration in past frame (allows it to reach rest)*/) {
-            sphere.magnitude.y = -sphere.magnitude.y * conservationPercent; // lol i dont do math
-        } else {
-            sphere.magnitude.y = 0.0f;
-            applyAcc.y = 0;
-        }
-        if (std::abs(sphere.magnitude.z) > restSpeed - sphere.accelForces[0].z * deltaTime /* counters applied acceleration in past frame (allows it to reach rest)*/) {
-            // sphere.magnitude.z = -sphere.magnitude.z * conservationPercent; // lol i dont do math
-        } else {
-            // sphere.magnitude.z = 0.0f;
-            // applyAcc.z = 0;
-        }
-    }
-    return distance < sphere.size;
+    // return distance < sphere.size;
 }
 
 void applyForce(vector3 newForce, sphere_& sphere) {
@@ -88,7 +130,7 @@ void processPhysics(float deltaTime, int frameRate, sphere_& sphere, planeMtx& p
 
     // std::cout << "applying forces: " << sphere.magnitude.y << std::endl;
 
-    if (spherePlaneCollide(sphere, plane, sphere.applyAccel, .95, deltaTime)) return;
+    (spherePlaneCollide(sphere, plane, sphere.applyAccel, .95, deltaTime));
 
     // force transfer
     //std::cout << sphere.magnitude.y << std::endl;

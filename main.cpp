@@ -154,8 +154,8 @@ void initialise()
 
     plane = {
         { // plane object-space coordinates
-            px,     0.0f, pz,        // v0 base
-            px + ps, 0.0f, pz,        // v1 base
+            px,     ps, pz,        // v0 base
+            px + ps, ps, pz,        // v1 base
             px + ps, 0.0f, pz + ps,    // v2 base
             px, 0.f, pz + ps  // v3 apex
         },
@@ -178,7 +178,7 @@ void initialise()
 
     // gravity :/
     applyAcceleration({0.f,-9.80665f,0.f},ball); // apply gravity (normalized to 1 for some reason, idk)
-    applyForce({.25f,0.f,0.f},ball);
+    // applyForce({.25f,0.f,0.f},ball);
 
     SetTargetFPS(FPS);
 }
@@ -211,7 +211,7 @@ void update() {
 
     i += 60 * deltaTime;
 
-    cam.camPos = { (float)(5 * cos(1 * M_PI / 180.f)), 3, (float)(5 * sin(60 * M_PI / 180.f)) }; // orbit x + z
+    cam.camPos = { (float)(5 * cos(5 * M_PI / 180.f)), 3, (float)(5 * sin(25 * M_PI / 180.f)) }; // orbit x + z
     processPhysics(deltaTime, GetFPS(), ball, plane);
 
     // height of pyramid follows sin ease

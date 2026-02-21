@@ -89,3 +89,8 @@ void spinGon2D(spungonMtx& out, const float size) {
     //     }
     // }
 }
+
+float epsCheck(float val, float eps) {
+    if (fabs(val) < eps) return 0;
+    return val;
+}

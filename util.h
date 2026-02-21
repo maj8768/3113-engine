@@ -1,4 +1,5 @@
 #include "raylib.h"
+#include <cmath>
 
 struct triangleMtx {
     float x1, y1, z1;
@@ -32,6 +33,35 @@ struct vector4 {
 struct vector3 {
     float x, y, z;
     void murder() { x = 0.0f; y = 0.0f; z = 0.0f; };
+
+    vector3(float x = 0, float y = 0, float z = 0) : x(x), y(y), z(z) {}
+
+    vector3 operator+(const vector3& other) const {
+        return {x + other.x, y + other.y, z + other.z};
+    }
+
+    vector3 operator-(const vector3& other) const {
+        return {x - other.x, y - other.y, z - other.z};
+    }
+    vector3 operator*(const vector3& other) const {
+        return {x * other.x, y * other.y, z * other.z};
+    }
+    vector3 operator/(const vector3& other) const {
+        return {x / other.x, y / other.y, z / other.z};
+    }
+    vector3 operator^(const float other) const {
+        return {(std::pow(x,other)), std::pow(y,other), std::pow(z,other)};
+    }
+
+    [[nodiscard]] vector3 fmult(const float other) const {
+        return {x * other, y * other, z * other};
+    }
+
+    [[nodiscard]] float dist(const vector3& other) const {
+        return static_cast<float>(sqrt(
+            pow(other.x - x, 2) + pow(other.y - y, 2) + pow(other.z - z, 2)
+        ));
+    }
 };
 
 struct vector2 {
@@ -93,3 +123,5 @@ vector4 extendV3(const vector3&);
 void calculateGon2D(const int n, gonalMtx& out, const bool vertical, const int size);
 
 void spinGon2D(spungonMtx& out, const float size);
+
+float epsCheck(float val, float eps);
