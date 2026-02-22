@@ -27,23 +27,37 @@ bool spherePlaneCollide(sphere_& sphere, planeMtx& plane, vector3& applyAcc, flo
 
     // std::cout << angleX << ", " << angleZ << ", " << angleYX << ", " << angleYZ << std::endl;
 
-    float normalMag = ((normal^2).x + (normal^2).y + (normal^2).z);
-    vector3 post_impact_vel = normal.fmult((dot3(sphere.magnitude,normal)/normalMag));
-    std::cout << dot3(sphere.magnitude,normal) << std::endl;
-    std::cout << normalMag << std::endl;
-    std::cout << sphere.magnitude.x << ", " << sphere.magnitude.y << ", " << sphere.magnitude.z << ", " << std::endl;
-    std::cout << post_impact_vel.x << ", " << post_impact_vel.y << ", " << post_impact_vel.z << ", " << std::endl;
+    vector3 post_impact_vel = normal.fmult((dot3(sphere.magnitude,normal)/std::pow(normal.mag(),2)));
+    // std::cout << dot3(sphere.magnitude,normal) << std::endl;
+    // std::cout << normalMag << std::endl;
+    // std::cout << sphere.magnitude.x << ", " << sphere.magnitude.y << ", " << sphere.magnitude.z << ", " << std::endl;
+    // std::cout << post_impact_vel.x << ", " << post_impact_vel.y << ", " << post_impact_vel.z << ", " << std::endl;
 
-    float tops = normal.x*sphere.location.x + normal.y*sphere.location.y + normal.z*sphere.location.z - (normal.x + normal.y + normal.z);
+    float tops = normal.x*sphere.location.x + normal.y*sphere.location.y + normal.z*sphere.location.z - dot3(normal,p1);
     vector3 close_point = sphere.location - normal.fmult(tops/((normal^2).x + (normal^2).y + (normal^2).z));
     float distance = close_point.dist(sphere.location);
-    std::cout << close_point.x << ", " << close_point.y << ", " << close_point.z << ", " << std::endl;
-    std::cout << "distance: " << (distance) << std::endl;
+    // std::cout << close_point.x << ", " << close_point.y << ", " << close_point.z << ", " << std::endl;
+    // std::cout << "distance: " << (distance) << std::endl;
 
     if (distance < sphere.size) {
-        sphere.magnitude.x -= post_impact_vel.x * (2);
-        sphere.magnitude.y -= post_impact_vel.y * (2);
-        sphere.magnitude.z -= post_impact_vel.z * (2);
+        vector3 repos = close_point - normal.fmult(sphere.size / normal.mag());
+        // std::cout << normal.fdiv(normalMag).y << std::endl;
+        std::cout << repos.x << ", " << repos.y << ", " << repos.z << std::endl;
+
+        std::cout << close_point.x << ", " << close_point.y << ", " << close_point.z << ", " << std::endl;
+        sphere.location = repos;
+        // std::cout << targetX << ", " << targetY << ", " << targetZ << std::endl;
+        // std::cout << sphere.location.x << ", " << sphere.location.y << ", " << sphere.location.z << ", " << std::endl;
+        // std::cout << ((sphere.location.x) < targetX) << std::endl;
+        // if (fabs(sphere.location.x) < targetX) sphere.location.x = targetX;
+        // if (fabs(sphere.location.y) < targetY) sphere.location.y = targetY;
+        // if (fabs(sphere.location.z) < targetZ) sphere.location.z = targetZ;
+
+        sphere.magnitude.x -= post_impact_vel.x * (2) * conservationPercent;
+        sphere.magnitude.y -= post_impact_vel.y * (2) * conservationPercent;
+        sphere.magnitude.z -= post_impact_vel.z * (2) * conservationPercent;
+        // std::cout << post_impact_vel.x << ", " << post_impact_vel.y << ", " <<post_impact_vel.z << std::endl;
+        std::cout << distance << std::endl;
         return true;
     }
 
@@ -122,15 +136,16 @@ void applyAcceleration(vector3 newAccel, sphere_& sphere) {
     }
 }
 
-void processPhysics(float deltaTime, int frameRate, sphere_& sphere, planeMtx& plane) {
+void processPhysics(float deltaTime, int frameRate, sphere_& sphere, world& world) {
     // std::cout << "appfs" << std::endl;
     bool acc = false;
 
     // collision
 
     // std::cout << "applying forces: " << sphere.magnitude.y << std::endl;
-
-    (spherePlaneCollide(sphere, plane, sphere.applyAccel, .95, deltaTime));
+    for (int itc = 0; itc < world.planeCount; itc++) {
+        (spherePlaneCollide(sphere, world.planes[itc], sphere.applyAccel, .9, deltaTime));
+    }
 
     // force transfer
     //std::cout << sphere.magnitude.y << std::endl;

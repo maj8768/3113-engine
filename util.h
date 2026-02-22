@@ -25,6 +25,10 @@ struct planeMtx {
     Texture2D texture;
 };
 
+struct world {
+    planeMtx* planes;
+    int planeCount;
+};
 struct vector4 {
     float x, y, z, t;
     void murder() { x = 0.0f; y = 0.0f; z = 0.0f; t = 0.0f; }
@@ -53,13 +57,33 @@ struct vector3 {
         return {(std::pow(x,other)), std::pow(y,other), std::pow(z,other)};
     }
 
+    vector3& operator+=(const vector3& o) { x+=o.x; y+=o.y; z+=o.z; return *this; }
+
     [[nodiscard]] vector3 fmult(const float other) const {
         return {x * other, y * other, z * other};
     }
 
+    [[nodiscard]] vector3 fadd(const float other) const {
+        return {x + other, y + other, z + other};
+    }
+
+    [[nodiscard]] vector3 fsub(const float other) const {
+        return {x - other, y - other, z - other};
+    }
+
+    [[nodiscard]] vector3 fdiv(const float other) const {
+        return {x / other, y / other, z / other};
+    }
+
     [[nodiscard]] float dist(const vector3& other) const {
-        return static_cast<float>(sqrt(
-            pow(other.x - x, 2) + pow(other.y - y, 2) + pow(other.z - z, 2)
+        return static_cast<float>(sqrtf(
+            std::pow(other.x - x, 2) + std::pow(other.y - y, 2) + std::pow(other.z - z, 2)
+        ));
+    }
+
+    [[nodiscard]] float mag() const {
+        return static_cast<float>(sqrtf(
+            std::pow(x, 2) + std::pow(y, 2) + std::pow(z, 2)
         ));
     }
 };

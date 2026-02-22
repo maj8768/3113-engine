@@ -80,9 +80,17 @@ float pz = -2.f;
 float ps = 4.f;
 float ph = 0.f;
 
+float px2 = -2.f;
+float pz2 = 2.f;
+float ps2 = 4.f;
+float ph2 = 0.f;
+
+
 static pyramidMtx pyramid;
 static planeMtx plane;
+static planeMtx plane2;
 static sphere_ ball;
+static world world;
 
 static camera cam = {
     .camPos = { x, h, z },
@@ -135,6 +143,9 @@ void initialise()
 
     Texture2D texo = LoadTexture(EDELGARD_FP);
 
+    world.planeCount = 2;
+    world.planes = new planeMtx[2];
+
     pyramid = {
         { // pyramid object-space coordinates
             x,     0.0f, z,        // v0 base
@@ -169,6 +180,26 @@ void initialise()
         texo // texture
     };
 
+    plane2 = {
+        { // plane object-space coordinates
+            px2 + ps2,     ps2, pz2+2,           // v0 base
+            px2, ps2, pz2+2,         // v1 base
+            px2, 0,  pz2 - ps2+2,   // v2 base
+            px2 + ps2,     0,  pz2 - ps2+2      // v3 apex
+        },
+        WHITE, // ignored for now
+        { // texture coordinates (absolute not additive)
+                    { 0.0f, 0.0f },
+                    { 0.25f, 0.0f },
+                    { 0.5f, 0.0f},
+                    { 0.75f, 0.0f },
+            },
+            texo // texture
+        };
+
+    world.planes[0] = plane;
+    world.planes[1] = plane2;
+
     createSphere(ball,
         16,
         0.25,
@@ -176,8 +207,7 @@ void initialise()
         16
     );
 
-    // gravity :/
-    applyAcceleration({0.f,-9.80665f,0.f},ball); // apply gravity (normalized to 1 for some reason, idk)
+    applyAcceleration({0.f,-9.80665f,0.f},ball); // gravity lol
     // applyForce({.25f,0.f,0.f},ball);
 
     SetTargetFPS(FPS);
@@ -212,7 +242,7 @@ void update() {
     i += 60 * deltaTime;
 
     cam.camPos = { (float)(5 * cos(5 * M_PI / 180.f)), 3, (float)(5 * sin(25 * M_PI / 180.f)) }; // orbit x + z
-    processPhysics(deltaTime, GetFPS(), ball, plane);
+    processPhysics(deltaTime, GetFPS(), ball, world);
 
     // height of pyramid follows sin ease
     // pyramid.m[0][1] += sin((i-1)/1000 * M_PI / 180.f) * g;
@@ -318,6 +348,7 @@ void render()
     ClearBackground(RAYWHITE);
 
     DrawPlaneFancy(plane, cam, SCREEN_WIDTH, SCREEN_HEIGHT, BLACK);
+    DrawPlaneFancy(plane2, cam, SCREEN_WIDTH, SCREEN_HEIGHT, BLACK);
     //DrawPyramidFancy(pyramid, cam, SCREEN_WIDTH, SCREEN_HEIGHT, BLACK);
     DrawSphere(ball,cam,SCREEN_WIDTH,SCREEN_HEIGHT);
     // DrawPolyHedron(, 0.5, {0, 3, 0}, cam, SCREEN_WIDTH, SCREEN_HEIGHT);
