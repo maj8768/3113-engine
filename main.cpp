@@ -227,135 +227,35 @@ float floating = 1;
     
 void update() {
 
-    float ticks = static_cast<float>(GetTime());          // step 1
+    auto ticks = static_cast<float>(GetTime());          // step 1
     float deltaTime = ticks - gPreviousTicks; // step 2
     gPreviousTicks = ticks;                   // step 3
 
-
-    // if (g == -1) {
-    //     DrawRectangle(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, RAYWHITE);
-    // }
-    // else {
-    //     DrawRectangle(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, DARKGRAY);
-    // }
-
     i += 60 * deltaTime;
 
-    cam.camPos = { (float)(5 * cos(5 * M_PI / 180.f)), 3, (float)(5 * sin(25 * M_PI / 180.f)) }; // orbit x + z
+    cam.camPos = { (float)(5 * cos(i * M_PI / 180.f)), 3, (float)(5 * sin(i * M_PI / 180.f)) }; // orbit x + z
     processPhysics(deltaTime, GetFPS(), ball, world);
 
-    // height of pyramid follows sin ease
-    // pyramid.m[0][1] += sin((i-1)/1000 * M_PI / 180.f) * g;
-    // pyramid.m[1][1] += sin((i-1)/1000 * M_PI / 180.f) * g;
-    // pyramid.m[2][1] += sin((i-1)/1000 * M_PI / 180.f) * g;
-    // pyramid.m[3][1] += sin((i-1)/1000 * M_PI / 180.f) * g;
-    // std::cout << "full camera position: " << cam.camPos.x << ", " << cam.camPos.y << ", " << cam.camPos.z << std::endl;
-    // std::cout << i << std::endl;
-    // std::cout << (int)abs(i) % 90 << std::endl;
     if (i > 361 || i < 0) {
         g *= -1;
         i = 0;
     }
-
-
-//     if (IsKeyPressed(KEY_E)) {
-//         // XYZRotatePyramidAboutSelf(pyramid, -25.0f, -25.0f, 0.0f);
-//         XYZRotatePyramidAboutPoint(pyramid, pyramidPosX, pyramidPosY, 0.0f, centerX, centerY, 0.0f);
-//         XYZRotatePyramidAboutPoint(pyramid2, pyramidPosX2, pyramidPosY2, 0.0f, centerX, centerY, 0.0f);
-//     }
-//     if (IsKeyPressed(KEY_R)) {
-//         pRot = !pRot;
-//     }
-
-//     if (pRot) {
-//         XYZRotatePyramidAboutSelf(pyramid, 1.f * deltaTime,1.f * deltaTime,1.f * deltaTime);
-//         XYZRotatePyramidAboutSelf(pyramid2, 1.f * deltaTime,1.f * deltaTime,1.f * deltaTime);
-//     }
-
-//     // rotate pyramid to face mouse
-//     // float angleX = atan2(relativeY, relativeX);
-
-//     // ZRotateTriangleAboutSelf(triangle, -1.0f * deltaTime);
-//     // ZRotateTriangleAboutPoint(triangle, 400, 400, 1.0f * deltaTime);
-//     // XYZRotatePyramidAboutSelf(pyramid, -1.0f * deltaTime, -1.0f * deltaTime, -1.0f * deltaTime);
-//     static float i = 0;
-//     static float g = 0.01;
-//     if (i < 4) {
-//         // XYScaleTriangleAroundCenter(triangle, 1.0f + g);
-//         i+= 1.f*deltaTime;
-//         gScale.x *= 1.0f + g/10;
-//         gScale.y *= 1.0f + g/10;
-//         if (i > 3) {
-//         }
-//         else if (i > 2) {
-//             textureArea = {
-//                 // top-left corner
-//                 (gTexture.width)*0.5,
-//                 0,
-
-//                 // bottom-right corner (of texture)
-//                 (gTexture.width)/2,
-//                 (gTexture.height)/2
-//             };
-//         }
-//         else if (i > 1) {
-//             textureArea = {
-//                 // top-left corner
-//                 0,
-//                 (gTexture.height)/2,
-
-//                 // bottom-right corner (of texture)
-//                 (gTexture.width)/2,
-//                 (gTexture.height)/2
-//             };
-//         }
-//         else {
-//             textureArea = {
-//                 // top-left corner
-//                 0,
-//                 0,
-
-//                 // bottom-right corner (of texture)
-//                 static_cast<float>(gTexture.width)/2,
-//                 static_cast<float>(gTexture.height)/2
-//             };
-//         }
-//     } else {
-//         i = 0;
-//         g *= -1;
-//     }
-//     // std::cout <<  << std::endl;
 }
 
 void render()
 {
 
-    // vector3 pointWorld = { 10.0f, 2.0f, -25.0f };
-
-    // DrawPyramidFancy(pyramid, cam, world, SCREEN_WIDTH, SCREEN_HEIGHT, RED);
-    // vector2 screen;
-    // bool ok = worldToScreen(pointWorld, world, view, proj, SCREEN_WIDTH, SCREEN_HEIGHT, screen);
-
-    // if (ok) {
-    //     std::cout << "Screen coordinates: (" << screen.x << ", " << screen.y << ")" << std::endl;
-    // } else {
-    //     std::cout << "Point is behind camera or outside the view" << std::endl;
-    // }
-
-    // float 
     BeginDrawing();
 
     ClearBackground(RAYWHITE);
 
-    DrawPlaneFancy(plane, cam, SCREEN_WIDTH, SCREEN_HEIGHT, BLACK);
-    DrawPlaneFancy(plane2, cam, SCREEN_WIDTH, SCREEN_HEIGHT, BLACK);
-    //DrawPyramidFancy(pyramid, cam, SCREEN_WIDTH, SCREEN_HEIGHT, BLACK);
+    // drawing world
+    for (int draw = 0; draw < world.planeCount; draw++) {
+        DrawPlaneFancy(world.planes[draw], cam, SCREEN_WIDTH, SCREEN_HEIGHT, BLACK,true);
+    }
+
     DrawSphere(ball,cam,SCREEN_WIDTH,SCREEN_HEIGHT);
-    // DrawPolyHedron(, 0.5, {0, 3, 0}, cam, SCREEN_WIDTH, SCREEN_HEIGHT);
 
-    // DrawTriangleFancy(triangle, RED);
-
-    // DrawPyramidFancy(pyramid2, RED);
 
     DrawFPS(10, 10);
 

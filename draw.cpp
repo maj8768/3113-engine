@@ -102,9 +102,10 @@ void DrawPolyHedron(spungonMtx mtxmtx, float n, vector3 centp, camera& cam, floa
     }
 }
 
-void DrawPlaneFancy(const planeMtx& plane, camera& cam, float screenW, float screenH, Color color) {
+void DrawPlaneFancy(const planeMtx& plane, camera& cam, float screenW, float screenH, Color color, bool drawNormal) {
     mtx44 world = {};
     planeMtx screenCoords;
+
 
     for (int k = 0; k < 4; k++) {
         // std::cout << k << std::endl;
@@ -139,6 +140,45 @@ void DrawPlaneFancy(const planeMtx& plane, camera& cam, float screenW, float scr
     DrawLineFancy(screenCoords.m[0][0], screenCoords.m[0][1], screenCoords.m[3][0], screenCoords.m[3][1], color);
     DrawLineFancy(screenCoords.m[1][0], screenCoords.m[1][1], screenCoords.m[3][0], screenCoords.m[3][1], color);
     DrawLineFancy(screenCoords.m[2][0], screenCoords.m[2][1], screenCoords.m[3][0], screenCoords.m[3][1], color);
+
+    if (drawNormal) {
+        vector3 vt[2];
+        world.m[0][0] = 1; world.m[1][1] = 1; world.m[2][2] = 1; world.m[3][3] = 1; // identity mtx
+
+        vector3 centroid = {
+            (plane.m[0][0] + plane.m[1][0] + plane.m[2][0] + plane.m[3][0])/4,
+            (plane.m[0][1] + plane.m[1][1] + plane.m[2][1] + plane.m[3][1])/4,
+            (plane.m[0][2] + plane.m[1][2] + plane.m[2][2] + plane.m[3][2])/4
+        };
+
+        vector3 p1 = {plane.m[0][0], plane.m[0][1], plane.m[0][2]};
+        vector3 p2 = {plane.m[1][0], plane.m[1][1], plane.m[1][2]};
+        vector3 p3 = {plane.m[2][0], plane.m[2][1], plane.m[2][2]};
+
+        vector3 v1 = p2 - p1;
+        vector3 v2 = p3 - p1;
+
+        vector3 normal = cross3(v1, v2);
+
+        vector3 repos = centroid - normal.fmult(1 / normal.mag());
+
+        // modmmult(world, extendV3(centroid));
+        mtx44 view = viewMtx44(cam.camPos, cam.camTarget, cam.up);
+        mtx44 proj = projMtx44(cam.fov, cam.aspect, 0.1f, 1000.0f);
+
+        bool nsc1 = worldToScreen(repos, world, view, proj, screenW, screenH, vt[0]);
+        bool nsc2 = worldToScreen(centroid, world, view, proj, screenW, screenH, vt[1]);
+
+        std::cout << nsc1 << nsc2 << std::endl;
+
+        if (nsc1 && nsc2) {
+            std::cout << vt[0].x << ", " << vt[0].y << ", " << vt[1].x << ", " << vt[1].y << std::endl;
+            DrawLineFancy(vt[0].x,vt[0].y,vt[1].x,vt[1].y,ORANGE);
+        } else {
+            std::cout << "Point is behind camera or outside the view" << std::endl;
+        }
+
+    }
 }
 
 void DrawPyramidFancy(const pyramidMtx& pyramid, camera& cam, float screenW, float screenH, Color color) {

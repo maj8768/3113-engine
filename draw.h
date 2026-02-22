@@ -5,7 +5,7 @@ void DrawLineFancy(float x1, float y1, float x2, float y2, Color color);
 void DrawTriangleFancy(const triangleMtx& triangle, Color color);
 
 void DrawPyramidFancy(const pyramidMtx& pyramid, camera& cam, float screenW, float screenH, Color color);
-void DrawPlaneFancy(const planeMtx& plane, camera& cam, float screenW, float screenH, Color color);
+void DrawPlaneFancy(const planeMtx& plane, camera& cam, float screenW, float screenH, Color color, bool drawNormal);
 void DrawGon(const int size, gonalMtx& coords);
 void DrawPolyHedron(spungonMtx mtxmtx, float n, vector3 centerpos, camera& cam, float screenW, float screenH);
 void DrawSphere(sphere_ sphere, camera& cam, float screenW, float screenH);
