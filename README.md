@@ -1,5 +1,12 @@
 # 3113-engine
 
+Project 2 - WIP:
+
+![pongunfinished](https://github.com/maj8768/3113-engine/blob/main/ezgif-51b8f1666ff999e9.gif)
+
+Players Working- still need to add gameplay.
+
+
 Project 1 Commit - https://github.com/maj8768/3113-engine/commit/13677a57c8dd263095c0faa105e63ea2b5d32bc8
 
 Functionality:
@@ -25,7 +32,3 @@ Extra Credit:
 Run with:
 
 ``sh build.sh``
-
-Project 2 - WIP:
-
-![newfunctionality](https://github.com/maj8768/3113-engine/blob/main/ezgif-7c280598d37da96a.gif)
