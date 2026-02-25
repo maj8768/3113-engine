@@ -21,7 +21,7 @@ struct pyramidMtx {
 struct planeMtx {
     float m[4][3];
     Color color;
-    float textureArea[4][2];
+    // float textureArea[4][2];
     Texture2D texture;
 };
 
@@ -126,6 +126,15 @@ struct camera {
     vector3 up;
     float aspect;
     float fov;
+};
+
+// temp player for pong (should change for 3d movement + cam)
+struct player {
+    vector3 location;
+    planeMtx model;
+    planeMtx bounding;
+    vector4 controls;
+    int hits;
 };
 
 mtx44 mmult4(const mtx44&, const mtx44&);

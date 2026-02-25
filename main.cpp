@@ -2,6 +2,7 @@
 #include "draw.h"
 #include "camera.h"
 #include "physics.h"
+#include "player.h"
 #include <cmath>
 #include <iostream>
 
@@ -91,10 +92,12 @@ static planeMtx plane;
 static planeMtx plane2;
 static sphere_ ball;
 static world world;
+static player player1;
+static player player2;
 
 static camera cam = {
-    .camPos = { x, h, z },
-    .camTarget = { 0, h, 0 },
+    .camPos = { x, 0, z },
+    .camTarget = { 0, 0, 0 },
     .up = {0, 1, 0},
     .aspect = (float)SCREEN_WIDTH / (float)SCREEN_HEIGHT,
     .fov = 90.0f * M_PI / 180.0f
@@ -143,8 +146,8 @@ void initialise()
 
     Texture2D texo = LoadTexture(EDELGARD_FP);
 
-    world.planeCount = 2;
-    world.planes = new planeMtx[2];
+    world.planeCount = 6;
+    world.planes = new planeMtx[6];
 
     pyramid = {
         { // pyramid object-space coordinates
@@ -163,52 +166,138 @@ void initialise()
         texo // texture
     };
 
-    plane = {
-        { // plane object-space coordinates
-            px,     ps, pz,        // v0 base
-            px + ps, ps, pz,        // v1 base
-            px + ps, 0.0f, pz + ps,    // v2 base
-            px, 0.f, pz + ps  // v3 apex
-        },
-        WHITE, // ignored for now
-        { // texture coordinates (absolute not additive)
-                { 0.0f, 0.0f },
-                { 0.25f, 0.0f },
-                { 0.5f, 0.0f},
-                { 0.75f, 0.0f },
-        },
-        texo // texture
+    // Box centered at (0,0,0)
+    // X length = 20  => x in [-10, +10]
+    // Z width  = 10  => z in [-5,  +5]
+    // Y height = 10  => y in [-5,  +5]
+
+    const float hx = 10.0f; // half X
+    const float hz = 5.0f;  // half Z
+    const float hy = 5.0f;  // half Y
+
+    // Reuse UVs for all faces
+    float uvs[4][2] = {
+        { 0.0f, 0.0f },
+        { 1.0f, 0.0f },
+        { 1.0f, 1.0f },
+        { 0.0f, 1.0f }
     };
 
-    plane2 = {
-        { // plane object-space coordinates
-            px2 + ps2,     ps2, pz2+2,           // v0 base
-            px2, ps2, pz2+2,         // v1 base
-            px2, 0,  pz2 - ps2+2,   // v2 base
-            px2 + ps2,     0,  pz2 - ps2+2      // v3 apex
+    // +Y (top), outward normal +Y
+    world.planes[0] = {
+        {
+            -hx, +hy, -hz,   // v0
+            +hx, +hy, -hz,   // v1
+            +hx, +hy, +hz,   // v2
+            -hx, +hy, +hz    // v3
         },
-        WHITE, // ignored for now
-        { // texture coordinates (absolute not additive)
-                    { 0.0f, 0.0f },
-                    { 0.25f, 0.0f },
-                    { 0.5f, 0.0f},
-                    { 0.75f, 0.0f },
-            },
-            texo // texture
-        };
+        WHITE,
+        texo
+    };
 
-    world.planes[0] = plane;
-    world.planes[1] = plane2;
+    // -Y (bottom), outward normal -Y
+    world.planes[1] = {
+        {
+            -hx, -hy, +hz,   // v0
+            +hx, -hy, +hz,   // v1
+            +hx, -hy, -hz,   // v2
+            -hx, -hy, -hz    // v3
+        },
+        WHITE,
+        texo
+    };
+
+    // +X (right), outward normal +X
+    world.planes[2] = {
+        {
+            +hx, -hy, -hz,   // v0
+            +hx, -hy, +hz,   // v1
+            +hx, +hy, +hz,   // v2
+            +hx, +hy, -hz    // v3
+        },
+        WHITE,
+        texo
+    };
+
+    // -X (left), outward normal -X
+    world.planes[3] = {
+        {
+            -hx, -hy, +hz,   // v0
+            -hx, -hy, -hz,   // v1
+            -hx, +hy, -hz,   // v2
+            -hx, +hy, +hz    // v3
+        },
+        WHITE,
+        texo
+    };
+
+    // +Z (front), outward normal +Z
+    world.planes[4] = {
+        {
+            +hx, -hy, +hz,   // v0
+            -hx, -hy, +hz,   // v1
+            -hx, +hy, +hz,   // v2
+            +hx, +hy, +hz    // v3
+        },
+        WHITE,
+        texo
+    };
+
+    // -Z (back), outward normal -Z
+    world.planes[5] = {
+        {
+            -hx, -hy, -hz,   // v0
+            +hx, -hy, -hz,   // v1
+            +hx, +hy, -hz,   // v2
+            -hx, +hy, -hz    // v3
+        },
+        WHITE,
+        texo
+    };
 
     createSphere(ball,
         16,
         0.25,
-        {0,5,0},
+        {0,0,0},
         16
     );
 
-    applyAcceleration({0.f,-9.80665f,0.f},ball); // gravity lol
-    // applyForce({.25f,0.f,0.f},ball);
+
+
+    player1.model = {
+            -hx, -hy/4.f, +hz/4.f,   // v0
+            -hx, -hy/4.f, -hz/4.f,   // v1
+            -hx, +hy/4.f, -hz/4.f,   // v2
+            -hx, +hy/4.f, +hz/4.f    // v3
+    };
+    player1.location = {-hx,hy,hz};
+    player1.bounding = {
+            -hx, -hy, +hz,   // v0
+            -hx, -hy, -hz,   // v1
+            -hx, +hy, -hz,   // v2
+            -hx, +hy, +hz    // v3
+    };
+    player1.controls = {'W','A','S','D'};
+    player1.hits = 0;
+
+    player2.model = {
+            +hx, -hy/4.f, +hz/4.f,   // v0
+            +hx, -hy/4.f, -hz/4.f,   // v1
+            +hx, +hy/4.f, -hz/4.f,   // v2
+            +hx, +hy/4.f, +hz/4.f    // v3
+    };
+    player2.location = {-hx,hy,hz};
+    player2.bounding = {
+            +hx, -hy, +hz,   // v0
+            +hx, -hy, -hz,   // v1
+            +hx, +hy, -hz,   // v2
+            +hx, +hy, +hz    // v3
+    };
+    player2.controls = {KEY_UP,KEY_RIGHT,KEY_DOWN,KEY_LEFT}; // swapped because sides swapped
+    player2.hits = 0;
+
+    // applyAcceleration({0.f,-9.80665f,0.f},ball); // gravity lol
+    applyForce({5.f,5.f,0.f},ball);
 
     SetTargetFPS(FPS);
 }
@@ -221,7 +310,7 @@ void processInput()
 static bool pRot = true;
 
 
-float i = 1;
+float i = 90;
 int g = 1;
 float floating = 1;
     
@@ -231,15 +320,19 @@ void update() {
     float deltaTime = ticks - gPreviousTicks; // step 2
     gPreviousTicks = ticks;                   // step 3
 
-    i += 60 * deltaTime;
+    i += 2 * deltaTime;
 
-    cam.camPos = { (float)(5 * cos(i * M_PI / 180.f)), 3, (float)(5 * sin(i * M_PI / 180.f)) }; // orbit x + z
+    cam.camPos = { (float)(1 * cos(90 * M_PI / 180.f)), 0, (float)(15 * sin(90 * M_PI / 180.f)) }; // orbit x + z
     processPhysics(deltaTime, GetFPS(), ball, world);
+    cam.camTarget = {ball.location.x/5.f, cam.camTarget.y, cam.camTarget.z};
 
     if (i > 361 || i < 0) {
         g *= -1;
         i = 0;
     }
+
+    movePlayer(player1);
+    movePlayer(player2);
 }
 
 void render()
@@ -254,8 +347,13 @@ void render()
         DrawPlaneFancy(world.planes[draw], cam, SCREEN_WIDTH, SCREEN_HEIGHT, BLACK,true);
     }
 
+    // drawing ball(s)
     DrawSphere(ball,cam,SCREEN_WIDTH,SCREEN_HEIGHT);
 
+    // drawing players
+    DrawPlaneFancy(player1.model, cam, SCREEN_WIDTH, SCREEN_HEIGHT, BLACK, true);
+    DrawPlaneFancy(player2.model, cam, SCREEN_WIDTH, SCREEN_HEIGHT, BLACK, true);
+    
 
     DrawFPS(10, 10);
 

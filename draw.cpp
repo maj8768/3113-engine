@@ -136,9 +136,9 @@ void DrawPlaneFancy(const planeMtx& plane, camera& cam, float screenW, float scr
 
     DrawLineFancy(screenCoords.m[0][0], screenCoords.m[0][1], screenCoords.m[1][0], screenCoords.m[1][1], color);
     DrawLineFancy(screenCoords.m[1][0], screenCoords.m[1][1], screenCoords.m[2][0], screenCoords.m[2][1], color);
-    DrawLineFancy(screenCoords.m[2][0], screenCoords.m[2][1], screenCoords.m[0][0], screenCoords.m[0][1], color);
+    // DrawLineFancy(screenCoords.m[2][0], screenCoords.m[2][1], screenCoords.m[0][0], screenCoords.m[0][1], color);
     DrawLineFancy(screenCoords.m[0][0], screenCoords.m[0][1], screenCoords.m[3][0], screenCoords.m[3][1], color);
-    DrawLineFancy(screenCoords.m[1][0], screenCoords.m[1][1], screenCoords.m[3][0], screenCoords.m[3][1], color);
+    // DrawLineFancy(screenCoords.m[1][0], screenCoords.m[1][1], screenCoords.m[3][0], screenCoords.m[3][1], color);
     DrawLineFancy(screenCoords.m[2][0], screenCoords.m[2][1], screenCoords.m[3][0], screenCoords.m[3][1], color);
 
     if (drawNormal) {
@@ -169,10 +169,10 @@ void DrawPlaneFancy(const planeMtx& plane, camera& cam, float screenW, float scr
         bool nsc1 = worldToScreen(repos, world, view, proj, screenW, screenH, vt[0]);
         bool nsc2 = worldToScreen(centroid, world, view, proj, screenW, screenH, vt[1]);
 
-        std::cout << nsc1 << nsc2 << std::endl;
+        // std::cout << nsc1 << nsc2 << std::endl;
 
         if (nsc1 && nsc2) {
-            std::cout << vt[0].x << ", " << vt[0].y << ", " << vt[1].x << ", " << vt[1].y << std::endl;
+            // std::cout << vt[0].x << ", " << vt[0].y << ", " << vt[1].x << ", " << vt[1].y << std::endl;
             DrawLineFancy(vt[0].x,vt[0].y,vt[1].x,vt[1].y,ORANGE);
         } else {
             std::cout << "Point is behind camera or outside the view" << std::endl;

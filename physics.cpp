@@ -40,7 +40,7 @@ bool spherePlaneCollide(sphere_& sphere, planeMtx& plane, vector3& applyAcc, flo
     // std::cout << "distance: " << (distance) << std::endl;
 
     if (distance < sphere.size) {
-        vector3 repos = close_point - normal.fmult(sphere.size / normal.mag());
+        vector3 repos = close_point + normal.fmult(sphere.size / normal.mag());
         // std::cout << normal.fdiv(normalMag).y << std::endl;
         std::cout << repos.x << ", " << repos.y << ", " << repos.z << std::endl;
 
@@ -144,11 +144,12 @@ void processPhysics(float deltaTime, int frameRate, sphere_& sphere, world& worl
 
     // std::cout << "applying forces: " << sphere.magnitude.y << std::endl;
     for (int itc = 0; itc < world.planeCount; itc++) {
-        (spherePlaneCollide(sphere, world.planes[itc], sphere.applyAccel, .9, deltaTime));
+        (spherePlaneCollide(sphere, world.planes[itc], sphere.applyAccel, 1, deltaTime));
     }
 
     // force transfer
-    //std::cout << sphere.magnitude.y << std::endl;
+    std::cout << sphere.magnitude.y << ", " << sphere.magnitude.x << std::endl;
+    // std::cout << sphere.magnitude.z << std::endl;
     if (sphere.newForce.x !=0 || sphere.newForce.y !=0 || sphere.newForce.z !=0 || acc == true) {
         sphere.magnitude.x += sphere.newForce.x;
         sphere.magnitude.y += sphere.newForce.y;
