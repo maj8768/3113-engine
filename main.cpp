@@ -1,4 +1,5 @@
 #include "raylib.h"
+#include "util.h"
 #include "draw.h"
 #include "camera.h"
 #include "physics.h"
@@ -86,6 +87,7 @@ float pz2 = 2.f;
 float ps2 = 4.f;
 float ph2 = 0.f;
 
+static world playerWorld;
 
 static pyramidMtx pyramid;
 static planeMtx plane;
@@ -147,7 +149,9 @@ void initialise()
     Texture2D texo = LoadTexture(EDELGARD_FP);
 
     world.planeCount = 6;
-    world.planes = new planeMtx[6];
+    world.planes = new planeMtx*[6];
+    playerWorld.planeCount = 2;
+    playerWorld.planes = new planeMtx*[2];
 
     pyramid = {
         { // pyramid object-space coordinates
@@ -184,7 +188,7 @@ void initialise()
     };
 
     // +Y (top), outward normal +Y
-    world.planes[0] = {
+    world.planes[0] = new planeMtx{
         {
             -hx, +hy, -hz,   // v0
             +hx, +hy, -hz,   // v1
@@ -192,11 +196,12 @@ void initialise()
             -hx, +hy, +hz    // v3
         },
         WHITE,
-        texo
+        texo,
+        (void*)standardCollide
     };
 
     // -Y (bottom), outward normal -Y
-    world.planes[1] = {
+    world.planes[1] = new planeMtx{
         {
             -hx, -hy, +hz,   // v0
             +hx, -hy, +hz,   // v1
@@ -204,11 +209,12 @@ void initialise()
             -hx, -hy, -hz    // v3
         },
         WHITE,
-        texo
+        texo,
+        (void*)standardCollide
     };
 
     // +X (right), outward normal +X
-    world.planes[2] = {
+    world.planes[2] = new planeMtx{
         {
             +hx, -hy, -hz,   // v0
             +hx, -hy, +hz,   // v1
@@ -216,11 +222,12 @@ void initialise()
             +hx, +hy, -hz    // v3
         },
         WHITE,
-        texo
+        texo,
+        (void*)killPlayer
     };
 
     // -X (left), outward normal -X
-    world.planes[3] = {
+    world.planes[3] = new planeMtx{
         {
             -hx, -hy, +hz,   // v0
             -hx, -hy, -hz,   // v1
@@ -228,11 +235,12 @@ void initialise()
             -hx, +hy, +hz    // v3
         },
         WHITE,
-        texo
+        texo,
+        (void*)killPlayer
     };
 
     // +Z (front), outward normal +Z
-    world.planes[4] = {
+    world.planes[4] = new planeMtx{
         {
             +hx, -hy, +hz,   // v0
             -hx, -hy, +hz,   // v1
@@ -240,11 +248,12 @@ void initialise()
             +hx, +hy, +hz    // v3
         },
         WHITE,
-        texo
+        texo,
+        (void*)standardCollide
     };
 
     // -Z (back), outward normal -Z
-    world.planes[5] = {
+    world.planes[5] = new planeMtx{
         {
             -hx, -hy, -hz,   // v0
             +hx, -hy, -hz,   // v1
@@ -252,8 +261,10 @@ void initialise()
             -hx, +hy, -hz    // v3
         },
         WHITE,
-        texo
+        texo,
+        (void*)standardCollide
     };
+
 
     createSphere(ball,
         16,
@@ -264,12 +275,13 @@ void initialise()
 
 
 
-    player1.model = {
+    player1.model = new planeMtx{
             -hx, -hy/4.f, +hz/4.f,   // v0
             -hx, -hy/4.f, -hz/4.f,   // v1
             -hx, +hy/4.f, -hz/4.f,   // v2
             -hx, +hy/4.f, +hz/4.f    // v3
     };
+    player1.model->action = (void*)paddleHit;
     player1.location = {-hx,hy,hz};
     player1.bounding = {
             -hx, -hy, +hz,   // v0
@@ -280,12 +292,13 @@ void initialise()
     player1.controls = {'W','A','S','D'};
     player1.hits = 0;
 
-    player2.model = {
-            +hx, -hy/4.f, +hz/4.f,   // v0
-            +hx, -hy/4.f, -hz/4.f,   // v1
-            +hx, +hy/4.f, -hz/4.f,   // v2
-            +hx, +hy/4.f, +hz/4.f    // v3
+    player2.model = new planeMtx{
+            +hx, +hy/4.f, +hz/4.f,   // v0
+            +hx, +hy/4.f, -hz/4.f,   // v1
+            +hx, -hy/4.f, -hz/4.f,   // v2
+            +hx, -hy/4.f, +hz/4.f    // v3
     };
+    player2.model->action = (void*)paddleHit;
     player2.location = {-hx,hy,hz};
     player2.bounding = {
             +hx, -hy, +hz,   // v0
@@ -323,7 +336,15 @@ void update() {
     i += 2 * deltaTime;
 
     cam.camPos = { (float)(1 * cos(90 * M_PI / 180.f)), 0, (float)(15 * sin(90 * M_PI / 180.f)) }; // orbit x + z
-    processPhysics(deltaTime, GetFPS(), ball, world);
+    playerWorld.planes[0] = player1.model;
+    playerWorld.planes[1] = player2.model;
+    // std::cout << playerWorld.planes[0]->m[0][1] << std::endl;
+    if(!processPhysics(deltaTime, GetFPS(), ball, playerWorld, true)) {
+        processPhysics(deltaTime, GetFPS(), ball, world, false);
+    }
+
+// processPhysics(deltaTime, GetFPS(), ball, playerWorld, true);
+
     cam.camTarget = {ball.location.x/5.f, cam.camTarget.y, cam.camTarget.z};
 
     if (i > 361 || i < 0) {
@@ -331,8 +352,8 @@ void update() {
         i = 0;
     }
 
-    movePlayer(player1);
-    movePlayer(player2);
+    movePlayer(player1, false);
+    movePlayer(player2, true);
 }
 
 void render()
@@ -344,15 +365,15 @@ void render()
 
     // drawing world
     for (int draw = 0; draw < world.planeCount; draw++) {
-        DrawPlaneFancy(world.planes[draw], cam, SCREEN_WIDTH, SCREEN_HEIGHT, BLACK,true);
+        DrawPlaneFancy(*world.planes[draw], cam, SCREEN_WIDTH, SCREEN_HEIGHT, BLACK,true);
     }
 
     // drawing ball(s)
     DrawSphere(ball,cam,SCREEN_WIDTH,SCREEN_HEIGHT);
 
     // drawing players
-    DrawPlaneFancy(player1.model, cam, SCREEN_WIDTH, SCREEN_HEIGHT, BLACK, true);
-    DrawPlaneFancy(player2.model, cam, SCREEN_WIDTH, SCREEN_HEIGHT, BLACK, true);
+    DrawPlaneFancy(*player1.model, cam, SCREEN_WIDTH, SCREEN_HEIGHT, BLACK, true);
+    DrawPlaneFancy(*player2.model, cam, SCREEN_WIDTH, SCREEN_HEIGHT, BLACK, true);
     
 
     DrawFPS(10, 10);

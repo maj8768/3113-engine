@@ -23,12 +23,14 @@ struct planeMtx {
     Color color;
     // float textureArea[4][2];
     Texture2D texture;
+    void* action;
 };
 
 struct world {
-    planeMtx* planes;
+    planeMtx** planes;
     int planeCount;
 };
+
 struct vector4 {
     float x, y, z, t;
     void murder() { x = 0.0f; y = 0.0f; z = 0.0f; t = 0.0f; }
@@ -131,7 +133,7 @@ struct camera {
 // temp player for pong (should change for 3d movement + cam)
 struct player {
     vector3 location;
-    planeMtx model;
+    planeMtx* model;
     planeMtx bounding;
     vector4 controls;
     int hits;

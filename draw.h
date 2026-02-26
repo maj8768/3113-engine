@@ -1,6 +1,3 @@
-#include "raylib.h"
-#include "util.h"
-
 void DrawLineFancy(float x1, float y1, float x2, float y2, Color color);
 void DrawTriangleFancy(const triangleMtx& triangle, Color color);
 
