@@ -1,4 +1,5 @@
 #include "util.h"
+#include "gui.h"
 #include <iostream>
 
 void movePlayer(player& player1, bool swappedNormals) {
@@ -36,14 +37,16 @@ void movePlayer(player& player1, bool swappedNormals) {
     }
 }
 
-void paddleHit() {
+void paddleHit(int id) {
     std::cout << "a player has hit the paddle" << std::endl;
 }
 
-void killPlayer() {
-    std::cout << "this should end the game" << std::endl;
+void killPlayer(int id) {
+    std::cout << "a player has died in battle" << std::endl;
+    // sadness = id;
+    // std::cout << "player: " << player << " has died in battle" << std::endl;
 }
 
-void standardCollide() {
+void standardCollide(int id) {
     std::cout << "this is a standard collision" << std::endl;
 }

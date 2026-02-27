@@ -1,6 +1,12 @@
 #include "raylib.h"
 #include <cmath>
 
+// Global Constants
+static constexpr int SCREEN_WIDTH        = 400 * 1.5f,
+              SCREEN_HEIGHT       = 300 * 1.5f,
+              FPS                 = 60;
+            //   sadness = 0;
+
 struct triangleMtx {
     float x1, y1, z1;
     float x2, y2, z2;
@@ -23,7 +29,8 @@ struct planeMtx {
     Color color;
     // float textureArea[4][2];
     Texture2D texture;
-    void* action;
+    int id;
+    void (*action)(int);
 };
 
 struct world {

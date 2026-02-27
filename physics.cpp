@@ -83,10 +83,21 @@ bool spherePlaneCollide(sphere_& sphere, planeMtx* plane, vector3& applyAcc, flo
         // std::cout << distance << std::endl;
 
         // handle non-physics related collision
-        ((void (*)(void))plane->action)();
+        (plane->action)(plane->id);
+        // std::cout << "plane id: " << plane->id << std::endl;
+        if (plane->id == 0) {
+            // std::cout << "here 1" << std::endl;
+            return false;
+        }
+        else {
+            // sadness = plane->id;
+            // std::cout << "1sadness: " << sadness << std::endl;
+            // std::cout << "here 2" << std::endl;
+            return true;
+        }
         // std::cout << "xyz "  << plane->m[0][0] << ", " << plane->m[0][1] << ", "  << plane->m[0][2] << std::endl;
         // std::cout << "x "  << distance << std::endl;
-        return true;
+        // return true;
     }
     return false;
 
@@ -179,6 +190,7 @@ bool processPhysics(float deltaTime, int frameRate, sphere_& sphere, world& worl
                 // std::cout << "r: " << world.planes[itc]->m[0][1] << std::endl;
             }
         }
+        // std::cout << "collision only: " << collide << std::endl;
         return collide;
     }
     else {

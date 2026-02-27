@@ -1,9 +1,13 @@
 #include "raylib.h"
 #include "util.h"
-#include "draw.h"
-#include "camera.h"
 #include "physics.h"
 #include "player.h"
+
+#include "draw.h"
+#include "camera.h"
+#include "gui.h"
+
+
 #include <cmath>
 #include <iostream>
 
@@ -51,12 +55,6 @@ enum AppStatus { TERMINATED, RUNNING };
 
 constexpr char EDELGARD_FP[]  = "test2.png";
 
-
-// Global Constants
-constexpr int SCREEN_WIDTH        = 400 * 1.5f,
-              SCREEN_HEIGHT       = 300 * 1.5f,
-              FPS                 = 60;
-
 Vector2 gPosition = { SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2 };
 Vector2 gScale = { 250.0f, 250.0f };
 // float gAngle = 0.0f;
@@ -92,10 +90,18 @@ static world playerWorld;
 static pyramidMtx pyramid;
 static planeMtx plane;
 static planeMtx plane2;
-static sphere_ ball;
+static sphere_ ball1;
+static sphere_ ball2;
+static sphere_ ball3;
 static world world;
 static player player1;
 static player player2;
+
+static bool ballsPicked = false;
+static bool gameStarted = false;
+static bool gameEnded = false;
+static int balls = 1;
+static int playerCount = 2;
 
 static camera cam = {
     .camPos = { x, 0, z },
@@ -197,7 +203,8 @@ void initialise()
         },
         WHITE,
         texo,
-        (void*)standardCollide
+        0,
+        standardCollide
     };
 
     // -Y (bottom), outward normal -Y
@@ -210,7 +217,8 @@ void initialise()
         },
         WHITE,
         texo,
-        (void*)standardCollide
+        0,
+        standardCollide
     };
 
     // +X (right), outward normal +X
@@ -223,7 +231,8 @@ void initialise()
         },
         WHITE,
         texo,
-        (void*)killPlayer
+        2,
+        killPlayer
     };
 
     // -X (left), outward normal -X
@@ -236,7 +245,8 @@ void initialise()
         },
         WHITE,
         texo,
-        (void*)killPlayer
+        1,
+        killPlayer
     };
 
     // +Z (front), outward normal +Z
@@ -249,7 +259,8 @@ void initialise()
         },
         WHITE,
         texo,
-        (void*)standardCollide
+        0,
+        standardCollide
     };
 
     // -Z (back), outward normal -Z
@@ -262,11 +273,24 @@ void initialise()
         },
         WHITE,
         texo,
-        (void*)standardCollide
+        0,
+        standardCollide
     };
 
 
-    createSphere(ball,
+    createSphere(ball1,
+        16,
+        0.25,
+        {0,0,0},
+        16
+    );
+    createSphere(ball2,
+        16,
+        0.25,
+        {0,0,0},
+        16
+    );
+    createSphere(ball3,
         16,
         0.25,
         {0,0,0},
@@ -281,7 +305,8 @@ void initialise()
             -hx, +hy/4.f, -hz/4.f,   // v2
             -hx, +hy/4.f, +hz/4.f    // v3
     };
-    player1.model->action = (void*)paddleHit;
+    player1.model->id = 0;
+    player1.model->action = paddleHit;
     player1.location = {-hx,hy,hz};
     player1.bounding = {
             -hx, -hy, +hz,   // v0
@@ -298,7 +323,8 @@ void initialise()
             +hx, -hy/4.f, -hz/4.f,   // v2
             +hx, -hy/4.f, +hz/4.f    // v3
     };
-    player2.model->action = (void*)paddleHit;
+    player2.model->id = 0;
+    player2.model->action = paddleHit;
     player2.location = {-hx,hy,hz};
     player2.bounding = {
             +hx, -hy, +hz,   // v0
@@ -310,7 +336,26 @@ void initialise()
     player2.hits = 0;
 
     // applyAcceleration({0.f,-9.80665f,0.f},ball); // gravity lol
-    applyForce({5.f,5.f,0.f},ball);
+    srand(time(NULL));
+    float ran1 = (float)(rand() % 100) / 100.f;
+    float ran2 = (float)(rand() % 100) / 100.f;
+    float ran3 = (float)(rand() % 100) / 100.f;
+    float mran1 = 1;
+    float mran2 = 1;
+    float mran3 = 1;
+    if (ran1 > 0.5) {
+        mran1 = -1;
+    }
+    if (ran2 > 0.5) {
+        mran2 = -1;
+    }
+    if (ran3 < 0.5) {
+        mran3 = -1;
+    }
+    std::cout << ran1 << ", " << ran2 << ", " << ran3 << std::endl;
+    applyForce({(15*ran1 < 5) ? 5 : 15*ran1,15*(1-ran1)*mran1,0.f},ball1);
+    applyForce({(15*ran1 < 4) ? 4 : 10*ran2*mran2,10*(1-ran2)*mran2,0.f},ball2);
+    applyForce({(15*ran1 < 3) ? 3 : 5*ran3*mran3,5*(1-ran3),0.f},ball3);
 
     SetTargetFPS(FPS);
 }
@@ -328,32 +373,84 @@ int g = 1;
 float floating = 1;
     
 void update() {
+    
+        auto ticks = static_cast<float>(GetTime());          // step 1
+        float deltaTime = ticks - gPreviousTicks; // step 2
+        gPreviousTicks = ticks;                   // step 3
 
-    auto ticks = static_cast<float>(GetTime());          // step 1
-    float deltaTime = ticks - gPreviousTicks; // step 2
-    gPreviousTicks = ticks;                   // step 3
+        i += 2 * deltaTime;
 
-    i += 2 * deltaTime;
+        cam.camPos = { (float)(1 * cos(90 * M_PI / 180.f)), 0, (float)(15 * sin(90 * M_PI / 180.f)) }; // orbit x + z
+        playerWorld.planes[0] = player1.model;
+        playerWorld.planes[1] = player2.model;
+    if (gameStarted && !gameEnded) {
+        // std::cout << playerWorld.planes[0]->m[0][1] << std::endl;
+        if (!gameEnded) {
+            if (balls == 1){ 
+                gameEnded = processPhysics(deltaTime, GetFPS(), ball1, playerWorld, true);
+            }
+            else if (balls == 2 && !gameEnded) {
+                gameEnded = processPhysics(deltaTime, GetFPS(), ball1, playerWorld, true);
+                gameEnded = processPhysics(deltaTime, GetFPS(), ball2, playerWorld, true);
+            }
+            else if (balls == 3 && !gameEnded) {
+                gameEnded = processPhysics(deltaTime, GetFPS(), ball1, playerWorld, true);
+                gameEnded = processPhysics(deltaTime, GetFPS(), ball2, playerWorld, true);
+                gameEnded = processPhysics(deltaTime, GetFPS(), ball3, playerWorld, true);
+            }
 
-    cam.camPos = { (float)(1 * cos(90 * M_PI / 180.f)), 0, (float)(15 * sin(90 * M_PI / 180.f)) }; // orbit x + z
-    playerWorld.planes[0] = player1.model;
-    playerWorld.planes[1] = player2.model;
-    // std::cout << playerWorld.planes[0]->m[0][1] << std::endl;
-    if(!processPhysics(deltaTime, GetFPS(), ball, playerWorld, true)) {
-        processPhysics(deltaTime, GetFPS(), ball, world, false);
+            if (!gameEnded) {
+                if (balls == 1){ 
+                    gameEnded = processPhysics(deltaTime, GetFPS(), ball1, world, false);
+                }
+                else if (balls == 2 && !gameEnded) {
+                    gameEnded = processPhysics(deltaTime, GetFPS(), ball1, world, false);
+                    gameEnded = processPhysics(deltaTime, GetFPS(), ball2, world, false);
+                }
+                else if (balls == 3 && !gameEnded) {
+                    gameEnded = processPhysics(deltaTime, GetFPS(), ball1, world, false);
+                    gameEnded = processPhysics(deltaTime, GetFPS(), ball2, world, false);
+                    gameEnded = processPhysics(deltaTime, GetFPS(), ball3, world, false);
+                }
+                // std::cout << gameEnded << std::endl;
+                // processPhysics(deltaTime, GetFPS(), ball1, world, false);
+            }
+        }
+        else {
+            // std::cout << "2sadness: " << sadness << std::endl;
+            guiDrawEndPopup(SCREEN_WIDTH / 2 - 100, SCREEN_HEIGHT / 2 - 50, 200, 100, LIGHTGRAY, 0);
+        }
+
+    // processPhysics(deltaTime, GetFPS(), ball, playerWorld, true);
+        if (balls == 1) {
+            cam.camTarget = {ball1.location.x/5.f, cam.camTarget.y, cam.camTarget.z};
+        }
+
+        if (i > 361 || i < 0) {
+            g *= -1;
+            i = 0;
+        }
+
+        movePlayer(player1, false);
+        movePlayer(player2, true);
     }
-
-// processPhysics(deltaTime, GetFPS(), ball, playerWorld, true);
-
-    cam.camTarget = {ball.location.x/5.f, cam.camTarget.y, cam.camTarget.z};
-
-    if (i > 361 || i < 0) {
-        g *= -1;
-        i = 0;
+    else {
+        if (IsKeyPressed(KEY_ENTER) && ballsPicked) {
+            gameStarted = true;
+        }
+        else if (IsKeyPressed(KEY_ENTER)) {
+            ballsPicked = true;
+        }
+        if (IsKeyPressed(KEY_ONE)) {
+            balls = 1;
+        }
+        else if (IsKeyPressed(KEY_TWO)) {
+            balls = 2;
+        }
+        else if (IsKeyPressed(KEY_THREE)) {
+            balls = 3;
+        }
     }
-
-    movePlayer(player1, false);
-    movePlayer(player2, true);
 }
 
 void render()
@@ -362,19 +459,35 @@ void render()
     BeginDrawing();
 
     ClearBackground(RAYWHITE);
+    if (ballsPicked) {
+        if (!gameStarted) {
+            guiDrawStartPopup(SCREEN_WIDTH / 2 - 100, SCREEN_HEIGHT / 2 - 50, 200, 100, LIGHTGRAY);
+        }
+        for (int draw = 0; draw < world.planeCount; draw++) {
+            DrawPlaneFancy(*world.planes[draw], cam, SCREEN_WIDTH, SCREEN_HEIGHT, BLACK,true);
+        }
 
-    // drawing world
-    for (int draw = 0; draw < world.planeCount; draw++) {
-        DrawPlaneFancy(*world.planes[draw], cam, SCREEN_WIDTH, SCREEN_HEIGHT, BLACK,true);
+        // drawing ball(s)
+        if (balls == 1) {
+            DrawSphere(ball1,cam,SCREEN_WIDTH,SCREEN_HEIGHT);
+        }
+        else if (balls == 2) {
+            DrawSphere(ball1,cam,SCREEN_WIDTH,SCREEN_HEIGHT);
+            DrawSphere(ball2,cam,SCREEN_WIDTH,SCREEN_HEIGHT);
+        }
+        else if (balls == 3) {
+            DrawSphere(ball1,cam,SCREEN_WIDTH,SCREEN_HEIGHT);
+            DrawSphere(ball2,cam,SCREEN_WIDTH,SCREEN_HEIGHT);
+            DrawSphere(ball3,cam,SCREEN_WIDTH,SCREEN_HEIGHT);
+        }
+
+        // drawing players
+        DrawPlaneFancy(*player1.model, cam, SCREEN_WIDTH, SCREEN_HEIGHT, BLACK, true);
+        DrawPlaneFancy(*player2.model, cam, SCREEN_WIDTH, SCREEN_HEIGHT, BLACK, true);
     }
-
-    // drawing ball(s)
-    DrawSphere(ball,cam,SCREEN_WIDTH,SCREEN_HEIGHT);
-
-    // drawing players
-    DrawPlaneFancy(*player1.model, cam, SCREEN_WIDTH, SCREEN_HEIGHT, BLACK, true);
-    DrawPlaneFancy(*player2.model, cam, SCREEN_WIDTH, SCREEN_HEIGHT, BLACK, true);
-    
+    else {
+        guiDrawStartMenu(SCREEN_WIDTH / 2 - 100, SCREEN_HEIGHT / 2 - 50, 200, 100, LIGHTGRAY, balls);
+    }
 
     DrawFPS(10, 10);
 
