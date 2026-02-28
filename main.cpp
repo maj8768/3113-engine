@@ -15,7 +15,7 @@
 
 * Author: Maxim Jovanovic
 
-* Assignment: Simple 2D Scene
+* Assignment: Pong Clone
 
 * Date due: 02/14/2026
 
