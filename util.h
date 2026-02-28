@@ -5,7 +5,6 @@
 static constexpr int SCREEN_WIDTH        = 400 * 1.5f,
               SCREEN_HEIGHT       = 300 * 1.5f,
               FPS                 = 60;
-            //   sadness = 0;
 
 struct triangleMtx {
     float x1, y1, z1;
@@ -31,11 +30,6 @@ struct planeMtx {
     Texture2D texture;
     int id;
     void (*action)(int);
-};
-
-struct world {
-    planeMtx** planes;
-    int planeCount;
 };
 
 struct vector4 {
@@ -144,6 +138,16 @@ struct player {
     planeMtx bounding;
     vector4 controls;
     int hits;
+};
+
+struct world {
+    planeMtx** planes;
+    int planeCount;
+};
+
+struct worldsStore {
+    world worldInstance;
+    world playerInstance;
 };
 
 mtx44 mmult4(const mtx44&, const mtx44&);

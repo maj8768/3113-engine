@@ -37,6 +37,40 @@ void movePlayer(player& player1, bool swappedNormals) {
     }
 }
 
+void playerFollowBall(player& player1, sphere_ ball, bool swappedNormals) {
+    float t = 1f;
+
+    float targetTop    = ball.location.y + 1.25f;
+    float targetBottom = ball.location.y - 1.25f;
+
+    player1.model->m[0][1] += (targetTop - player1.model->m[0][1]) * t;
+    player1.model->m[1][1] += (targetTop - player1.model->m[1][1]) * t;
+    player1.model->m[2][1] += (targetBottom - player1.model->m[2][1]) * t;
+    player1.model->m[3][1] += (targetBottom - player1.model->m[3][1]) * t;
+
+    float minY = player1.bounding.m[0][1] + 0.25f;
+
+    if (player1.model->m[2][1] < minY) {
+        float offset = minY - player1.model->m[2][1];
+
+        player1.model->m[0][1] += offset;
+        player1.model->m[1][1] += offset;
+        player1.model->m[2][1] += offset;
+        player1.model->m[3][1] += offset;
+    }
+
+    float maxY = player1.bounding.m[3][1] - 0.25f;
+
+    if (player1.model->m[0][1] > maxY) {
+        float offset = maxY - player1.model->m[0][1];
+
+        player1.model->m[0][1] += offset;
+        player1.model->m[1][1] += offset;
+        player1.model->m[2][1] += offset;
+        player1.model->m[3][1] += offset;
+    }
+}
+
 void paddleHit(int id) {
     std::cout << "a player has hit the paddle" << std::endl;
 }

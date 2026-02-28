@@ -85,7 +85,12 @@ float pz2 = 2.f;
 float ps2 = 4.f;
 float ph2 = 0.f;
 
+static worldsStore worldObj;
 static world playerWorld;
+static world worldInstance;
+
+static player player1;
+static player player2;
 
 static pyramidMtx pyramid;
 static planeMtx plane;
@@ -93,9 +98,7 @@ static planeMtx plane2;
 static sphere_ ball1;
 static sphere_ ball2;
 static sphere_ ball3;
-static world world;
-static player player1;
-static player player2;
+
 
 static bool ballsPicked = false;
 static bool gameStarted = false;
@@ -154,8 +157,8 @@ void initialise()
 
     Texture2D texo = LoadTexture(EDELGARD_FP);
 
-    world.planeCount = 6;
-    world.planes = new planeMtx*[6];
+    worldInstance.planeCount = 6;
+    worldInstance.planes = new planeMtx*[6];
     playerWorld.planeCount = 2;
     playerWorld.planes = new planeMtx*[2];
 
@@ -194,7 +197,7 @@ void initialise()
     };
 
     // +Y (top), outward normal +Y
-    world.planes[0] = new planeMtx{
+    worldInstance.planes[0] = new planeMtx{
         {
             -hx, +hy, -hz,   // v0
             +hx, +hy, -hz,   // v1
@@ -208,7 +211,7 @@ void initialise()
     };
 
     // -Y (bottom), outward normal -Y
-    world.planes[1] = new planeMtx{
+    worldInstance.planes[1] = new planeMtx{
         {
             -hx, -hy, +hz,   // v0
             +hx, -hy, +hz,   // v1
@@ -222,7 +225,7 @@ void initialise()
     };
 
     // +X (right), outward normal +X
-    world.planes[2] = new planeMtx{
+    worldInstance.planes[2] = new planeMtx{
         {
             +hx, -hy, -hz,   // v0
             +hx, -hy, +hz,   // v1
@@ -236,7 +239,7 @@ void initialise()
     };
 
     // -X (left), outward normal -X
-    world.planes[3] = new planeMtx{
+    worldInstance.planes[3] = new planeMtx{
         {
             -hx, -hy, +hz,   // v0
             -hx, -hy, -hz,   // v1
@@ -250,7 +253,7 @@ void initialise()
     };
 
     // +Z (front), outward normal +Z
-    world.planes[4] = new planeMtx{
+    worldInstance.planes[4] = new planeMtx{
         {
             +hx, -hy, +hz,   // v0
             -hx, -hy, +hz,   // v1
@@ -264,7 +267,7 @@ void initialise()
     };
 
     // -Z (back), outward normal -Z
-    world.planes[5] = new planeMtx{
+    worldInstance.planes[5] = new planeMtx{
         {
             -hx, -hy, -hz,   // v0
             +hx, -hy, -hz,   // v1
@@ -305,7 +308,7 @@ void initialise()
             -hx, +hy/4.f, -hz/4.f,   // v2
             -hx, +hy/4.f, +hz/4.f    // v3
     };
-    player1.model->id = 0;
+    player1.model->id = 3;
     player1.model->action = paddleHit;
     player1.location = {-hx,hy,hz};
     player1.bounding = {
@@ -323,7 +326,7 @@ void initialise()
             +hx, -hy/4.f, -hz/4.f,   // v2
             +hx, -hy/4.f, +hz/4.f    // v3
     };
-    player2.model->id = 0;
+    player2.model->id = 3;
     player2.model->action = paddleHit;
     player2.location = {-hx,hy,hz};
     player2.bounding = {
@@ -334,6 +337,13 @@ void initialise()
     };
     player2.controls = {KEY_UP,KEY_RIGHT,KEY_DOWN,KEY_LEFT}; // swapped because sides swapped
     player2.hits = 0;
+
+    playerWorld.planes[0] = player1.model;
+    playerWorld.planes[1] = player2.model;
+
+    worldObj.worldInstance = worldInstance;
+    worldObj.playerInstance = playerWorld;
+
 
     // applyAcceleration({0.f,-9.80665f,0.f},ball); // gravity lol
     srand(time(NULL));
@@ -371,6 +381,7 @@ static bool pRot = true;
 float i = 90;
 int g = 1;
 float floating = 1;
+int target = 0;
     
 void update() {
     
@@ -383,45 +394,23 @@ void update() {
         cam.camPos = { (float)(1 * cos(90 * M_PI / 180.f)), 0, (float)(15 * sin(90 * M_PI / 180.f)) }; // orbit x + z
         playerWorld.planes[0] = player1.model;
         playerWorld.planes[1] = player2.model;
+        // int target = 0;
     if (gameStarted && !gameEnded) {
         // std::cout << playerWorld.planes[0]->m[0][1] << std::endl;
-        if (!gameEnded) {
-            if (balls == 1){ 
-                gameEnded = processPhysics(deltaTime, GetFPS(), ball1, playerWorld, true);
-            }
-            else if (balls == 2 && !gameEnded) {
-                gameEnded = processPhysics(deltaTime, GetFPS(), ball1, playerWorld, true);
-                gameEnded = processPhysics(deltaTime, GetFPS(), ball2, playerWorld, true);
-            }
-            else if (balls == 3 && !gameEnded) {
-                gameEnded = processPhysics(deltaTime, GetFPS(), ball1, playerWorld, true);
-                gameEnded = processPhysics(deltaTime, GetFPS(), ball2, playerWorld, true);
-                gameEnded = processPhysics(deltaTime, GetFPS(), ball3, playerWorld, true);
-            }
-
-            if (!gameEnded) {
-                if (balls == 1){ 
-                    gameEnded = processPhysics(deltaTime, GetFPS(), ball1, world, false);
-                }
-                else if (balls == 2 && !gameEnded) {
-                    gameEnded = processPhysics(deltaTime, GetFPS(), ball1, world, false);
-                    gameEnded = processPhysics(deltaTime, GetFPS(), ball2, world, false);
-                }
-                else if (balls == 3 && !gameEnded) {
-                    gameEnded = processPhysics(deltaTime, GetFPS(), ball1, world, false);
-                    gameEnded = processPhysics(deltaTime, GetFPS(), ball2, world, false);
-                    gameEnded = processPhysics(deltaTime, GetFPS(), ball3, world, false);
-                }
-                // std::cout << gameEnded << std::endl;
-                // processPhysics(deltaTime, GetFPS(), ball1, world, false);
-            }
+        if (balls == 1){ 
+            processPhysics(deltaTime, GetFPS(), ball1, worldObj, gameEnded,target);
+            // std::cout << gameEnded << std::endl;
         }
-        else {
-            // std::cout << "2sadness: " << sadness << std::endl;
-            guiDrawEndPopup(SCREEN_WIDTH / 2 - 100, SCREEN_HEIGHT / 2 - 50, 200, 100, LIGHTGRAY, 0);
+        else if (balls == 2) {
+            processPhysics(deltaTime, GetFPS(), ball1, worldObj, gameEnded,target);
+            processPhysics(deltaTime, GetFPS(), ball2, worldObj, gameEnded,target);
         }
-
-    // processPhysics(deltaTime, GetFPS(), ball, playerWorld, true);
+        else if (balls == 3) {
+            processPhysics(deltaTime, GetFPS(), ball1, worldObj, gameEnded,target);
+            processPhysics(deltaTime, GetFPS(), ball2, worldObj, gameEnded,target);
+            processPhysics(deltaTime, GetFPS(), ball3, worldObj, gameEnded,target);
+        }
+        // processPhysics(deltaTime, GetFPS(), ball, playerWorld, true);
         if (balls == 1) {
             cam.camTarget = {ball1.location.x/5.f, cam.camTarget.y, cam.camTarget.z};
         }
@@ -431,11 +420,26 @@ void update() {
             i = 0;
         }
 
+        if (playerCount == 2) {
+            movePlayer(player2, true);
+        }
+        else {
+            playerFollowBall(player2, ball1, true);
+        }
         movePlayer(player1, false);
-        movePlayer(player2, true);
+        // std::cout << target << std::endl;
+    }
+    else if (gameEnded) {
+        // std::cout << "fin " << target << std::endl;
+            // std::cout << "2sadness: " << sadness << std::endl;
+            guiDrawEndPopup(SCREEN_WIDTH / 2 - 100, SCREEN_HEIGHT / 2 - 50, 200, 100, LIGHTGRAY, target);
     }
     else {
         if (IsKeyPressed(KEY_ENTER) && ballsPicked) {
+            gameStarted = true;
+        }
+        else if (IsKeyPressed(KEY_T) && ballsPicked && balls == 1) {
+            playerCount = 1;
             gameStarted = true;
         }
         else if (IsKeyPressed(KEY_ENTER)) {
@@ -463,8 +467,11 @@ void render()
         if (!gameStarted) {
             guiDrawStartPopup(SCREEN_WIDTH / 2 - 100, SCREEN_HEIGHT / 2 - 50, 200, 100, LIGHTGRAY);
         }
-        for (int draw = 0; draw < world.planeCount; draw++) {
-            DrawPlaneFancy(*world.planes[draw], cam, SCREEN_WIDTH, SCREEN_HEIGHT, BLACK,true);
+        for (int draww = 0; draww < worldObj.worldInstance.planeCount; draww++) {
+                DrawPlaneFancy(*worldObj.worldInstance.planes[draww], cam, SCREEN_WIDTH, SCREEN_HEIGHT, BLACK, true);
+        }
+        for (int drawp = 0; drawp < worldObj.playerInstance.planeCount; drawp++) {
+                DrawPlaneFancy(*worldObj.playerInstance.planes[drawp], cam, SCREEN_WIDTH, SCREEN_HEIGHT, BLACK, true);
         }
 
         // drawing ball(s)
@@ -481,9 +488,9 @@ void render()
             DrawSphere(ball3,cam,SCREEN_WIDTH,SCREEN_HEIGHT);
         }
 
-        // drawing players
-        DrawPlaneFancy(*player1.model, cam, SCREEN_WIDTH, SCREEN_HEIGHT, BLACK, true);
-        DrawPlaneFancy(*player2.model, cam, SCREEN_WIDTH, SCREEN_HEIGHT, BLACK, true);
+        // // drawing players
+        // DrawPlaneFancy(*player1.model, cam, SCREEN_WIDTH, SCREEN_HEIGHT, BLACK, true);
+        // DrawPlaneFancy(*player2.model, cam, SCREEN_WIDTH, SCREEN_HEIGHT, BLACK, true);
     }
     else {
         guiDrawStartMenu(SCREEN_WIDTH / 2 - 100, SCREEN_HEIGHT / 2 - 50, 200, 100, LIGHTGRAY, balls);

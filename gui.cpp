@@ -1,4 +1,4 @@
-#include <string.h>
+#include <string>
 #include "raylib.h"
 #include "util.h"
 #include "gui.h"
@@ -29,19 +29,14 @@ void guiDrawStartMenu(float p1X, float p1Y, float width, float height, Color col
 
 void guiDrawStartPopup(float p1X, float p1Y, float width, float height, Color color) {
     // DrawRectangle(p1X, p1Y, width, height, color);
-    DrawText("Press ENTER to Start", p1X - 40, p1Y + height / 2 - 10, 20, BLACK);
+    DrawText("Press ENTER to Start 2 Player(ARROW+WASD)", p1X - 120, p1Y - 100, 20, BLACK);
+    DrawText("Press T (only if 1 ball) to Start 1 Player (WASD)", p1X - 150, p1Y - 140, 20, BLACK);
 }
 
 void guiDrawEndPopup(float p1X, float p1Y, float width, float height, Color color, int player) {
-    DrawText("Game Over!", p1X - 20, p1Y + height / 2 - 10, 20, BLACK);
-    // char endMessageTooBigLol[200] = "Player: ";
-    // char playerNum[4];
-    // playerNum[0] = '0' + player;
-    // playerNum[1] = '\0';
-    // strcat(endMessageTooBigLol, playerNum);
-    // strcat(endMessageTooBigLol, " has died in battle");
-    // endMessageTooBigLol[8] += '0' + player;
-    // endMessageTooBigLol[9] += "has died in battle";
-    // DrawText("Game Over!", p1X - 20, p1Y + height / 2 - 10, 20, BLACK);
-    // DrawText((const char*)endMessageTooBigLol, p1X - 40, p1Y + height / 2 + 20, 20, BLACK);
+    DrawText("Game Over!", p1X + 20, p1Y - 140, 20, BLACK);
+    std::string mes = "The ";
+    mes += (player == 1) ? "left" : "right";
+    mes += " player has died in battle";
+    DrawText(mes.c_str(), p1X - 40, p1Y - 110, 20, BLACK);
 }
