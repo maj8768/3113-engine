@@ -38,9 +38,9 @@ void movePlayer(player& player1, bool swappedNormals) {
 }
 
 void playerFollowBall(player& player1, sphere_ ball, bool swappedNormals) {
-    float t = 1f;
+    float t = .15f;
 
-    float targetTop    = ball.location.y + 1.25f;
+    float targetTop = ball.location.y + 1.25f;
     float targetBottom = ball.location.y - 1.25f;
 
     player1.model->m[0][1] += (targetTop - player1.model->m[0][1]) * t;
