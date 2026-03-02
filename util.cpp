@@ -23,6 +23,22 @@ mtx44 mmult4(const mtx44& matA, const mtx44& matB) {
     return out;
 }
 
+Matrix ToRaylibMatrix(const mtx44& a) {
+    Matrix m;
+    m.m0 = a.m[0][0]; m.m4 = a.m[0][1]; m.m8 = a.m[0][2]; m.m12 = a.m[0][3];
+    m.m1 = a.m[1][0]; m.m5 = a.m[1][1]; m.m9 = a.m[1][2]; m.m13 = a.m[1][3];
+    m.m2 = a.m[2][0]; m.m6 = a.m[2][1]; m.m10 = a.m[2][2]; m.m14 = a.m[2][3];
+    m.m3 = a.m[3][0]; m.m7 = a.m[3][1]; m.m11 = a.m[3][2]; m.m15 = a.m[3][3];
+    return m;
+}
+
+vector3 transformToNDC(const mtx44& vp, float x, float y, float z) {
+    vector4 v = { x, y, z, 1.0f };
+    vector4 clip = modmmult(vp, v);
+    float invW = 1.0f / clip.t;
+    return vector3(clip.x * invW, clip.y * invW, clip.z * invW);
+}
+
 float dot3(const vector3& a, const vector3& b) {
   return a.x*b.x + a.y*b.y + a.z*b.z;
 }

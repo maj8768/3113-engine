@@ -13,6 +13,16 @@ struct triangleMtx {
     Color color;
 };
 
+struct shaderStore {
+    Shader shader;
+    int shaderloc;
+    int colorLoc;
+    int lightDirLoc;
+    int lightColorLoc;
+    int ambientLoc;
+    int lightPosLoc;
+};
+
 struct pyramidMtx {
     float m[4][3];
     Color color;
@@ -145,14 +155,12 @@ struct world {
     int planeCount;
 };
 
-struct worldsStore {
-    world worldInstance;
-    world playerInstance;
-};
 
 mtx44 mmult4(const mtx44&, const mtx44&);
 
 vector4 modmmult(const mtx44&, const vector4&);
+
+Matrix ToRaylibMatrix(const mtx44& a);
 
 float dot3(const vector3&, const vector3&);
 
@@ -171,3 +179,5 @@ void calculateGon2D(const int n, gonalMtx& out, const bool vertical, const int s
 void spinGon2D(spungonMtx& out, const float size);
 
 float epsCheck(float val, float eps);
+
+vector3 transformToNDC(const mtx44& vp, float x, float y, float z);

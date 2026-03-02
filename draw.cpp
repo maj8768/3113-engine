@@ -7,6 +7,122 @@
 #include <stdio.h>
 #include <iostream>
 
+
+// current (GPU)
+
+void DrawPlaneGPU(planeMtx plane, camera cam, shaderStore shader, vector4 color) {
+    mtx44 view = viewMtx44(cam.camPos, cam.camTarget, cam.up);
+    mtx44 proj = projMtx44(cam.fov, cam.aspect, 0.1f, 1000.0f);
+    mtx44 vp   = mmult4(proj, view);
+
+    vector3 c0 = transformToNDC(vp,plane.m[0][0], plane.m[0][1], plane.m[0][2]);
+    vector3 c1 = transformToNDC(vp,plane.m[1][0], plane.m[1][1], plane.m[1][2]);
+    vector3 c2 = transformToNDC(vp,plane.m[2][0], plane.m[2][1], plane.m[2][2]);
+    vector3 c3 = transformToNDC(vp,plane.m[3][0], plane.m[3][1], plane.m[3][2]);
+
+    Vector3 lightDir = { 0.3f, -1.0f, 1.f };
+    Vector4 lightColor = { 1.0f, 1.0f, 1.0f, 1.0f };
+    float ambient = 0.0f;
+    Vector3 lightPos = { 1.0f, 1.0f, 0.0f };
+
+    SetShaderValue(shader.shader, shader.lightPosLoc, &lightPos, SHADER_UNIFORM_VEC3);
+    SetShaderValue(shader.shader, shader.lightColorLoc, &lightColor, SHADER_UNIFORM_VEC4);
+    SetShaderValue(shader.shader, shader.colorLoc, &lightColor, SHADER_UNIFORM_VEC4);
+    SetShaderValue(shader.shader, shader.ambientLoc,    &ambient,    SHADER_UNIFORM_FLOAT);
+
+    vector3 edge1 = { plane.m[1][0] - plane.m[0][0], plane.m[1][1] - plane.m[0][1], plane.m[1][2] - plane.m[0][2] };
+    vector3 edge2 = { plane.m[3][0] - plane.m[0][0], plane.m[3][1] - plane.m[0][1], plane.m[3][2] - plane.m[0][2] };
+
+    float nx = edge1.y * edge2.z - edge1.z * edge2.y;
+    float ny = edge1.z * edge2.x - edge1.x * edge2.z;
+    float nz = edge1.x * edge2.y - edge1.y * edge2.x;
+    float nlen = sqrtf(nx*nx + ny*ny + nz*nz);
+
+    float normal[3] = { nx/nlen, ny/nlen, nz/nlen };
+    SetShaderValue(shader.shader, 4, normal, SHADER_UNIFORM_VEC3);
+
+    BeginShaderMode(shader.shader);
+    rlBegin(RL_TRIANGLES);
+    rlColor4ub(color.x, color.y, color.z, color.t);
+
+    rlNormal3f(plane.m[0][0], plane.m[0][1], plane.m[0][2]); // world position for lighting (lights/ing outside ndc need to be rendered)
+    rlVertex3f(c0.x, c0.y, c0.z);                             // NDC for renderable objects
+    rlNormal3f(plane.m[1][0], plane.m[1][1], plane.m[1][2]);
+    rlVertex3f(c1.x, c1.y, c1.z);
+    rlNormal3f(plane.m[2][0], plane.m[2][1], plane.m[2][2]);
+    rlVertex3f(c2.x, c2.y, c2.z);
+    rlNormal3f(plane.m[0][0], plane.m[0][1], plane.m[0][2]);
+    rlVertex3f(c0.x, c0.y, c0.z);
+    rlNormal3f(plane.m[2][0], plane.m[2][1], plane.m[2][2]);
+    rlVertex3f(c2.x, c2.y, c2.z);
+    rlNormal3f(plane.m[3][0], plane.m[3][1], plane.m[3][2]);
+    rlVertex3f(c3.x, c3.y, c3.z);
+
+    rlEnd();
+    EndShaderMode();
+}
+
+void DrawSphereGPU(sphere_ sphere, float n, vector3 centp, camera& cam, float screenW, float screenH) {
+    spungonMtx mtxmtx = sphere.spungon_mtx;
+    spinGon2D(mtxmtx,n);
+    mtx44 world = {};
+    vector2 verts[mtxmtx.size][mtxmtx.mtxarr[0].size];
+
+    for (int i = 0; i < mtxmtx.size; i++) {
+        for (int j = 0; j < mtxmtx.mtxarr[i].size; j++) {
+            world.m[0][0] = 1; world.m[1][1] = 1; world.m[2][2] = 1; world.m[3][3] = 1; // identity mtx
+
+            vector3 object_coords;
+            object_coords.x = mtxmtx.mtxarr[i].mtx[j].x + centp.x;
+            object_coords.y = mtxmtx.mtxarr[i].mtx[j].y + centp.y;
+            object_coords.z = mtxmtx.mtxarr[i].mtx[j].z + centp.z;
+
+            modmmult(world, extendV3(object_coords));
+            mtx44 view = viewMtx44(cam.camPos, cam.camTarget, cam.up);
+            mtx44 proj = projMtx44(cam.fov, cam.aspect, 0.1f, 1000.0f);
+
+            vector3 screen;
+            bool sing_ok = worldToScreen(object_coords, world, view, proj, screenW, screenH, screen);
+
+            if (sing_ok) {
+                // mtxmtx.mtxarr[i].mtx[j].x = screen.x;
+                // mtxmtx.mtxarr[i].mtx[j].y = screen.y;
+                // mtxmtx.mtxarr[i].mtx[j].z = screen.z;
+                verts[i][j].x = screen.x;
+                verts[i][j].y = screen.y;
+
+            }
+            // std::cout << "i: " << i << std::endl;
+            // std::cout << screen.x << ", " << screen.y << ", " << screen.z << std::endl;
+            // DrawGon(50, mtxmtx.mtxarr[i]);
+        }
+    }
+
+    // draw calls
+
+    for (int p = 0; p < mtxmtx.size; p ++) {
+        for (int k = 0; k < mtxmtx.mtxarr[p].size; k++) {
+            if (k == mtxmtx.mtxarr[p].size-1) {
+                if (p == mtxmtx.size-1) {
+                    DrawLineFancy(verts[k][p].x,verts[k][p].y,verts[0][0].x,verts[0][0].y,BLACK);
+                    DrawLineFancy(verts[p][k].x,verts[p][k].y,verts[0][0].x,verts[0][0].y,BLACK);
+                }
+                else {
+                    DrawLineFancy(verts[p][k].x,verts[p][k].y,verts[p][0].x,verts[p][0].y,BLACK);
+                    DrawLineFancy(verts[k][p].x,verts[k][p].y,verts[0][p].x,verts[0][p].y,BLACK);
+
+                }
+            }
+            else {
+                DrawLineFancy(verts[p][k].x,verts[p][k].y,verts[p][k+1].x,verts[p][k+1].y,BLACK);
+                DrawLineFancy(verts[k][p].x,verts[k][p].y,verts[k+1][p].x,verts[k+1][p].y,BLACK);
+            }
+        }
+    }
+}
+
+// deprecated (CPU)
+
 // 2D
 
 void DrawLineFancy(float x1, float y1, float x2, float y2, Color color) {

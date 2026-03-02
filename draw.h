@@ -1,3 +1,10 @@
+
+// current
+void DrawPlaneGPU(planeMtx plane, camera cam, shaderStore shader, vector4 color);
+
+
+// deprecated
+
 void DrawLineFancy(float x1, float y1, float x2, float y2, Color color);
 void DrawTriangleFancy(const triangleMtx& triangle, Color color);
 
