@@ -1,6 +1,7 @@
 .idea
 app
 main
+game.exe
 
 # Compiled Object files
 *.o
