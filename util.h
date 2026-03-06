@@ -6,6 +6,7 @@ static constexpr int SCREEN_WIDTH        = 400 * 1.5f,
               SCREEN_HEIGHT       = 300 * 1.5f,
               FPS                 = 60;
 
+
 struct triangleMtx {
     float x1, y1, z1;
     float x2, y2, z2;
@@ -21,6 +22,7 @@ struct shaderStore {
     int lightColorLoc;
     int ambientLoc;
     int lightPosLoc;
+    int normalLoc;
 };
 
 struct pyramidMtx {
@@ -143,11 +145,11 @@ struct camera {
 
 // temp player for pong (should change for 3d movement + cam)
 struct player {
-    vector3 location;
-    planeMtx* model;
-    planeMtx bounding;
+    vector3 location; // bind camera to this
+    struct camera camera;
+    planeMtx* model; // probably leave blank
+    planeMtx* bounding; // top and bottom
     vector4 controls;
-    int hits;
 };
 
 struct world {
@@ -155,6 +157,15 @@ struct world {
     int planeCount;
 };
 
+struct tri {
+    vector3 v[3];
+    vector3 n[3];
+};
+
+struct triDomMesh {
+    tri* tris;
+    int count;
+};
 
 mtx44 mmult4(const mtx44&, const mtx44&);
 

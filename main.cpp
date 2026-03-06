@@ -68,12 +68,13 @@ enum AppStatus { TERMINATED, RUNNING };
 
 constexpr char EDELGARD_FP[]  = "test2.png";
 
-Vector2 gPosition = { SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2 };
-Vector2 gScale = { 250.0f, 250.0f };
+vector2 gPosition = { SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2 };
+vector2 gScale = { 250.0f, 250.0f };
 // float gAngle = 0.0f;
 
 
-Vector2 lastMousePos = {
+
+vector2 lastMousePos = {
     .x = 0,
     .y = 0
 };
@@ -107,13 +108,20 @@ static planeMtx plane2;
 
 static shaderStore w2sShader;
 
-static camera cam = {
-    .camPos = { 5, 5, 5 },  // up and back
-    .camTarget = { 0, 0, 0 },
-    .up = {0, 1, 0},
-    .aspect = (float)SCREEN_WIDTH / (float)SCREEN_HEIGHT,
-    .fov = 90.0f * M_PI / 180.0f
-};
+static Vector3 lightPos = { 5.f, 5.f,0.f };
+static Vector3 lightDir = { 0.0f, -1.f, 0.f };
+static Vector4 lightColor = { 1.0f, 1.0f, 1.0f, 1.0f };
+static float ambient  = 0.2f;
+
+static triDomMesh mesh;
+
+// static camera cam = {
+//     .camPos = { 5, 5, 5 },  // up and back
+//     .camTarget = { 0, 0, 0 },
+//     .up = {0, 1, 0},
+//     .aspect = (float)SCREEN_WIDTH / (float)SCREEN_HEIGHT,
+//     .fov = 90.0f * M_PI / 180.0f
+// };
 
 // pyramidMtx pyramid2 = { pyramidPosX2, pyramidPosY2, 0, pyramidPosX2+size*0.5, pyramidPosY2 + size*std::sqrt(3) * 0.5, 0, pyramidPosX2+size, pyramidPosY2, 0, pyramidPosX2+size*0.5, pyramidPosY2, size };
 
@@ -129,6 +137,21 @@ void shutdown();
 
 void temp(int d) {
     std::cout << d << std::endl;
+}
+
+void initializePlayer(player& player1) {
+    // set up pc environment for player here as well
+    // HideCursor();
+    // SetMousePosition(SCREEN_WIDTH/2, SCREEN_HEIGHT/2);
+    DisableCursor();
+
+    player1.location = {0,0,0};
+    player1.camera.camPos = {-5,5,0};
+    player1.camera.camTarget = {0,0,0};
+    player1.camera.up = {0,1,0};
+    player1.camera.aspect = (float)SCREEN_WIDTH / (float)SCREEN_HEIGHT;
+    player1.camera.fov = 90.0f * M_PI / 180.0f;
+    player1.controls = { 'W', 'A', 'S', 'D' };
 }
 
 void createSphere(sphere_& ball, int depth, float size, vector3 spawnpos, int maxAccelForces) {
@@ -166,6 +189,28 @@ void createPlane(planeMtx& plane, int id, vector3 location, float dimensions[4][
     plane.color = BLACK;
 }
 
+void create3dObject(triDomMesh& mesh, const char* path) {
+    Model model = LoadModel(path);
+    mesh.tris  = (tri*)malloc(model.meshes[0].triangleCount * sizeof(tri));
+
+    
+    for (int i = 0; i < model.meshCount; i++) {
+        Mesh m = model.meshes[i];
+        for (int j = 0; j < m.triangleCount; j++) {
+            tri t;
+            int vi = j * 9;
+            t.v[0] = { m.vertices[vi+0], m.vertices[vi+1], m.vertices[vi+2] };
+            t.v[1] = { m.vertices[vi+3], m.vertices[vi+4], m.vertices[vi+5] };
+            t.v[2] = { m.vertices[vi+6], m.vertices[vi+7], m.vertices[vi+8] };
+            t.n[0] = { m.normals[vi+0],  m.normals[vi+1],  m.normals[vi+2]  };
+            t.n[1] = { m.normals[vi+3],  m.normals[vi+4],  m.normals[vi+5]  };
+            t.n[2] = { m.normals[vi+6],  m.normals[vi+7],  m.normals[vi+8]  };
+            mesh.tris[mesh.count++] = t;
+        }
+    }
+    // std::cout << "v count: " << mesh.count << std::endl;
+}
+
 // Function Definitions
 void initialise()
 {
@@ -181,15 +226,17 @@ void initialise()
     };
 
     static float dimensions2[4][3] = {
-        {-2,-2,-2},
-        {-2,-2,2},
-        {2,-2,2},
-        {2,-2,-2}
+        {-2,0,-2},
+        {-2,0,2},
+        {2,0,2},
+        {2,0,-2}
     };
 
 
     createPlane(plane,0,{0,0,0},dimensions,texo,temp);
-    createPlane(plane2,0,{0,0,0},dimensions2,texo,temp);
+    createPlane(plane2,0,{0,1,0},dimensions2,texo,temp);
+    create3dObject(mesh, "resources/utah_teapot.obj");
+    initializePlayer(player1);
     SetTargetFPS(FPS);
 
     Shader w2s = LoadShader("resources/shaders/w2s.vs", "resources/shaders/w2s.fs");
@@ -200,6 +247,8 @@ void initialise()
     w2sShader.lightColorLoc = GetShaderLocation(w2sShader.shader, "uLightColor");
     w2sShader.ambientLoc    = GetShaderLocation(w2sShader.shader, "uAmbient");
     w2sShader.lightPosLoc = GetShaderLocation(w2sShader.shader, "uLightPos");
+    w2sShader.normalLoc = GetShaderLocation(w2sShader.shader, "uNormal");
+    
 
     // w2sShader = { w2s, SHADER_LOC_MATRIX_MVP, SHADER_LOC_COLOR_DIFFUSE, GetShaderLocation(w2s, "uLightDir") };
 }
@@ -223,10 +272,13 @@ void update() {
     gPreviousTicks = ticks;                   // step 3
 
     i += deltaTime;
+    // oscillate between 0 and 1;
+    lightPos.x = 2.f + 5.f * sinf(i);
 
     // std::cout << i << std::endl;
-
-    cam.camPos = { (float)(3 * cos(90 * M_PI / 180.f)), i, (float)(3 * sin(90 * M_PI / 180.f)) }; // orbit x + z
+    movePlayer(player1, false);
+    std::cout << "mouse delta: " << GetMouseDelta().x << std::endl;
+    // cam.camPos = { (float)(3 * cos(90 * M_PI / 180.f)), 3, (float)(5 * sin(90 * M_PI / 180.f)) }; // orbit x + z
     // int target = 0;
 }
 
@@ -236,19 +288,31 @@ void render()
 
     rlClearColor(0, 0, 0, 255);
 
-    // changing to 3d setup and rlgl
-
     rlClearScreenBuffers();
     rlEnableDepthTest();
     rlEnableDepthMask();
+
+    // enter 3d custom
 
     rlMatrixMode(RL_PROJECTION);
     rlLoadIdentity();
     rlMatrixMode(RL_MODELVIEW);
     rlLoadIdentity();
 
-    DrawPlaneGPU(plane, cam, w2sShader, {255,0,0,255});
-    // DrawPlaneGPU(plane2, cam, w2sShader, {0,255,0,255});
+    BeginShaderMode(w2sShader.shader);
+    SetShaderValue(w2sShader.shader, w2sShader.lightPosLoc, &lightPos, SHADER_UNIFORM_VEC3);
+    SetShaderValue(w2sShader.shader, w2sShader.lightDirLoc,   &lightDir,   SHADER_UNIFORM_VEC3);
+    SetShaderValue(w2sShader.shader, w2sShader.lightColorLoc, &lightColor, SHADER_UNIFORM_VEC4);
+    SetShaderValue(w2sShader.shader, w2sShader.ambientLoc,    &ambient,    SHADER_UNIFORM_FLOAT);
+    // std::cout << "light dir: " << lightDir.x << ", " << lightDir.y << ", " << lightDir.z << std::endl;
+    // std::cout << "light pos: " << lightPos.x << ", " << lightPos.y << ", " << lightPos.z << std::endl;
+
+    DrawPlaneGPU(plane,  player1.camera, w2sShader, {255, 0, 0, 255});
+    // DrawPlaneGPU(plane2,  cam, w2sShader, {0, 255, 0, 255});
+    Draw3DGPU(mesh, player1.camera, w2sShader, {255, 0, 0, 255});
+    // DrawPlaneGPU(plane2, player1.camera, w2sShader, {0, 255, 0, 255});
+
+    EndShaderMode();
 
     // back to 2d raylib
 

@@ -3,6 +3,8 @@
 #include "util.h"
 #include "gui.h"
 
+
+
 void guiDrawStartMenu(float p1X, float p1Y, float width, float height, Color color, int ballsSelected) {
     DrawRectangle(p1X, p1Y, width, height+ 20, color);
 

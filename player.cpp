@@ -3,72 +3,44 @@
 #include <iostream>
 
 void movePlayer(player& player1, bool swappedNormals) {
-    if (player1.model->m[3][1] <= player1.bounding.m[3][1] - (swappedNormals ? (player1.model->m[0][1] - player1.model->m[3][1] + 0.25)  : 0.25)) {
+    // std::cout << "moving player" << std::endl;
+    // if (player1.model->m[3][1] <= player1.bounding.m[3][1] - (swappedNormals ? (player1.model->m[0][1] - player1.model->m[3][1] + 0.25)  : 0.25)) {
         if (IsKeyDown(player1.controls.x)) {
-            player1.model->m[0][1] += .25;
-            player1.model->m[1][1] += .25;
-            player1.model->m[2][1] += .25;
-            player1.model->m[3][1] += .25;
+            // std::cout << "moving forward" << std::endl;
+            // std::cout << "player cam pos: " << player1.camera.camPos.x << ", " << player1.camera.camPos.y << ", " << player1.camera.camPos.z << std::endl;
+            player1.camera.camPos.x += .25;
+            // player1.camera.camTarget.x += .25;
+            // std::cout << "player cam pos: " << player1.camera.camPos.x << ", " << player1.camera.camPos.y << ", " << player1.camera.camPos.z << std::endl;
         }
-    }
-    if (player1.model->m[0][2] <= player1.bounding.m[0][2] - 0.25) {
+    // }
+    // if (player1.model->m[0][2] <= player1.bounding.m[0][2] - 0.25) {
         if (IsKeyDown(player1.controls.y)) {
-            player1.model->m[0][2] += .25;
-            player1.model->m[1][2] += .25;
-            player1.model->m[2][2] += .25;
-            player1.model->m[3][2] += .25;
+            player1.camera.camPos.z -= .25;
+            // player1.camera.camTarget.z -= .25;
         }
-    }
-    if (player1.model->m[0][1] >= player1.bounding.m[0][1] - (swappedNormals ? (player1.model->m[3][1] - player1.model->m[0][1] -0.25)  : -0.25)) {
+    // }
+    // if (player1.model->m[0][1] >= player1.bounding.m[0][1] - (swappedNormals ? (player1.model->m[3][1] - player1.model->m[0][1] -0.25)  : -0.25)) {
         if (IsKeyDown(player1.controls.z)) {
-            player1.model->m[0][1] -= .25;
-            player1.model->m[1][1] -= .25;
-            player1.model->m[2][1] -= .25;
-            player1.model->m[3][1] -= .25;
+            player1.camera.camPos.x -= .25;
+            // player1.camera.camTarget.x -= .25;
         }
-    }
-    if (player1.model->m[2][2] >= player1.bounding.m[2][2] + 0.25) {
+    // }
+    // if (player1.model->m[2][2] >= player1.bounding.m[2][2] + 0.25) {
         if (IsKeyDown(player1.controls.t)) {
-            player1.model->m[0][2] -= .25;
-            player1.model->m[1][2] -= .25;
-            player1.model->m[2][2] -= .25;
-            player1.model->m[3][2] -= .25;
+            player1.camera.camPos.z += .25;
+            // player1.camera.camTarget.z += .25;
         }
-    }
+    // }
 }
 
-void playerFollowBall(player& player1, sphere_ ball, bool swappedNormals) {
-    float t = .15f;
+void moveLook(player& player1, float xoffset, float yoffset) {
 
-    float targetTop = ball.location.y + 1.25f;
-    float targetBottom = ball.location.y - 1.25f;
-
-    player1.model->m[0][1] += (targetTop - player1.model->m[0][1]) * t;
-    player1.model->m[1][1] += (targetTop - player1.model->m[1][1]) * t;
-    player1.model->m[2][1] += (targetBottom - player1.model->m[2][1]) * t;
-    player1.model->m[3][1] += (targetBottom - player1.model->m[3][1]) * t;
-
-    float minY = player1.bounding.m[0][1] + 0.25f;
-
-    if (player1.model->m[2][1] < minY) {
-        float offset = minY - player1.model->m[2][1];
-
-        player1.model->m[0][1] += offset;
-        player1.model->m[1][1] += offset;
-        player1.model->m[2][1] += offset;
-        player1.model->m[3][1] += offset;
-    }
-
-    float maxY = player1.bounding.m[3][1] - 0.25f;
-
-    if (player1.model->m[0][1] > maxY) {
-        float offset = maxY - player1.model->m[0][1];
-
-        player1.model->m[0][1] += offset;
-        player1.model->m[1][1] += offset;
-        player1.model->m[2][1] += offset;
-        player1.model->m[3][1] += offset;
-    }
+    // std::cout << "moving look" << std::endl;
+    // std::cout << "xoffset: " << xoffset << ", yoffset: " << yoffset << std::endl;
+    // std::cout << "player cam target before: " << player1.camera.camTarget.x << ", " << player1.camera.camTarget.y << ", " << player1.camera.camTarget.z << std::endl;
+    player1.camera.camTarget.x += xoffset * 0.25f;
+    player1.camera.camTarget.y += yoffset * 0.25f;
+    // std::cout << "player cam target after: " << player1.camera.camTarget.x << ", " << player1.camera.camTarget.y << ", " << player1.camera.camTarget.z << std::endl;
 }
 
 void paddleHit(int id) {

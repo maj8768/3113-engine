@@ -1,6 +1,7 @@
 
 // current
 void DrawPlaneGPU(planeMtx plane, camera cam, shaderStore shader, vector4 color);
+void Draw3DGPU(triDomMesh mesh, camera cam, shaderStore shader, vector4 color);
 
 
 // deprecated
@@ -24,3 +25,4 @@ void ZRotateTriangleAboutPoint(triangleMtx& triangle, float px, float py, float 
 void XYScaleTriangleAroundCenter(triangleMtx& triangle, float scaleFactor);
 
 Color ColorFromHex(const char *hex);
+

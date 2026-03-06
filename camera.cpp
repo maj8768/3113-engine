@@ -34,7 +34,17 @@ bool worldToScreen(vector3& wpos, mtx44& world, mtx44& view, mtx44& projection, 
 }
 
 mtx44 viewMtx44(const vector3& pos, const vector3& target, const vector3& up) {
-  vector3 F = normalize3({ target.x - pos.x, target.y - pos.y, target.z - pos.z });
+  float cy = cosf(target.x);
+  float sy = sinf(target.x);
+  float cp = cosf(target.y);
+  float sp = sinf(target.y);
+
+  vector3 F = normalize3({
+      cp * cy,
+      sp,
+      cp * sy
+  });
+
   vector3 R = normalize3(cross3(F, up));
   vector3 U = cross3(R, F);
 

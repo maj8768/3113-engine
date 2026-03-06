@@ -10,26 +10,37 @@
 
 // current (GPU)
 
-void DrawPlaneGPU(planeMtx plane, camera cam, shaderStore shader, vector4 color) {
+void Draw3DGPU(triDomMesh mesh, camera cam, shaderStore shader, vector4 color) {
     mtx44 view = viewMtx44(cam.camPos, cam.camTarget, cam.up);
     mtx44 proj = projMtx44(cam.fov, cam.aspect, 0.1f, 1000.0f);
     mtx44 vp   = mmult4(proj, view);
 
-    vector3 c0 = transformToNDC(vp,plane.m[0][0], plane.m[0][1], plane.m[0][2]);
-    vector3 c1 = transformToNDC(vp,plane.m[1][0], plane.m[1][1], plane.m[1][2]);
-    vector3 c2 = transformToNDC(vp,plane.m[2][0], plane.m[2][1], plane.m[2][2]);
-    vector3 c3 = transformToNDC(vp,plane.m[3][0], plane.m[3][1], plane.m[3][2]);
+    rlBegin(RL_TRIANGLES);
+    rlColor4ub(color.x, color.y, color.z, color.t);
+    for (int i = 0; i < mesh.count; i++) {
+        for (int v = 0; v < 3; v++) {
+            vector3 ndc = transformToNDC(vp, mesh.tris[i].v[v].x,
+                                            mesh.tris[i].v[v].y,
+                                            mesh.tris[i].v[v].z);
+            rlNormal3f(mesh.tris[i].n[v].x, mesh.tris[i].n[v].y, mesh.tris[i].n[v].z);
+            rlVertex3f(ndc.x, ndc.y, ndc.z);
+        }
+    }
+    rlEnd();
+}
 
-    Vector3 lightDir = { 0.3f, -1.0f, 1.f };
-    Vector4 lightColor = { 1.0f, 1.0f, 1.0f, 1.0f };
-    float ambient = 0.0f;
-    Vector3 lightPos = { 1.0f, 1.0f, 0.0f };
+void DrawPlaneGPU(planeMtx plane, camera cam, shaderStore shader, vector4 color) {
+    // NDC transform stays per-plane
+    mtx44 view = viewMtx44(cam.camPos, cam.camTarget, cam.up);
+    mtx44 proj = projMtx44(cam.fov, cam.aspect, 0.1f, 1000.0f);
+    mtx44 vp   = mmult4(proj, view);
 
-    SetShaderValue(shader.shader, shader.lightPosLoc, &lightPos, SHADER_UNIFORM_VEC3);
-    SetShaderValue(shader.shader, shader.lightColorLoc, &lightColor, SHADER_UNIFORM_VEC4);
-    SetShaderValue(shader.shader, shader.colorLoc, &lightColor, SHADER_UNIFORM_VEC4);
-    SetShaderValue(shader.shader, shader.ambientLoc,    &ambient,    SHADER_UNIFORM_FLOAT);
+    vector3 c0 = transformToNDC(vp, plane.m[0][0], plane.m[0][1], plane.m[0][2]);
+    vector3 c1 = transformToNDC(vp, plane.m[1][0], plane.m[1][1], plane.m[1][2]);
+    vector3 c2 = transformToNDC(vp, plane.m[2][0], plane.m[2][1], plane.m[2][2]);
+    vector3 c3 = transformToNDC(vp, plane.m[3][0], plane.m[3][1], plane.m[3][2]);
 
+    // Normal still per-plane
     vector3 edge1 = { plane.m[1][0] - plane.m[0][0], plane.m[1][1] - plane.m[0][1], plane.m[1][2] - plane.m[0][2] };
     vector3 edge2 = { plane.m[3][0] - plane.m[0][0], plane.m[3][1] - plane.m[0][1], plane.m[3][2] - plane.m[0][2] };
 
@@ -37,16 +48,15 @@ void DrawPlaneGPU(planeMtx plane, camera cam, shaderStore shader, vector4 color)
     float ny = edge1.z * edge2.x - edge1.x * edge2.z;
     float nz = edge1.x * edge2.y - edge1.y * edge2.x;
     float nlen = sqrtf(nx*nx + ny*ny + nz*nz);
-
     float normal[3] = { nx/nlen, ny/nlen, nz/nlen };
-    SetShaderValue(shader.shader, 4, normal, SHADER_UNIFORM_VEC3);
 
-    BeginShaderMode(shader.shader);
+    SetShaderValue(shader.shader, shader.normalLoc, normal, SHADER_UNIFORM_VEC3);
+
     rlBegin(RL_TRIANGLES);
     rlColor4ub(color.x, color.y, color.z, color.t);
 
-    rlNormal3f(plane.m[0][0], plane.m[0][1], plane.m[0][2]); // world position for lighting (lights/ing outside ndc need to be rendered)
-    rlVertex3f(c0.x, c0.y, c0.z);                             // NDC for renderable objects
+    rlNormal3f(plane.m[0][0], plane.m[0][1], plane.m[0][2]);
+    rlVertex3f(c0.x, c0.y, c0.z);
     rlNormal3f(plane.m[1][0], plane.m[1][1], plane.m[1][2]);
     rlVertex3f(c1.x, c1.y, c1.z);
     rlNormal3f(plane.m[2][0], plane.m[2][1], plane.m[2][2]);
@@ -57,9 +67,7 @@ void DrawPlaneGPU(planeMtx plane, camera cam, shaderStore shader, vector4 color)
     rlVertex3f(c2.x, c2.y, c2.z);
     rlNormal3f(plane.m[3][0], plane.m[3][1], plane.m[3][2]);
     rlVertex3f(c3.x, c3.y, c3.z);
-
     rlEnd();
-    EndShaderMode();
 }
 
 void DrawSphereGPU(sphere_ sphere, float n, vector3 centp, camera& cam, float screenW, float screenH) {
