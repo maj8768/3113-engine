@@ -9,8 +9,6 @@
  */
 bool spherePlaneCollide(sphere_& sphere, planeMtx* plane, vector3& applyAcc, float conservationPercent, float deltaTime, int& target) {
 
-    const float eps = 1e-6;
-
     vector3 p1 = {plane->m[0][0], plane->m[0][1], plane->m[0][2]};
     vector3 p2 = {plane->m[1][0], plane->m[1][1], plane->m[1][2]};
     vector3 p3 = {plane->m[2][0], plane->m[2][1], plane->m[2][2]};

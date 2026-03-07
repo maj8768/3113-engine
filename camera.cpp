@@ -102,3 +102,36 @@ mtx44 projMtx44(float fovYRad, float aspect, float zn, float zf) {
 
   return projection;
 }
+
+bool CullAndProjectTriangleToNDC(const mtx44& vp, const vector3& p0, const vector3& p1, const vector3& p2, vector3& ndc0, vector3& ndc1, vector3& ndc2) {
+    auto mul = [&](const vector3& p, float& cx, float& cy, float& cz, float& cw) {
+        float x = p.x, y = p.y, z = p.z;
+        cx = vp.m[0][0]*x + vp.m[0][1]*y + vp.m[0][2]*z + vp.m[0][3]*1.0f;
+        cy = vp.m[1][0]*x + vp.m[1][1]*y + vp.m[1][2]*z + vp.m[1][3]*1.0f;
+        cz = vp.m[2][0]*x + vp.m[2][1]*y + vp.m[2][2]*z + vp.m[2][3]*1.0f;
+        cw = vp.m[3][0]*x + vp.m[3][1]*y + vp.m[3][2]*z + vp.m[3][3]*1.0f;
+    };
+
+    float cx0, cy0, cz0, cw0; mul(p0, cx0, cy0, cz0, cw0);
+    float cx1, cy1, cz1, cw1; mul(p1, cx1, cy1, cz1, cw1);
+    float cx2, cy2, cz2, cw2; mul(p2, cx2, cy2, cz2, cw2);
+
+    if (cw0 <= 0.0f || cw1 <= 0.0f || cw2 <= 0.0f) {
+        return false;
+    }
+
+    bool allLeft   = (cx0 < -cw0) && (cx1 < -cw1) && (cx2 < -cw2);
+    bool allRight  = (cx0 >  cw0) && (cx1 >  cw1) && (cx2 >  cw2);
+    bool allBottom = (cy0 < -cw0) && (cy1 < -cw1) && (cy2 < -cw2);
+    bool allTop    = (cy0 >  cw0) && (cy1 >  cw1) && (cy2 >  cw2);
+    bool allNear   = (cz0 < -cw0) && (cz1 < -cw1) && (cz2 < -cw2);
+    bool allFar    = (cz0 >  cw0) && (cz1 >  cw1) && (cz2 >  cw2);
+
+    if (allLeft || allRight || allBottom || allTop || allNear || allFar) {
+        return false;
+    }
+    ndc0 = { cx0 / cw0, cy0 / cw0, cz0 / cw0 };
+    ndc1 = { cx1 / cw1, cy1 / cw1, cz1 / cw1 };
+    ndc2 = { cx2 / cw2, cy2 / cw2, cz2 / cw2 };
+    return true;
+}

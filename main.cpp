@@ -141,9 +141,10 @@ void temp(int d) {
 
 void initializePlayer(player& player1) {
     // set up pc environment for player here as well
-    // HideCursor();
-    // SetMousePosition(SCREEN_WIDTH/2, SCREEN_HEIGHT/2);
+    HideCursor();
+//    SetMousePosition(SCREEN_WIDTH/2, SCREEN_HEIGHT/2);
     DisableCursor();
+    SetMousePosition(SCREEN_WIDTH/2, SCREEN_HEIGHT/2);
 
     player1.location = {0,0,0};
     player1.camera.camPos = {-5,5,0};
@@ -276,8 +277,12 @@ void update() {
     lightPos.x = 2.f + 5.f * sinf(i);
 
     // std::cout << i << std::endl;
+    
+    auto mdelta = GetMouseDelta();
+    
     movePlayer(player1, false);
-    std::cout << "mouse delta: " << GetMouseDelta().x << std::endl;
+    moveLook(player1, mdelta.x, mdelta.y);
+//    std::cout << "mouse delta: " << GetMouseDelta().x << std::endl;
     // cam.camPos = { (float)(3 * cos(90 * M_PI / 180.f)), 3, (float)(5 * sin(90 * M_PI / 180.f)) }; // orbit x + z
     // int target = 0;
 }

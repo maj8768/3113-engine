@@ -14,33 +14,40 @@ void Draw3DGPU(triDomMesh mesh, camera cam, shaderStore shader, vector4 color) {
     mtx44 view = viewMtx44(cam.camPos, cam.camTarget, cam.up);
     mtx44 proj = projMtx44(cam.fov, cam.aspect, 0.1f, 1000.0f);
     mtx44 vp   = mmult4(proj, view);
-
+//    std::cout << "new draw" << std::endl;
     rlBegin(RL_TRIANGLES);
     rlColor4ub(color.x, color.y, color.z, color.t);
     for (int i = 0; i < mesh.count; i++) {
-        for (int v = 0; v < 3; v++) {
-            vector3 ndc = transformToNDC(vp, mesh.tris[i].v[v].x,
-                                            mesh.tris[i].v[v].y,
-                                            mesh.tris[i].v[v].z);
-            rlNormal3f(mesh.tris[i].n[v].x, mesh.tris[i].n[v].y, mesh.tris[i].n[v].z);
-            rlVertex3f(ndc.x, ndc.y, ndc.z);
+
+        vector3 p0 = { mesh.tris[i].v[0].x, mesh.tris[i].v[0].y, mesh.tris[i].v[0].z };
+        vector3 p1 = { mesh.tris[i].v[1].x, mesh.tris[i].v[1].y, mesh.tris[i].v[1].z };
+        vector3 p2 = { mesh.tris[i].v[2].x, mesh.tris[i].v[2].y, mesh.tris[i].v[2].z };
+
+        vector3 ndc1, ndc2, ndc3;
+        if (!CullAndProjectTriangleToNDC(vp, p0, p1, p2, ndc1, ndc2, ndc3)) {
+            continue;
         }
+            
+        rlNormal3f(mesh.tris[i].n[0].x, mesh.tris[i].n[0].y, mesh.tris[i].n[0].z);
+        rlVertex3f(ndc1.x, ndc1.y, ndc1.z);
+        rlNormal3f(mesh.tris[i].n[1].x, mesh.tris[i].n[1].y, mesh.tris[i].n[1].z);
+        rlVertex3f(ndc2.x, ndc2.y, ndc2.z);
+        rlNormal3f(mesh.tris[i].n[2].x, mesh.tris[i].n[2].y, mesh.tris[i].n[2].z);
+        rlVertex3f(ndc3.x, ndc3.y, ndc3.z);
     }
     rlEnd();
 }
 
 void DrawPlaneGPU(planeMtx plane, camera cam, shaderStore shader, vector4 color) {
-    // NDC transform stays per-plane
     mtx44 view = viewMtx44(cam.camPos, cam.camTarget, cam.up);
     mtx44 proj = projMtx44(cam.fov, cam.aspect, 0.1f, 1000.0f);
     mtx44 vp   = mmult4(proj, view);
 
-    vector3 c0 = transformToNDC(vp, plane.m[0][0], plane.m[0][1], plane.m[0][2]);
-    vector3 c1 = transformToNDC(vp, plane.m[1][0], plane.m[1][1], plane.m[1][2]);
-    vector3 c2 = transformToNDC(vp, plane.m[2][0], plane.m[2][1], plane.m[2][2]);
-    vector3 c3 = transformToNDC(vp, plane.m[3][0], plane.m[3][1], plane.m[3][2]);
+    vector3 p0 = { plane.m[0][0], plane.m[0][1], plane.m[0][2] };
+    vector3 p1 = { plane.m[1][0], plane.m[1][1], plane.m[1][2] };
+    vector3 p2 = { plane.m[2][0], plane.m[2][1], plane.m[2][2] };
+    vector3 p3 = { plane.m[3][0], plane.m[3][1], plane.m[3][2] };
 
-    // Normal still per-plane
     vector3 edge1 = { plane.m[1][0] - plane.m[0][0], plane.m[1][1] - plane.m[0][1], plane.m[1][2] - plane.m[0][2] };
     vector3 edge2 = { plane.m[3][0] - plane.m[0][0], plane.m[3][1] - plane.m[0][1], plane.m[3][2] - plane.m[0][2] };
 
@@ -51,22 +58,28 @@ void DrawPlaneGPU(planeMtx plane, camera cam, shaderStore shader, vector4 color)
     float normal[3] = { nx/nlen, ny/nlen, nz/nlen };
 
     SetShaderValue(shader.shader, shader.normalLoc, normal, SHADER_UNIFORM_VEC3);
-
+    
+    vector3 ndc1, ndc2, ndc3, ndc4;
     rlBegin(RL_TRIANGLES);
     rlColor4ub(color.x, color.y, color.z, color.t);
-
-    rlNormal3f(plane.m[0][0], plane.m[0][1], plane.m[0][2]);
-    rlVertex3f(c0.x, c0.y, c0.z);
-    rlNormal3f(plane.m[1][0], plane.m[1][1], plane.m[1][2]);
-    rlVertex3f(c1.x, c1.y, c1.z);
-    rlNormal3f(plane.m[2][0], plane.m[2][1], plane.m[2][2]);
-    rlVertex3f(c2.x, c2.y, c2.z);
-    rlNormal3f(plane.m[0][0], plane.m[0][1], plane.m[0][2]);
-    rlVertex3f(c0.x, c0.y, c0.z);
-    rlNormal3f(plane.m[2][0], plane.m[2][1], plane.m[2][2]);
-    rlVertex3f(c2.x, c2.y, c2.z);
-    rlNormal3f(plane.m[3][0], plane.m[3][1], plane.m[3][2]);
-    rlVertex3f(c3.x, c3.y, c3.z);
+    if (CullAndProjectTriangleToNDC(vp, p0, p1, p2, ndc1, ndc2, ndc3)) {
+//        std::cout << "1" << std::endl;
+        rlNormal3f(normal[0], normal[1], normal[2]);
+        rlVertex3f(ndc1.x, ndc1.y, ndc1.z);
+        rlNormal3f(normal[0], normal[1], normal[2]);
+        rlVertex3f(ndc2.x, ndc2.y, ndc2.z);
+        rlNormal3f(normal[0], normal[1], normal[2]);
+        rlVertex3f(ndc3.x, ndc3.y, ndc3.z);
+    }
+    if (CullAndProjectTriangleToNDC(vp, p0, p2, p3, ndc1, ndc3, ndc4)) {
+//        std::cout << "2" << std::endl;
+        rlNormal3f(normal[0], normal[1], normal[2]);
+        rlVertex3f(ndc1.x, ndc1.y, ndc1.z);
+        rlNormal3f(normal[0], normal[1], normal[2]);
+        rlVertex3f(ndc3.x, ndc3.y, ndc3.z);
+        rlNormal3f(normal[0], normal[1], normal[2]);
+        rlVertex3f(ndc4.x, ndc4.y, ndc4.z);
+    }
     rlEnd();
 }
 
@@ -592,3 +605,4 @@ Color ColorFromHex(const char *hex) {
     // Fallback – return white so you notice something went wrong
     return RAYWHITE;
 }
+

@@ -111,3 +111,7 @@ float epsCheck(float val, float eps) {
     if (fabs(val) < eps) return 0;
     return val;
 }
+
+float getHypot(float a, float b) {
+    return sqrtf(powf(a,2) + powf(b,2));
+}

@@ -2,9 +2,12 @@
 #include <cmath>
 
 // Global Constants
-static constexpr int SCREEN_WIDTH        = 400 * 1.5f,
+constexpr int SCREEN_WIDTH        = 400 * 1.5f,
               SCREEN_HEIGHT       = 300 * 1.5f,
-              FPS                 = 60;
+                FPS                 = 60;
+                
+
+constexpr float eps = 1e-6;
 
 
 struct triangleMtx {
@@ -192,3 +195,5 @@ void spinGon2D(spungonMtx& out, const float size);
 float epsCheck(float val, float eps);
 
 vector3 transformToNDC(const mtx44& vp, float x, float y, float z);
+
+float getHypot(float a, float b);
