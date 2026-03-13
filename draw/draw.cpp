@@ -1,8 +1,8 @@
 #include "raylib.h"
 #include "rlgl.h"
-#include "util.h"
+#include "../util.h"
 #include "draw.h"
-#include "camera.h"
+#include "../camera/camera.h"
 #include <cmath>
 #include <stdio.h>
 #include <iostream>
@@ -10,35 +10,49 @@
 
 // current (GPU)
 
-void Draw3DGPU(triDomMesh mesh, camera cam, shaderStore shader, vector4 color) {
+void Draw3DGPU(const triDomMesh& mesh, const camera& cam, shaderStore& shader, vector4 color, float scale) {
     mtx44 view = viewMtx44(cam.camPos, cam.camTarget, cam.up);
     mtx44 proj = projMtx44(cam.fov, cam.aspect, 0.1f, 1000.0f);
     mtx44 vp   = mmult4(proj, view);
-//    std::cout << "new draw" << std::endl;
+
+    // SetShaderValue(shader.shader, shader.normalLoc, mesh.tris[i].n, SHADER_UNIFORM_VEC3);
+    // int texSlot = 0;
+    SetShaderValueTexture(shader.shader, shader.texoLoc, shader.texo);
+    SetShaderValueMatrix(shader.shader, shader.vpLoc, ToRaylibMatrix(vp));
+
+    // rlSetTexture(shader.texo);
     rlBegin(RL_TRIANGLES);
     rlColor4ub(color.x, color.y, color.z, color.t);
     for (int i = 0; i < mesh.count; i++) {
-
+        // rlBegin(RL_TRIANGLES);
+        // rlColor4ub(color.x, color.y, color.z, color.t);
         vector3 p0 = { mesh.tris[i].v[0].x, mesh.tris[i].v[0].y, mesh.tris[i].v[0].z };
         vector3 p1 = { mesh.tris[i].v[1].x, mesh.tris[i].v[1].y, mesh.tris[i].v[1].z };
         vector3 p2 = { mesh.tris[i].v[2].x, mesh.tris[i].v[2].y, mesh.tris[i].v[2].z };
 
-        vector3 ndc1, ndc2, ndc3;
-        if (!CullAndProjectTriangleToNDC(vp, p0, p1, p2, ndc1, ndc2, ndc3)) {
-            continue;
-        }
+        // SetShaderValue(shader.shader, shader.normalLoc, mesh.tris[i].n, SHADER_UNIFORM_VEC3);
+        // SetShaderValue(shader.shader, shader.texoLoc, &shader.texo, SHADER_UNIFORM_SAMPLER2D);
             
         rlNormal3f(mesh.tris[i].n[0].x, mesh.tris[i].n[0].y, mesh.tris[i].n[0].z);
-        rlVertex3f(ndc1.x, ndc1.y, ndc1.z);
+        rlTexCoord2f(mesh.tris[i].t[0].x, mesh.tris[i].t[0].y);
+        rlVertex3f(p0.x * scale, p0.y * scale, p0.z * scale);
+
         rlNormal3f(mesh.tris[i].n[1].x, mesh.tris[i].n[1].y, mesh.tris[i].n[1].z);
-        rlVertex3f(ndc2.x, ndc2.y, ndc2.z);
+        rlTexCoord2f(mesh.tris[i].t[1].x, mesh.tris[i].t[1].y);
+        rlVertex3f(p1.x * scale, p1.y * scale, p1.z * scale);
+        
         rlNormal3f(mesh.tris[i].n[2].x, mesh.tris[i].n[2].y, mesh.tris[i].n[2].z);
-        rlVertex3f(ndc3.x, ndc3.y, ndc3.z);
+        rlTexCoord2f(mesh.tris[i].t[2].x, mesh.tris[i].t[2].y);
+        rlVertex3f(p2.x * scale, p2.y * scale, p2.z * scale);
+        
+
+        // rlEnd();
     }
     rlEnd();
+    // rlSetTexture(0);
 }
 
-void DrawPlaneGPU(planeMtx plane, camera cam, shaderStore shader, vector4 color) {
+void DrawPlaneGPU(planeMtx plane, camera cam, shaderStore shader, vector4 color, float scale) {
     mtx44 view = viewMtx44(cam.camPos, cam.camTarget, cam.up);
     mtx44 proj = projMtx44(cam.fov, cam.aspect, 0.1f, 1000.0f);
     mtx44 vp   = mmult4(proj, view);

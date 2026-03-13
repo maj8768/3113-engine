@@ -1,1 +1,1 @@
-g++ *.cpp -o main -lraylib -I/usr/local/include -L/usr/local/lib -Wl,-rpath,/usr/local/lib -lm -lpthread -ldl -lrt -lX11 && make clean && ./main
+g++ $(find . -name "*.cpp") -o therewillnotbeafoldernamedthis -lraylib -I/usr/local/include -L/usr/local/lib -Wl,-rpath,/usr/local/lib -lm -lpthread -ldl -lrt -lX11 && make clean && ./therewillnotbeafoldernamedthis

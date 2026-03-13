@@ -1,1 +1,1 @@
-g++ *.cpp -o game.exe -lraylib -lopengl32 -lgdi32 -lwinmm && ./game.exe
+g++ $(find . -name "*.cpp") -I"C:/msys64/home/Max J/raylib/src" -o therewillnotbeafoldernamedthis.exe "C:/msys64/home/Max J/raylib/src/libraylib.a" -lopengl32 -lgdi32 -lwinmm && ./therewillnotbeafoldernamedthis.exe

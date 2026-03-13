@@ -1,5 +1,5 @@
 #if defined(PLATFORM_DESKTOP)
-    #define GLSL_VERSION 430
+    #define GLSL_VERSION 410
 #else
     // PLATFORM_ANDROID, PLATFORM_WEB <= from web
     #define GLSL_VERSION 100
@@ -7,17 +7,25 @@
 
 #include "raylib.h"
 #include "rlgl.h"
-#include "util.h"
-#include "physics.h"
-#include "player.h"
 
-#include "draw.h"
-#include "camera.h"
-#include "gui.h"
+#include "util.h"
+
+#include "physics/physics.h"
+
+#include "game/player.h"
+
+#include "draw/draw.h"
+#include "draw/gui.h"
+
+#include "camera/camera.h"
+
+#include "system/keyboard/keyboard.h"
+#include "system/mouse/mouse.h"
 
 
 #include <cmath>
 #include <iostream>
+#include <thread>
 
 /**
  * world to screen from shader-- source below:
@@ -72,13 +80,6 @@ vector2 gPosition = { SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2 };
 vector2 gScale = { 250.0f, 250.0f };
 // float gAngle = 0.0f;
 
-
-
-vector2 lastMousePos = {
-    .x = 0,
-    .y = 0
-};
-
 static float gPreviousTicks = 0.0f;
 
 // float relativeRotationX = 360.0f / centerX;
@@ -108,10 +109,10 @@ static planeMtx plane2;
 
 static shaderStore w2sShader;
 
-static Vector3 lightPos = { 5.f, 5.f,0.f };
+static Vector3 lightPos = { 0.f, 4.f,0.f };
 static Vector3 lightDir = { 0.0f, -1.f, 0.f };
-static Vector4 lightColor = { 1.0f, 1.0f, 1.0f, 1.0f };
-static float ambient  = 0.2f;
+static Vector4 lightColor = { 0.447, 0.816, 0.922, 1.0f };
+static float ambient  = 0.05f;
 
 static triDomMesh mesh;
 
@@ -141,14 +142,14 @@ void temp(int d) {
 
 void initializePlayer(player& player1) {
     // set up pc environment for player here as well
-    HideCursor();
+    // HideCursor();
 //    SetMousePosition(SCREEN_WIDTH/2, SCREEN_HEIGHT/2);
     DisableCursor();
-    SetMousePosition(SCREEN_WIDTH/2, SCREEN_HEIGHT/2);
+    // SetMousePosition(SCREEN_WIDTH/2, SCREEN_HEIGHT/2);
 
     player1.location = {0,0,0};
-    player1.camera.camPos = {-5,5,0};
-    player1.camera.camTarget = {0,0,0};
+    player1.camera.camPos = {0,5,0};
+    player1.camera.camTarget = {M_PI/2.f,0,0};
     player1.camera.up = {0,1,0};
     player1.camera.aspect = (float)SCREEN_WIDTH / (float)SCREEN_HEIGHT;
     player1.camera.fov = 90.0f * M_PI / 180.0f;
@@ -190,22 +191,31 @@ void createPlane(planeMtx& plane, int id, vector3 location, float dimensions[4][
     plane.color = BLACK;
 }
 
-void create3dObject(triDomMesh& mesh, const char* path) {
+void create3dObject(triDomMesh& mesh, const char* path, shaderStore& shader) {
     Model model = LoadModel(path);
+    mesh.count = 0;
     mesh.tris  = (tri*)malloc(model.meshes[0].triangleCount * sizeof(tri));
-
-    
+    for (int j = 0; j < 5; j++) {  // just first 5 tris
+    int uv = j * 6;
+}
     for (int i = 0; i < model.meshCount; i++) {
-        Mesh m = model.meshes[i];
-        for (int j = 0; j < m.triangleCount; j++) {
+        Mesh* m = &model.meshes[i];
+        Texture2D tex = model.materials[model.meshMaterial[i]].maps[MATERIAL_MAP_DIFFUSE].texture;
+        shader.texo = tex;
+        // Texture2D tex = model.materials[model.meshMaterialId[i]].maps[MAP_DIFFUSE].texture;
+        for (int j = 0; j < m->triangleCount; j++) {
             tri t;
-            int vi = j * 9;
-            t.v[0] = { m.vertices[vi+0], m.vertices[vi+1], m.vertices[vi+2] };
-            t.v[1] = { m.vertices[vi+3], m.vertices[vi+4], m.vertices[vi+5] };
-            t.v[2] = { m.vertices[vi+6], m.vertices[vi+7], m.vertices[vi+8] };
-            t.n[0] = { m.normals[vi+0],  m.normals[vi+1],  m.normals[vi+2]  };
-            t.n[1] = { m.normals[vi+3],  m.normals[vi+4],  m.normals[vi+5]  };
-            t.n[2] = { m.normals[vi+6],  m.normals[vi+7],  m.normals[vi+8]  };
+            int vi = j * 9; // splits by 3 verts and then by 3 coords
+            int uv = j * 6; // split by 3verts and then by 2uv coords
+            t.v[0] = { m->vertices[vi+0], m->vertices[vi+1], m->vertices[vi+2] };
+            t.v[1] = { m->vertices[vi+3], m->vertices[vi+4], m->vertices[vi+5] };
+            t.v[2] = { m->vertices[vi+6], m->vertices[vi+7], m->vertices[vi+8] };
+            t.n[0] = { m->normals[vi+0],  m->normals[vi+1],  m->normals[vi+2]  };
+            t.n[1] = { m->normals[vi+3],  m->normals[vi+4],  m->normals[vi+5]  };
+            t.n[2] = { m->normals[vi+6],  m->normals[vi+7],  m->normals[vi+8]  };
+            t.t[0] = { m->texcoords[uv+0],  m->texcoords[uv+1]  };
+            t.t[1] = { m->texcoords[uv+2],  m->texcoords[uv+3]  };
+            t.t[2] = { m->texcoords[uv+4],  m->texcoords[uv+5]  };
             mesh.tris[mesh.count++] = t;
         }
     }
@@ -215,7 +225,19 @@ void create3dObject(triDomMesh& mesh, const char* path) {
 // Function Definitions
 void initialise()
 {
+
     InitWindow(SCREEN_WIDTH, SCREEN_HEIGHT, "Hello raylib!");
+
+    void* handle = GetWindowHandle();
+    if (!RawMouseInitFromHWND(handle))
+    {
+        CloseWindow();
+        std::cout << "tragic failure" << std::endl;
+        exit(1);   
+    }
+    else {
+        std::cout << "mouse initialized successfully" << std::endl;
+    }
 
     Texture2D texo = LoadTexture(EDELGARD_FP);
 
@@ -236,7 +258,6 @@ void initialise()
 
     createPlane(plane,0,{0,0,0},dimensions,texo,temp);
     createPlane(plane2,0,{0,1,0},dimensions2,texo,temp);
-    create3dObject(mesh, "resources/utah_teapot.obj");
     initializePlayer(player1);
     SetTargetFPS(FPS);
 
@@ -249,7 +270,11 @@ void initialise()
     w2sShader.ambientLoc    = GetShaderLocation(w2sShader.shader, "uAmbient");
     w2sShader.lightPosLoc = GetShaderLocation(w2sShader.shader, "uLightPos");
     w2sShader.normalLoc = GetShaderLocation(w2sShader.shader, "uNormal");
+    w2sShader.texoLoc = GetShaderLocation(w2sShader.shader, "uTexo");
+    w2sShader.vpLoc = GetShaderLocation(w2sShader.shader, "uVP");
     
+
+    create3dObject(mesh, "resources/ship.obj", w2sShader);
 
     // w2sShader = { w2s, SHADER_LOC_MATRIX_MVP, SHADER_LOC_COLOR_DIFFUSE, GetShaderLocation(w2s, "uLightDir") };
 }
@@ -266,38 +291,49 @@ float i = 0;
 int g = 1;
 float floating = 1;
 int target = 0;
-    
+
+double previousTime = GetTime();
+int frameCount = 0;
+
 void update() {
+    double currentTime = GetTime();
+    frameCount++;
     auto ticks = static_cast<float>(GetTime());          // step 1
     float deltaTime = ticks - gPreviousTicks; // step 2
     gPreviousTicks = ticks;                   // step 3
 
     i += deltaTime;
-    // oscillate between 0 and 1;
-    lightPos.x = 2.f + 5.f * sinf(i);
+
+    lightPos.y = 4.5f + 1.f * sinf(i);
 
     // std::cout << i << std::endl;
-    
-    auto mdelta = GetMouseDelta();
-    
-    movePlayer(player1, false);
-    moveLook(player1, mdelta.x, mdelta.y);
-//    std::cout << "mouse delta: " << GetMouseDelta().x << std::endl;
-    // cam.camPos = { (float)(3 * cos(90 * M_PI / 180.f)), 3, (float)(5 * sin(90 * M_PI / 180.f)) }; // orbit x + z
-    // int target = 0;
+    vector2 md;
+    RawMouseGetDelta(md.x, md.y);
+    moveLook(player1, deltaTime, md);
+    movePlayer(player1, false, deltaTime);
+
+    // std::cout << "dx: " << md.x << " dy: " << md.y << std::endl;
+
+if (currentTime - previousTime >= .1) {
+    // Calculate FPS
+    double fps = (double)frameCount / (currentTime - previousTime);
+
+    // Display the FPS (e.g., in the window title)
+    std::cout << "[" << fps << " FPS]" << std::endl;
+    // glfwSetWindowTitle(pWindow, ss.str().c_str()); // Replace pWindow with your GLFWwindow pointer
+
+    // Reset the counter and time
+    frameCount = 0;
+    previousTime = currentTime;
+}
 }
 
 void render()
 {
-    BeginDrawing();
+    ClearBackground(BLACK);
 
-    rlClearColor(0, 0, 0, 255);
-
-    rlClearScreenBuffers();
     rlEnableDepthTest();
     rlEnableDepthMask();
-
-    // enter 3d custom
 
     rlMatrixMode(RL_PROJECTION);
     rlLoadIdentity();
@@ -306,20 +342,13 @@ void render()
 
     BeginShaderMode(w2sShader.shader);
     SetShaderValue(w2sShader.shader, w2sShader.lightPosLoc, &lightPos, SHADER_UNIFORM_VEC3);
-    SetShaderValue(w2sShader.shader, w2sShader.lightDirLoc,   &lightDir,   SHADER_UNIFORM_VEC3);
+    SetShaderValue(w2sShader.shader, w2sShader.lightDirLoc, &lightDir, SHADER_UNIFORM_VEC3);
     SetShaderValue(w2sShader.shader, w2sShader.lightColorLoc, &lightColor, SHADER_UNIFORM_VEC4);
-    SetShaderValue(w2sShader.shader, w2sShader.ambientLoc,    &ambient,    SHADER_UNIFORM_FLOAT);
-    // std::cout << "light dir: " << lightDir.x << ", " << lightDir.y << ", " << lightDir.z << std::endl;
-    // std::cout << "light pos: " << lightPos.x << ", " << lightPos.y << ", " << lightPos.z << std::endl;
+    SetShaderValue(w2sShader.shader, w2sShader.ambientLoc, &ambient, SHADER_UNIFORM_FLOAT);
 
-    DrawPlaneGPU(plane,  player1.camera, w2sShader, {255, 0, 0, 255});
-    // DrawPlaneGPU(plane2,  cam, w2sShader, {0, 255, 0, 255});
-    Draw3DGPU(mesh, player1.camera, w2sShader, {255, 0, 0, 255});
-    // DrawPlaneGPU(plane2, player1.camera, w2sShader, {0, 255, 0, 255});
+    Draw3DGPU(mesh, player1.camera, w2sShader, {255, 0, 0, 255}, 3.f);
 
     EndShaderMode();
-
-    // back to 2d raylib
 
     rlMatrixMode(RL_PROJECTION);
     rlLoadIdentity();
@@ -328,7 +357,6 @@ void render()
     rlLoadIdentity();
 
     DrawFPS(10, 10);
-    EndDrawing();
 }
 
 void shutdown() 
@@ -338,6 +366,7 @@ void shutdown()
     // UnloadTexture(pyramid.texture);  // right here!
 }
 
+
 int main(void)
 {
     std::cout << "Hello, World!" << std::endl;
@@ -345,12 +374,19 @@ int main(void)
 
     while (gAppStatus == RUNNING)
     {
-        processInput();
+        // PollInputEvents();
+        // processInput();
+        #ifdef _WIN32
+            pumpMessages();
+        #endif
         update();
+        BeginDrawing();
         render();
+        EndDrawing();
+        SwapScreenBuffer();
     }
 
+    RawMouseShutdown();
     shutdown();
-
     return 0;
 }

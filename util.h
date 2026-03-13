@@ -2,9 +2,9 @@
 #include <cmath>
 
 // Global Constants
-constexpr int SCREEN_WIDTH        = 400 * 1.5f,
-              SCREEN_HEIGHT       = 300 * 1.5f,
-                FPS                 = 60;
+constexpr int SCREEN_WIDTH        = 1000,
+              SCREEN_HEIGHT       = 600,
+                FPS               = 0;
                 
 
 constexpr float eps = 1e-6;
@@ -26,6 +26,9 @@ struct shaderStore {
     int ambientLoc;
     int lightPosLoc;
     int normalLoc;
+    int texoLoc;
+    int vpLoc;
+    Texture2D texo;
 };
 
 struct pyramidMtx {
@@ -163,6 +166,7 @@ struct world {
 struct tri {
     vector3 v[3];
     vector3 n[3];
+    vector2 t[3];
 };
 
 struct triDomMesh {

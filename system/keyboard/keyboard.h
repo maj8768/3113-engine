@@ -1,0 +1,1 @@
+bool getAsyncKeyStateWrapper(int key);

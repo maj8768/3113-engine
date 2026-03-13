@@ -1,5 +1,5 @@
-void movePlayer(player& player1, bool swappedNormals);
-void moveLook(player& player1, float xDelta, float yDelta);
+void movePlayer(player& player1, bool swappedNormals, float deltaTime);
+void moveLook(player& player1, float deltaTime, vector2 md);
 void playerFollowBall(player& player1, sphere_ ball, bool swappedNormals);
 
 void standardCollide(int id);

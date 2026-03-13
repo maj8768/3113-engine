@@ -1,6 +1,6 @@
 #include <string>
 #include "raylib.h"
-#include "util.h"
+#include "../util.h"
 #include "gui.h"
 
 
@@ -41,4 +41,8 @@ void guiDrawEndPopup(float p1X, float p1Y, float width, float height, Color colo
     mes += (player == 1) ? "left" : "right";
     mes += " player has died in battle";
     DrawText(mes.c_str(), p1X - 40, p1Y - 110, 20, BLACK);
+}
+
+void guiDrawText(float p1X, float p1Y, const char* text, int fontSize, Color color) {
+    DrawText(text, p1X, p1Y, fontSize, color);
 }

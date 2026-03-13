@@ -1,1 +1,8 @@
-{}
+{
+  "clangd.path": "C:/msys64/mingw64/bin/clangd.exe",
+  "clangd.arguments": [
+    "--background-index",
+    "--clang-tidy=false",
+    "--compile-commands-dir=${workspaceFolder}"
+  ]
+}
