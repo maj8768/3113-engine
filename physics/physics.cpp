@@ -16,7 +16,7 @@ bool spherePlaneCollide(sphere_& sphere, planeMtx* plane, vector3& applyAcc, flo
 
 
     vector3 v1 = p2 - p1;
-    vector3 v2 = p3 - p1;
+    vector3 v2 = p4 - p1;
 
     vector3 normal = cross3(v1, v2);
 
@@ -101,37 +101,37 @@ void applyAcceleration(vector3 newAccel, sphere_& sphere) {
     }
 }
 
-void processPhysics(float deltaTime, int frameRate, sphere_& sphere, world& world, bool& end, int& target) {
+void processPhysics(float deltaTime, int frameRate, player& player, world& world, bool& end, int& target) {
 
     bool acc = false;
 
     // checking flat collision for each plane in the world (probably should dynamically build this)
-    for (int wtc = 0; wtc < world.planeCount; wtc++) {
-        (spherePlaneCollide(sphere, world.planes[wtc], sphere.applyAccel, 1, deltaTime,target));
-    }
+//    for (int wtc = 0; wtc < world.planeCount; wtc++) {
+//        (spherePlaneCollide(sphere, world.planes[wtc], sphere.applyAccel, 1, deltaTime,target));
+//    }
     // force transfer
 
-    if (sphere.newForce.x !=0 || sphere.newForce.y !=0 || sphere.newForce.z !=0 || acc == true) {
-        sphere.magnitude.x += sphere.newForce.x;
-        sphere.magnitude.y += sphere.newForce.y;
-        sphere.magnitude.z += sphere.newForce.z;
+    if (player.newForce.x !=0 || player.newForce.y !=0 || player.newForce.z !=0 || acc == true) {
+        player.magnitude.x += player.newForce.x;
+        player.magnitude.y += player.newForce.y;
+        player.magnitude.z += player.newForce.z;
         
-        sphere.newForce.murder();
+        player.newForce.murder();
     }
     // acceleration
-    if (sphere.accelForcesCount != 0) {
+    if (player.accelForcesCount != 0) {
         acc = true;
-        for (int i = 0; i < sphere.accelForcesCount; i++) {
+        for (int i = 0; i < player.accelForcesCount; i++) {
             // std::cout << "delta: " << deltaTime << std::endl;
             
-            sphere.magnitude.x += sphere.accelForces[i].x * sphere.applyAccel.x * deltaTime;
-            sphere.magnitude.y += sphere.accelForces[i].y * sphere.applyAccel.y * deltaTime;
-            sphere.magnitude.z += sphere.accelForces[i].z * sphere.applyAccel.z * deltaTime;
+            player.magnitude.x += player.accelForces[i].x * player.applyAccel.x * deltaTime;
+            player.magnitude.y += player.accelForces[i].y * player.applyAccel.y * deltaTime;
+            player.magnitude.z += player.accelForces[i].z * player.applyAccel.z * deltaTime;
         }
     }
 
-    sphere.location.x += sphere.magnitude.x * deltaTime;
-    sphere.location.y += sphere.magnitude.y * deltaTime;
-    sphere.location.z += sphere.magnitude.z * deltaTime;
+    player.location.x += player.magnitude.x * deltaTime;
+    player.location.y += player.magnitude.y * deltaTime;
+    player.location.z += player.magnitude.z * deltaTime;
 
 }

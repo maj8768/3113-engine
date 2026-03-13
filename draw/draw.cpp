@@ -10,7 +10,8 @@
 
 // current (GPU)
 
-void Draw3DGPU(const triDomMesh& mesh, const camera& cam, shaderStore& shader, vector4 color, float scale) {
+void Draw3DGPU(const meshedObject& object, const camera& cam, shaderStore& shader, vector4 color, float scale) {
+    triDomMesh mesh = object.mesh;
     mtx44 view = viewMtx44(cam.camPos, cam.camTarget, cam.up);
     mtx44 proj = projMtx44(cam.fov, cam.aspect, 0.1f, 1000.0f);
     mtx44 vp   = mmult4(proj, view);

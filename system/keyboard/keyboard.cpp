@@ -1,4 +1,5 @@
 #include "keyboard.h"
+#include "raylib.h"
 
 #ifdef _WIN32
     #include <windows.h>
@@ -11,9 +12,25 @@
 #elif defined(__APPLE__)
     #include <ApplicationServices/ApplicationServices.h>
 
+    static CGKeyCode toNativeKey(int key) {
+        switch (key) {
+            case KEY_A:     return 0;
+            case KEY_S:     return 1;
+            case KEY_D:     return 2;
+            case KEY_W:     return 13;
+            case KEY_SPACE: return 49;
+            case KEY_LEFT:  return 123;
+            case KEY_RIGHT: return 124;
+            case KEY_DOWN:  return 125;
+            case KEY_UP:    return 126;
+            default:        return UINT16_MAX;
+        }
+    }
+
     bool getAsyncKeyStateWrapper(int key) {
-        return CGEventSourceKeyState(kCGEventSourceStateCombinedSessionState,
-                                     static_cast<CGKeyCode>(key));
+        CGKeyCode code = toNativeKey(key);
+        if (code == UINT16_MAX) return false;
+        return CGEventSourceKeyState(kCGEventSourceStateCombinedSessionState, code);
     }
 
 #elif defined(__linux__)

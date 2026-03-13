@@ -114,7 +114,10 @@ static Vector3 lightDir = { 0.0f, -1.f, 0.f };
 static Vector4 lightColor = { 0.447, 0.816, 0.922, 1.0f };
 static float ambient  = 0.05f;
 
-static triDomMesh mesh;
+static meshedObject ship;
+
+static bool iamreal = false;
+static int iamalsoreal = 1;
 
 // static camera cam = {
 //     .camPos = { 5, 5, 5 },  // up and back
@@ -191,8 +194,12 @@ void createPlane(planeMtx& plane, int id, vector3 location, float dimensions[4][
     plane.color = BLACK;
 }
 
-void create3dObject(triDomMesh& mesh, const char* path, shaderStore& shader) {
+void create3dObject(meshedObject& object, const char* path, shaderStore& shader) {
+    triDomMesh mesh;
+    planeMtx* planes;
+    int planeCount;
     Model model = LoadModel(path);
+    objToQuads("resources/ship_collider.obj", planes, planeCount);
     mesh.count = 0;
     mesh.tris  = (tri*)malloc(model.meshes[0].triangleCount * sizeof(tri));
     for (int j = 0; j < 5; j++) {  // just first 5 tris
@@ -220,6 +227,7 @@ void create3dObject(triDomMesh& mesh, const char* path, shaderStore& shader) {
         }
     }
     // std::cout << "v count: " << mesh.count << std::endl;
+    object.mesh = mesh;
 }
 
 // Function Definitions
@@ -274,7 +282,7 @@ void initialise()
     w2sShader.vpLoc = GetShaderLocation(w2sShader.shader, "uVP");
     
 
-    create3dObject(mesh, "resources/ship.obj", w2sShader);
+    create3dObject(ship, "resources/ship.obj", w2sShader);
 
     // w2sShader = { w2s, SHADER_LOC_MATRIX_MVP, SHADER_LOC_COLOR_DIFFUSE, GetShaderLocation(w2s, "uLightDir") };
 }
@@ -310,22 +318,25 @@ void update() {
     vector2 md;
     RawMouseGetDelta(md.x, md.y);
     moveLook(player1, deltaTime, md);
-    movePlayer(player1, false, deltaTime);
+    movePlayer(player1, false, deltaTime, 10);
+    // void processPhysics(float deltaTime, int frameRate, player& player, world& world, bool& end, int& target)
+    processPhysics(deltaTime, 0, player1, worldInstance, iamreal, iamalsoreal);
+//    std::cout << player1.magnitude.x << std::endl;
 
     // std::cout << "dx: " << md.x << " dy: " << md.y << std::endl;
 
-if (currentTime - previousTime >= .1) {
-    // Calculate FPS
-    double fps = (double)frameCount / (currentTime - previousTime);
-
-    // Display the FPS (e.g., in the window title)
-    std::cout << "[" << fps << " FPS]" << std::endl;
-    // glfwSetWindowTitle(pWindow, ss.str().c_str()); // Replace pWindow with your GLFWwindow pointer
-
-    // Reset the counter and time
-    frameCount = 0;
-    previousTime = currentTime;
-}
+//if (currentTime - previousTime >= .1) {
+//    // Calculate FPS
+//    double fps = (double)frameCount / (currentTime - previousTime);
+//
+//    // Display the FPS (e.g., in the window title)
+//    std::cout << "[" << fps << " FPS]" << std::endl;
+//    // glfwSetWindowTitle(pWindow, ss.str().c_str()); // Replace pWindow with your GLFWwindow pointer
+//
+//    // Reset the counter and time
+//    frameCount = 0;
+//    previousTime = currentTime;
+//}
 }
 
 void render()
@@ -346,7 +357,7 @@ void render()
     SetShaderValue(w2sShader.shader, w2sShader.lightColorLoc, &lightColor, SHADER_UNIFORM_VEC4);
     SetShaderValue(w2sShader.shader, w2sShader.ambientLoc, &ambient, SHADER_UNIFORM_FLOAT);
 
-    Draw3DGPU(mesh, player1.camera, w2sShader, {255, 0, 0, 255}, 3.f);
+    Draw3DGPU(ship, player1.camera, w2sShader, {255, 0, 0, 255}, 3.f);
 
     EndShaderMode();
 
@@ -356,7 +367,7 @@ void render()
     rlMatrixMode(RL_MODELVIEW);
     rlLoadIdentity();
 
-    DrawFPS(10, 10);
+//    DrawFPS(10, 10);
 }
 
 void shutdown() 
@@ -383,7 +394,7 @@ int main(void)
         BeginDrawing();
         render();
         EndDrawing();
-        SwapScreenBuffer();
+//        SwapScreenBuffer();
     }
 
     RawMouseShutdown();

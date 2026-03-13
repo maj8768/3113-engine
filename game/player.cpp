@@ -5,27 +5,61 @@
 #include "raylib.h"
 #include "../system/keyboard/keyboard.h"
 
-void movePlayer(player& player1, bool swappedNormals, float deltaTime) {
-
-    float xR = cos(player1.camera.camTarget.x);
-    float zR = sin(player1.camera.camTarget.x);
+void haltPlayerLerp(player& player, bool swappedNormals, float deltaTime) {
+    player.magnitude.x = player.magnitude.x * (1 - deltaTime * 10.f);
+    player.magnitude.y = player.magnitude.y * (1 - deltaTime * 10.f);
+    player.magnitude.z = player.magnitude.z * (1 - deltaTime * 10.f);
     
-    if (getAsyncKeyStateWrapper(player1.controls.x)) {
-        player1.camera.camPos.x += 10 * xR * deltaTime;
-        player1.camera.camPos.z += 10 * zR * deltaTime;
+    if (abs(player.magnitude.x) < 0.02f) {
+        player.magnitude.x = 0;
     }
-    if (getAsyncKeyStateWrapper(player1.controls.y)) {
-        player1.camera.camPos.z -= 10 * xR * deltaTime;
-        player1.camera.camPos.x += 10 * zR * deltaTime;
+    if (abs(player.magnitude.y) < 0.02f) {
+        player.magnitude.y = 0;
     }
-    if (getAsyncKeyStateWrapper(player1.controls.z)) {
-        player1.camera.camPos.x -= 10 * xR * deltaTime;
-        player1.camera.camPos.z -= 10 * zR * deltaTime;
+    if (abs(player.magnitude.z) < 0.02f) {
+        player.magnitude.z = 0;
     }
-    if (getAsyncKeyStateWrapper(player1.controls.t)) {
-        player1.camera.camPos.z += 10 * xR * deltaTime;
-        player1.camera.camPos.x -= 10 * zR * deltaTime;
+}
+
+void movePlayer(player& player, bool swappedNormals, float deltaTime, float maxSpeed) {
+
+    bool holdKeys = false;
+    
+    float xR = cos(player.camera.camTarget.x);
+    float zR = sin(player.camera.camTarget.x);
+    
+    if (getAsyncKeyStateWrapper(player.controls.x) && fabs(player.magnitude.x) + fabs(player.magnitude.z) < maxSpeed) {
+        player.magnitude.x += 50 * xR * deltaTime; // the magic number is basically an accel
+        player.magnitude.z += 50 * zR * deltaTime;
+        holdKeys = true;
     }
+    if (getAsyncKeyStateWrapper(player.controls.y) && fabs(player.magnitude.x) + fabs(player.magnitude.z) < maxSpeed) {
+        player.magnitude.z -= 50 * xR * deltaTime;
+        player.magnitude.x += 50 * zR * deltaTime;
+        holdKeys = true;
+    }
+    if (getAsyncKeyStateWrapper(player.controls.z) && fabs(player.magnitude.x) + fabs(player.magnitude.z) < maxSpeed) {
+        player.magnitude.x -= 50 * xR * deltaTime;
+        player.magnitude.z -= 50 * zR * deltaTime;
+        holdKeys = true;
+    }
+    if (getAsyncKeyStateWrapper(player.controls.t) && fabs(player.magnitude.x) + fabs(player.magnitude.z) < maxSpeed) {
+        player.magnitude.z += 50 * xR * deltaTime;
+        player.magnitude.x -= 50 * zR * deltaTime;
+        holdKeys = true;
+    }
+    if (holdKeys == false) {
+        haltPlayerLerp(player, swappedNormals, deltaTime);
+    }
+    
+//    fmin(fmax(player.magnitude.x, -0.5), 0.5);
+//    fmin(fmax(player.magnitude.y, -0.5), 0.5);
+//    fmin(fmax(player.magnitude.z, -0.5), 0.5);
+    
+    // snapping camera to players location
+    player.camera.camPos.z = player.location.z;
+    player.camera.camPos.x = player.location.x;
+    player.camera.camPos.y = player.location.y+5; // head level
 }
 
 void moveLook(player& player1, float deltaTime, vector2 md) {

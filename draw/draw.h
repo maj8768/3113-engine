@@ -1,7 +1,7 @@
 
 // current
 void DrawPlaneGPU(planeMtx plane, camera cam, shaderStore shader, vector4 color, float scale);
-void Draw3DGPU(const triDomMesh& mesh, const camera& cam, shaderStore& shader, vector4 color, float scale);
+void Draw3DGPU(const meshedObject& object, const camera& cam, shaderStore& shader, vector4 color, float scale);
 
 
 // deprecated

@@ -149,13 +149,19 @@ struct camera {
     float fov;
 };
 
-// temp player for pong (should change for 3d movement + cam)
 struct player {
     vector3 location; // bind camera to this
     struct camera camera;
     planeMtx* model; // probably leave blank
     planeMtx* bounding; // top and bottom
     vector4 controls;
+    
+    vector3 magnitude;
+    vector3 newForce;
+    vector3* accelForces;
+    int maxAccelForces;
+    int accelForcesCount;
+    vector3 applyAccel;
 };
 
 struct world {
@@ -173,6 +179,14 @@ struct triDomMesh {
     tri* tris;
     int count;
 };
+
+struct meshedObject {
+    struct triDomMesh mesh;
+    planeMtx* collider;
+    int cPlaneCount;
+};
+
+void objToQuads(const char* path, planeMtx*& planes, int& planeCount);
 
 mtx44 mmult4(const mtx44&, const mtx44&);
 

@@ -1,5 +1,8 @@
 #include "util.h"
 #include <cmath>
+#include <cstdlib>
+#include <cstring>
+#include <iostream>
 #include <cstdio>
 
 vector4 modmmult(const mtx44& mat, const vector4& vec) {
@@ -114,4 +117,40 @@ float epsCheck(float val, float eps) {
 
 float getHypot(float a, float b) {
     return sqrtf(powf(a,2) + powf(b,2));
+}
+
+
+void objToQuads(const char* path, planeMtx*& planes, int& planeCount) {
+    FILE *file_ptr;
+    char buffer[100]; // A buffer to hold each line
+
+    // Open the file in read mode ("r")
+    file_ptr = fopen(path, "r");
+
+    // Check if the file opened successfully
+    if (file_ptr == NULL) {
+        perror("Error opening file");
+    }
+
+    // Read data from the file line by line and print to the console
+    while (fgets(buffer, 100, file_ptr) != NULL) {
+        if (buffer[0] == 'v' && buffer[1] == ' ') {
+            int i = 0;
+            char* word = strtok(buffer," ");
+            while (word != NULL) {
+                word = strtok(NULL, " ");
+                if (word != NULL) {
+                    float f = atof(word);
+                    std::cout << f << std::endl;
+                }
+            }
+        }
+        else if (buffer[0] == 'f') {
+            std::cout << "face" << std::endl;
+        }
+    }
+
+    // Close the file
+    fclose(file_ptr);
+
 }
