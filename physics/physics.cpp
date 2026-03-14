@@ -7,12 +7,11 @@
  *
  *
  */
-bool spherePlaneCollide(sphere_& sphere, planeMtx* plane, vector3& applyAcc, float conservationPercent, float deltaTime, int& target) {
-
-    vector3 p1 = {plane->m[0][0], plane->m[0][1], plane->m[0][2]};
-    vector3 p2 = {plane->m[1][0], plane->m[1][1], plane->m[1][2]};
-    vector3 p3 = {plane->m[2][0], plane->m[2][1], plane->m[2][2]};
-    vector3 p4 = {plane->m[3][0], plane->m[3][1], plane->m[3][2]};
+bool spherePlaneCollide(player& player, planeMtx plane, vector3& applyAcc, float conservationPercent, float deltaTime, int& target, bool invertedNormals) {
+    vector3 p1 = {plane.m[0][0], plane.m[0][1], plane.m[0][2]};
+    vector3 p2 = {plane.m[1][0], plane.m[1][1], plane.m[1][2]};
+    vector3 p3 = {plane.m[2][0], plane.m[2][1], plane.m[2][2]};
+    vector3 p4 = {plane.m[3][0], plane.m[3][1], plane.m[3][2]};
 
 
     vector3 v1 = p2 - p1;
@@ -25,10 +24,10 @@ bool spherePlaneCollide(sphere_& sphere, planeMtx* plane, vector3& applyAcc, flo
     float n2 = dot3(normal, normal);
     if (n2 < eps) return false;
 
-    vector3 post_impact_vel = normal.fmult(dot3(sphere.magnitude, normal) / n2);
+    vector3 post_impact_vel = normal.fmult(dot3(player.magnitude, normal) / n2);
 
-    float tplane = dot3(normal, sphere.location - p1) / n2;
-    vector3 proj = sphere.location - normal.fmult(tplane);
+    float tplane = dot3(normal, player.location - p1) / n2;
+    vector3 proj = player.location - normal.fmult(tplane);
 
     vector3 u = p2 - p1;
     vector3 v = p4 - p1;
@@ -56,31 +55,38 @@ bool spherePlaneCollide(sphere_& sphere, planeMtx* plane, vector3& applyAcc, flo
     }
 
     vector3 close_point = p1 + u.fmult(normedYD) + v.fmult(normedZD); // p1 coz its with respect to the plane
-    float distance = close_point.dist(sphere.location);
+    float signedDist = dot3(player.location - close_point, normal) / normal.mag();
     
     // old but still works
 
-    if (distance < sphere.size) {
+    // std::cout << "here" << std::endl;
+    // std::cout << distance << std::endl;
+    if (signedDist > -0.2f && signedDist < 0.2f) {
 
-        vector3 repos = close_point + normal.fmult(sphere.size / normal.mag());
+        vector3 repos = close_point + normal.fmult(-0.20001f / normal.mag());
 
-        sphere.location = repos;
+        player.location.x = repos.x;
+        player.location.z = repos.z;
 
-        sphere.magnitude.x -= post_impact_vel.x * (2) * conservationPercent;
-        sphere.magnitude.y -= post_impact_vel.y * (2) * conservationPercent;
-        sphere.magnitude.z -= post_impact_vel.z * (2) * conservationPercent; 
+        // player.magnitude.x -= post_impact_vel.x * (2) * conservationPercent;
+        // player.magnitude.y -= post_impact_vel.y * (2) * conservationPercent;
+        // player.magnitude.z -= post_impact_vel.z * (2) * conservationPercent; 
+        player.magnitude.x -= post_impact_vel.x * (1) * conservationPercent;
+        player.magnitude.y -= post_impact_vel.y * (1) * conservationPercent;
+        player.magnitude.z -= post_impact_vel.z * (1) * conservationPercent; 
 
         // handle non-physics related collision
-        (plane->action)(plane->id);
-        target = plane->id;
+        // (plane->action)(plane->id);
+        // target = plane->id;
 
-        if (plane->id == 0) {
+        // if (plane.id == 0) {
 
-            return false;
-        }
-        else {
-            return true;
-        }
+        //     return false;
+        // }
+        // else {
+        //     return true;
+        // }
+        return true;
     }
     return false;
 }
@@ -101,14 +107,15 @@ void applyAcceleration(vector3 newAccel, sphere_& sphere) {
     }
 }
 
-void processPhysics(float deltaTime, int frameRate, player& player, world& world, bool& end, int& target) {
+void processPhysics(float deltaTime, int frameRate, player& player, world& world, bool& end, int& target, bool invertedNormals) {
 
     bool acc = false;
 
     // checking flat collision for each plane in the world (probably should dynamically build this)
-//    for (int wtc = 0; wtc < world.planeCount; wtc++) {
-//        (spherePlaneCollide(sphere, world.planes[wtc], sphere.applyAccel, 1, deltaTime,target));
-//    }
+   for (int wtc = 0; wtc < world.planeCount; wtc++) {
+    // std::cout << wtc << std::endl;
+       (spherePlaneCollide(player, world.planes[wtc], player.applyAccel, 1, deltaTime,target, invertedNormals));
+   }
     // force transfer
 
     if (player.newForce.x !=0 || player.newForce.y !=0 || player.newForce.z !=0 || acc == true) {

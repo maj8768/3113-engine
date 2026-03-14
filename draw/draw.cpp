@@ -18,10 +18,10 @@ void Draw3DGPU(const meshedObject& object, const camera& cam, shaderStore& shade
 
     // SetShaderValue(shader.shader, shader.normalLoc, mesh.tris[i].n, SHADER_UNIFORM_VEC3);
     // int texSlot = 0;
-    SetShaderValueTexture(shader.shader, shader.texoLoc, shader.texo);
+    // SetShaderValueTexture(shader.shader, shader.texoLoc, object.texo);
     SetShaderValueMatrix(shader.shader, shader.vpLoc, ToRaylibMatrix(vp));
 
-    // rlSetTexture(shader.texo);
+    rlSetTexture(object.texo.id);
     rlBegin(RL_TRIANGLES);
     rlColor4ub(color.x, color.y, color.z, color.t);
     for (int i = 0; i < mesh.count; i++) {

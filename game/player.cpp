@@ -2,6 +2,7 @@
 #include "../draw/gui.h"
 #include <cmath>
 #include <iostream>
+#include <algorithm>
 #include "raylib.h"
 #include "../system/keyboard/keyboard.h"
 
@@ -27,29 +28,50 @@ void movePlayer(player& player, bool swappedNormals, float deltaTime, float maxS
     
     float xR = cos(player.camera.camTarget.x);
     float zR = sin(player.camera.camTarget.x);
-    
-    if (getAsyncKeyStateWrapper(player.controls.x) && fabs(player.magnitude.x) + fabs(player.magnitude.z) < maxSpeed) {
-        player.magnitude.x += 50 * xR * deltaTime; // the magic number is basically an accel
-        player.magnitude.z += 50 * zR * deltaTime;
+
+    float xS = -sin(player.camera.camTarget.x);
+    float zS =  cos(player.camera.camTarget.x);
+
+    float moveX = 0.0f;
+    float moveZ = 0.0f;
+
+    if (getAsyncKeyStateWrapper(player.controls.x)) {
+        moveX += xR;
+        moveZ += zR;
+    }
+    if (getAsyncKeyStateWrapper(player.controls.y)) {
+        moveX -= xS;
+        moveZ -= zS;
+    }
+    if (getAsyncKeyStateWrapper(player.controls.z)) {
+        moveX -= xR;
+        moveZ -= zR;
+    }
+    if (getAsyncKeyStateWrapper(player.controls.t)) {
+        moveX += xS;
+        moveZ += zS;
+    }
+
+    float len = std::sqrt(moveX * moveX + moveZ * moveZ);
+    if (len > 0.0f) {
+        // std::cout << "he" << std::endl;
+        moveX /= len;
+        moveZ /= len;
+        player.magnitude.x += 50.f * moveX * deltaTime;
+        player.magnitude.z += 50.f * moveZ * deltaTime;
         holdKeys = true;
     }
-    if (getAsyncKeyStateWrapper(player.controls.y) && fabs(player.magnitude.x) + fabs(player.magnitude.z) < maxSpeed) {
-        player.magnitude.z -= 50 * xR * deltaTime;
-        player.magnitude.x += 50 * zR * deltaTime;
-        holdKeys = true;
-    }
-    if (getAsyncKeyStateWrapper(player.controls.z) && fabs(player.magnitude.x) + fabs(player.magnitude.z) < maxSpeed) {
-        player.magnitude.x -= 50 * xR * deltaTime;
-        player.magnitude.z -= 50 * zR * deltaTime;
-        holdKeys = true;
-    }
-    if (getAsyncKeyStateWrapper(player.controls.t) && fabs(player.magnitude.x) + fabs(player.magnitude.z) < maxSpeed) {
-        player.magnitude.z += 50 * xR * deltaTime;
-        player.magnitude.x -= 50 * zR * deltaTime;
-        holdKeys = true;
-    }
+
     if (holdKeys == false) {
         haltPlayerLerp(player, swappedNormals, deltaTime);
+    }
+    float speed = std::sqrt(player.magnitude.x * player.magnitude.x +
+                            player.magnitude.z * player.magnitude.z);
+
+    if (speed > maxSpeed) {
+        float scale = maxSpeed / speed;
+        player.magnitude.x *= scale;
+        player.magnitude.z *= scale;
     }
     
 //    fmin(fmax(player.magnitude.x, -0.5), 0.5);

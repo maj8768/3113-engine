@@ -120,33 +120,82 @@ float getHypot(float a, float b) {
 }
 
 
-void objToQuads(const char* path, planeMtx*& planes, int& planeCount) {
-    FILE *file_ptr;
-    char buffer[100]; // A buffer to hold each line
 
-    // Open the file in read mode ("r")
+void objToQuads(const char* path, meshedObject& mesh, float scale) {
+    int vertexCount = 0;
+    int faceCount = 0;
+    FILE *file_ptr;
+    char buffer[100];
+
     file_ptr = fopen(path, "r");
 
-    // Check if the file opened successfully
     if (file_ptr == NULL) {
         perror("Error opening file");
     }
 
-    // Read data from the file line by line and print to the console
+    // unfortunate first pass
     while (fgets(buffer, 100, file_ptr) != NULL) {
         if (buffer[0] == 'v' && buffer[1] == ' ') {
-            int i = 0;
-            char* word = strtok(buffer," ");
-            while (word != NULL) {
-                word = strtok(NULL, " ");
-                if (word != NULL) {
-                    float f = atof(word);
-                    std::cout << f << std::endl;
-                }
-            }
+            vertexCount++;
         }
         else if (buffer[0] == 'f') {
-            std::cout << "face" << std::endl;
+            faceCount++;
+        }
+    }
+
+    float m[vertexCount][4][3];
+    mesh.cPlaneCount = faceCount;
+    mesh.collider = new planeMtx[faceCount];
+
+    fseek(file_ptr, 0, SEEK_SET);
+
+    // unfortunate second pass
+    /*
+        struct planeMtx {
+            float m[4][3];
+            Color color;
+            // float textureArea[4][2];
+            Texture2D texture;
+            int id;
+            void (*action)(int);
+        };
+    */
+    while (fgets(buffer, 100, file_ptr) != NULL) {
+        // std::cout << "here2" << std::endl;
+        if (buffer[0] == 'v' && buffer[1] == ' ') {
+            static int vertexIndex = 0;
+
+            char* word = strtok(buffer, " ");
+            int coord = 0;
+
+            while ((word = strtok(NULL, " ")) != NULL && coord < 3)
+            {
+                float f = atof(word);
+                m[vertexIndex][0][coord] = f * scale;
+                // std::cout << f << std::endl;
+                coord++;
+            }
+
+            vertexIndex++;
+        }
+        else if (buffer[0] == 'f' && buffer[1] == ' ') {
+            static int faceIndex = 0;
+
+            char* word = strtok(buffer, " ");
+            int vertInFace = 0;
+
+            while ((word = strtok(NULL, " ")) != NULL && vertInFace < 4)
+            {
+                int idx = atoi(word) - 1;
+
+                mesh.collider[faceIndex].m[vertInFace][0] = m[idx][0][0];
+                mesh.collider[faceIndex].m[vertInFace][1] = m[idx][0][1];
+                mesh.collider[faceIndex].m[vertInFace][2] = m[idx][0][2];
+
+                vertInFace++;
+            }
+
+            faceIndex++;
         }
     }
 

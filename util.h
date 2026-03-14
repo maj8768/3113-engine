@@ -6,7 +6,6 @@ constexpr int SCREEN_WIDTH        = 1000,
               SCREEN_HEIGHT       = 600,
                 FPS               = 0;
                 
-
 constexpr float eps = 1e-6;
 
 
@@ -28,7 +27,6 @@ struct shaderStore {
     int normalLoc;
     int texoLoc;
     int vpLoc;
-    Texture2D texo;
 };
 
 struct pyramidMtx {
@@ -165,7 +163,7 @@ struct player {
 };
 
 struct world {
-    planeMtx** planes;
+    planeMtx* planes;
     int planeCount;
 };
 
@@ -184,9 +182,11 @@ struct meshedObject {
     struct triDomMesh mesh;
     planeMtx* collider;
     int cPlaneCount;
+    float scale;
+    Texture2D texo;
 };
 
-void objToQuads(const char* path, planeMtx*& planes, int& planeCount);
+void objToQuads(const char* path, meshedObject& mesh, float scale);
 
 mtx44 mmult4(const mtx44&, const mtx44&);
 

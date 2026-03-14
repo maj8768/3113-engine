@@ -105,13 +105,13 @@ void RawMouseGetDelta(float& dx, float& dy)
 }
 
 void pumpMessages() {
-MSG msg;
-int limit = 50; // process at most 10 messages per frame
-while (limit-- && PeekMessage(&msg, nullptr, 0, 0, PM_REMOVE))
-{
-    TranslateMessage(&msg);
-    DispatchMessage(&msg);
-}
+    MSG msg;
+    int limit = 50; // process at most 10 messages per frame
+    while (limit-- && PeekMessage(&msg, nullptr, 0, 0, PM_REMOVE))
+    {
+        TranslateMessage(&msg);
+        DispatchMessage(&msg);
+    }
 }
 
 #endif

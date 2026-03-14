@@ -115,9 +115,14 @@ static Vector4 lightColor = { 0.447, 0.816, 0.922, 1.0f };
 static float ambient  = 0.05f;
 
 static meshedObject ship;
+static meshedObject control;
 
 static bool iamreal = false;
 static int iamalsoreal = 1;
+
+static Texture2D con1;
+static Texture2D con2;
+static Texture2D con3;
 
 // static camera cam = {
 //     .camPos = { 5, 5, 5 },  // up and back
@@ -194,12 +199,11 @@ void createPlane(planeMtx& plane, int id, vector3 location, float dimensions[4][
     plane.color = BLACK;
 }
 
-void create3dObject(meshedObject& object, const char* path, shaderStore& shader) {
+void create3dObject(meshedObject& object, const char* path, const char* colliderPath, bool collider, shaderStore& shader, float scale, vector3 location) {
     triDomMesh mesh;
-    planeMtx* planes;
-    int planeCount;
+    object.scale = scale;
+    if (collider) objToQuads(colliderPath, object, scale);
     Model model = LoadModel(path);
-    objToQuads("resources/ship_collider.obj", planes, planeCount);
     mesh.count = 0;
     mesh.tris  = (tri*)malloc(model.meshes[0].triangleCount * sizeof(tri));
     for (int j = 0; j < 5; j++) {  // just first 5 tris
@@ -208,15 +212,15 @@ void create3dObject(meshedObject& object, const char* path, shaderStore& shader)
     for (int i = 0; i < model.meshCount; i++) {
         Mesh* m = &model.meshes[i];
         Texture2D tex = model.materials[model.meshMaterial[i]].maps[MATERIAL_MAP_DIFFUSE].texture;
-        shader.texo = tex;
         // Texture2D tex = model.materials[model.meshMaterialId[i]].maps[MAP_DIFFUSE].texture;
+        object.texo = tex;
         for (int j = 0; j < m->triangleCount; j++) {
             tri t;
             int vi = j * 9; // splits by 3 verts and then by 3 coords
             int uv = j * 6; // split by 3verts and then by 2uv coords
-            t.v[0] = { m->vertices[vi+0], m->vertices[vi+1], m->vertices[vi+2] };
-            t.v[1] = { m->vertices[vi+3], m->vertices[vi+4], m->vertices[vi+5] };
-            t.v[2] = { m->vertices[vi+6], m->vertices[vi+7], m->vertices[vi+8] };
+            t.v[0] = { m->vertices[vi+0] + location.x, m->vertices[vi+1] + location.y, m->vertices[vi+2] + location.z };
+            t.v[1] = { m->vertices[vi+3] + location.x, m->vertices[vi+4] + location.y, m->vertices[vi+5] + location.z };
+            t.v[2] = { m->vertices[vi+6] + location.x, m->vertices[vi+7] + location.y, m->vertices[vi+8] + location.z };
             t.n[0] = { m->normals[vi+0],  m->normals[vi+1],  m->normals[vi+2]  };
             t.n[1] = { m->normals[vi+3],  m->normals[vi+4],  m->normals[vi+5]  };
             t.n[2] = { m->normals[vi+6],  m->normals[vi+7],  m->normals[vi+8]  };
@@ -281,8 +285,17 @@ void initialise()
     w2sShader.texoLoc = GetShaderLocation(w2sShader.shader, "uTexo");
     w2sShader.vpLoc = GetShaderLocation(w2sShader.shader, "uVP");
     
+    con1 = LoadTexture("resources/panel1_1.png");
+    con2 = LoadTexture("resources/panel1_2.png");
+    con3 = LoadTexture("resources/panel1_3.png");
 
-    create3dObject(ship, "resources/ship.obj", w2sShader);
+    create3dObject(ship, "resources/ship.obj", "resources/ship_collider.obj", true, w2sShader, 3.f, {0.f,0.f,0.f});
+    create3dObject(control, "resources/control.obj", "", false, w2sShader, 1.f,{0.f,0.25f,-3.8f});
+
+    // std::cout << ship.collider[0].m[0][0];
+
+    worldInstance.planes = ship.collider;
+    worldInstance.planeCount = ship.cPlaneCount; 
 
     // w2sShader = { w2s, SHADER_LOC_MATRIX_MVP, SHADER_LOC_COLOR_DIFFUSE, GetShaderLocation(w2s, "uLightDir") };
 }
@@ -310,9 +323,21 @@ void update() {
     float deltaTime = ticks - gPreviousTicks; // step 2
     gPreviousTicks = ticks;                   // step 3
 
-    i += deltaTime;
+    i += deltaTime * g;
+
+    if (i >= 1 || i <= -1) g *= -1;
 
     lightPos.y = 4.5f + 1.f * sinf(i);
+
+    std::cout << i << std::endl;
+
+    if (i > .5) {
+        control.texo = con1;
+    }
+    else if (i > -0.5) {
+        control.texo = con2;
+    }
+    else control.texo = con3;
 
     // std::cout << i << std::endl;
     vector2 md;
@@ -320,23 +345,23 @@ void update() {
     moveLook(player1, deltaTime, md);
     movePlayer(player1, false, deltaTime, 10);
     // void processPhysics(float deltaTime, int frameRate, player& player, world& world, bool& end, int& target)
-    processPhysics(deltaTime, 0, player1, worldInstance, iamreal, iamalsoreal);
+    processPhysics(deltaTime, 0, player1, worldInstance, iamreal, iamalsoreal, false);
 //    std::cout << player1.magnitude.x << std::endl;
 
     // std::cout << "dx: " << md.x << " dy: " << md.y << std::endl;
 
-//if (currentTime - previousTime >= .1) {
-//    // Calculate FPS
-//    double fps = (double)frameCount / (currentTime - previousTime);
-//
-//    // Display the FPS (e.g., in the window title)
-//    std::cout << "[" << fps << " FPS]" << std::endl;
-//    // glfwSetWindowTitle(pWindow, ss.str().c_str()); // Replace pWindow with your GLFWwindow pointer
-//
-//    // Reset the counter and time
-//    frameCount = 0;
-//    previousTime = currentTime;
-//}
+if (currentTime - previousTime >= .1) {
+   // Calculate FPS
+   double fps = (double)frameCount / (currentTime - previousTime);
+
+   // Display the FPS (e.g., in the window title)
+   std::cout << "[" << fps << " FPS]" << std::endl;
+   // glfwSetWindowTitle(pWindow, ss.str().c_str()); // Replace pWindow with your GLFWwindow pointer
+
+   // Reset the counter and time
+   frameCount = 0;
+   previousTime = currentTime;
+}
 }
 
 void render()
@@ -357,7 +382,8 @@ void render()
     SetShaderValue(w2sShader.shader, w2sShader.lightColorLoc, &lightColor, SHADER_UNIFORM_VEC4);
     SetShaderValue(w2sShader.shader, w2sShader.ambientLoc, &ambient, SHADER_UNIFORM_FLOAT);
 
-    Draw3DGPU(ship, player1.camera, w2sShader, {255, 0, 0, 255}, 3.f);
+    Draw3DGPU(ship, player1.camera, w2sShader, {255, 0, 0, 255}, ship.scale);
+    Draw3DGPU(control, player1.camera, w2sShader, {255, 0, 0, 255}, control.scale);
 
     EndShaderMode();
 
@@ -385,16 +411,14 @@ int main(void)
 
     while (gAppStatus == RUNNING)
     {
-        // PollInputEvents();
-        // processInput();
-        #ifdef _WIN32
-            pumpMessages();
-        #endif
         update();
         BeginDrawing();
         render();
         EndDrawing();
-//        SwapScreenBuffer();
+        #ifdef _WIN32
+            SwapScreenBuffer();
+            pumpMessages();
+        #endif
     }
 
     RawMouseShutdown();
