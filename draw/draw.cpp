@@ -16,12 +16,15 @@ void Draw3DGPU(const meshedObject& object, const camera& cam, shaderStore& shade
     mtx44 proj = projMtx44(cam.fov, cam.aspect, 0.1f, 1000.0f);
     mtx44 vp   = mmult4(proj, view);
 
-    // SetShaderValue(shader.shader, shader.normalLoc, mesh.tris[i].n, SHADER_UNIFORM_VEC3);
-    // int texSlot = 0;
-    // SetShaderValueTexture(shader.shader, shader.texoLoc, object.texo);
+    
+    rlDrawRenderBatchActive(); // flush texture and load new
+    
+    SetShaderValueTexture(shader.shader, shader.texoLoc, object.texo);
+//    SetShaderValue(shader.shader, shader.texoLoc, object.texo.id, SHADER_UNIFORM_SAMPLER2D);
     SetShaderValueMatrix(shader.shader, shader.vpLoc, ToRaylibMatrix(vp));
 
-    rlSetTexture(object.texo.id);
+//    rlSetTexture(object.texo.id);
+//    std::cout << object.texo.id << std::endl;
     rlBegin(RL_TRIANGLES);
     rlColor4ub(color.x, color.y, color.z, color.t);
     for (int i = 0; i < mesh.count; i++) {
@@ -51,6 +54,7 @@ void Draw3DGPU(const meshedObject& object, const camera& cam, shaderStore& shade
     }
     rlEnd();
     // rlSetTexture(0);
+//    SetShaderValueTexture(shader.shader, shader.texoLoc, );
 }
 
 void DrawPlaneGPU(planeMtx plane, camera cam, shaderStore shader, vector4 color, float scale) {

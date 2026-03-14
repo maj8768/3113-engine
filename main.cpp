@@ -66,6 +66,9 @@
  *
  */
 
+int thrust[] = { 249, 250, 119, 120 };
+int alt[] = { 99, 101, 227, 229};
+int fuel[] = { 47, 49, 173, 174 };
 
 
 float p = 200;
@@ -116,6 +119,8 @@ static float ambient  = 0.05f;
 
 static meshedObject ship;
 static meshedObject control;
+static meshedObject data;
+static meshedObject cheese;
 
 static bool iamreal = false;
 static int iamalsoreal = 1;
@@ -123,6 +128,10 @@ static int iamalsoreal = 1;
 static Texture2D con1;
 static Texture2D con2;
 static Texture2D con3;
+
+gameData gData = {
+    0.f,0.f,0.f
+};
 
 // static camera cam = {
 //     .camPos = { 5, 5, 5 },  // up and back
@@ -155,7 +164,7 @@ void initializePlayer(player& player1) {
     DisableCursor();
     // SetMousePosition(SCREEN_WIDTH/2, SCREEN_HEIGHT/2);
 
-    player1.location = {0,0,0};
+    player1.pEntity.location = {0,0,0};
     player1.camera.camPos = {0,5,0};
     player1.camera.camTarget = {M_PI/2.f,0,0};
     player1.camera.up = {0,1,0};
@@ -202,10 +211,17 @@ void createPlane(planeMtx& plane, int id, vector3 location, float dimensions[4][
 void create3dObject(meshedObject& object, const char* path, const char* colliderPath, bool collider, shaderStore& shader, float scale, vector3 location) {
     triDomMesh mesh;
     object.scale = scale;
+    object.pEntity.location = location;
     if (collider) objToQuads(colliderPath, object, scale);
     Model model = LoadModel(path);
+    int totalTriangles = 0;
+    for (int i = 0; i < model.meshCount; i++) {
+        totalTriangles += model.meshes[i].triangleCount;
+    }
+
+    mesh.tris  = (tri*)malloc(totalTriangles * sizeof(tri));
+    mesh.trisO = (tri*)malloc(totalTriangles * sizeof(tri));
     mesh.count = 0;
-    mesh.tris  = (tri*)malloc(model.meshes[0].triangleCount * sizeof(tri));
     for (int j = 0; j < 5; j++) {  // just first 5 tris
     int uv = j * 6;
 }
@@ -216,18 +232,31 @@ void create3dObject(meshedObject& object, const char* path, const char* collider
         object.texo = tex;
         for (int j = 0; j < m->triangleCount; j++) {
             tri t;
+            tri ot;
             int vi = j * 9; // splits by 3 verts and then by 3 coords
             int uv = j * 6; // split by 3verts and then by 2uv coords
-            t.v[0] = { m->vertices[vi+0] + location.x, m->vertices[vi+1] + location.y, m->vertices[vi+2] + location.z };
-            t.v[1] = { m->vertices[vi+3] + location.x, m->vertices[vi+4] + location.y, m->vertices[vi+5] + location.z };
-            t.v[2] = { m->vertices[vi+6] + location.x, m->vertices[vi+7] + location.y, m->vertices[vi+8] + location.z };
+            t.v[0] = { m->vertices[vi+0] + object.pEntity.location.x, m->vertices[vi+1] + object.pEntity.location.y, m->vertices[vi+2] + object.pEntity.location.z };
+            t.v[1] = { m->vertices[vi+3] + object.pEntity.location.x, m->vertices[vi+4] + object.pEntity.location.y, m->vertices[vi+5] + object.pEntity.location.z };
+            t.v[2] = { m->vertices[vi+6] + object.pEntity.location.x, m->vertices[vi+7] + object.pEntity.location.y, m->vertices[vi+8] + object.pEntity.location.z };
             t.n[0] = { m->normals[vi+0],  m->normals[vi+1],  m->normals[vi+2]  };
             t.n[1] = { m->normals[vi+3],  m->normals[vi+4],  m->normals[vi+5]  };
             t.n[2] = { m->normals[vi+6],  m->normals[vi+7],  m->normals[vi+8]  };
             t.t[0] = { m->texcoords[uv+0],  m->texcoords[uv+1]  };
             t.t[1] = { m->texcoords[uv+2],  m->texcoords[uv+3]  };
             t.t[2] = { m->texcoords[uv+4],  m->texcoords[uv+5]  };
-            mesh.tris[mesh.count++] = t;
+            
+            ot.v[0] = { m->vertices[vi+0], m->vertices[vi+1], m->vertices[vi+2] };
+            ot.v[1] = { m->vertices[vi+3], m->vertices[vi+4], m->vertices[vi+5] };
+            ot.v[2] = { m->vertices[vi+6], m->vertices[vi+7], m->vertices[vi+8] };
+            ot.n[0] = { m->normals[vi+0],  m->normals[vi+1],  m->normals[vi+2]  };
+            ot.n[1] = { m->normals[vi+3],  m->normals[vi+4],  m->normals[vi+5]  };
+            ot.n[2] = { m->normals[vi+6],  m->normals[vi+7],  m->normals[vi+8]  };
+            ot.t[0] = { m->texcoords[uv+0],  m->texcoords[uv+1]  };
+            ot.t[1] = { m->texcoords[uv+2],  m->texcoords[uv+3]  };
+            ot.t[2] = { m->texcoords[uv+4],  m->texcoords[uv+5]  };
+            mesh.tris[mesh.count] = t;
+            mesh.trisO[mesh.count] = ot;
+            mesh.count++;
         }
     }
     // std::cout << "v count: " << mesh.count << std::endl;
@@ -291,6 +320,13 @@ void initialise()
 
     create3dObject(ship, "resources/ship.obj", "resources/ship_collider.obj", true, w2sShader, 3.f, {0.f,0.f,0.f});
     create3dObject(control, "resources/control.obj", "", false, w2sShader, 1.f,{0.f,0.25f,-3.8f});
+    create3dObject(data, "resources/data.obj", "", false, w2sShader, 1.2f,{-0.66f,0.f,2.33f});
+    create3dObject(cheese, "resources/cheese.obj", "", false, w2sShader, 12.f,{0.f,-10.f,0.f});
+    
+    initializePhysicsEntity(cheese.pEntity, 3);
+    initializePhysicsEntity(player1.pEntity, 3);
+    
+    applyAcceleration({0.f,2.f,0.f},cheese.pEntity);
 
     // std::cout << ship.collider[0].m[0][0];
 
@@ -329,7 +365,7 @@ void update() {
 
     lightPos.y = 4.5f + 1.f * sinf(i);
 
-    std::cout << i << std::endl;
+//    std::cout << i << std::endl;
 
     if (i > .5) {
         control.texo = con1;
@@ -338,15 +374,28 @@ void update() {
         control.texo = con2;
     }
     else control.texo = con3;
-
+    
+    int fuelTarget = 0;
+    
+    if (cheese.pEntity.location.y > -0.1) {
+        cheese.pEntity.location.y = -0.1;
+    }
+    
+    moveUVs(data.mesh, deltaTime, fuel, 4, -.01f);
+    moveUVs(data.mesh, deltaTime, alt, 4, .01f);
+    moveUVs(data.mesh, deltaTime, thrust, 4, -.01f);
+    
     // std::cout << i << std::endl;
     vector2 md;
     RawMouseGetDelta(md.x, md.y);
     moveLook(player1, deltaTime, md);
-    movePlayer(player1, false, deltaTime, 10);
+    movePlayer(gData, player1, false, deltaTime, 10);
     // void processPhysics(float deltaTime, int frameRate, player& player, world& world, bool& end, int& target)
-    processPhysics(deltaTime, 0, player1, worldInstance, iamreal, iamalsoreal, false);
-//    std::cout << player1.magnitude.x << std::endl;
+    processPhysics(deltaTime, 0, player1.pEntity, worldInstance, iamreal, iamalsoreal, false, true);
+    processPhysics(deltaTime, 0, cheese.pEntity, worldInstance, iamreal, iamalsoreal, false, false);
+    applyForce({0.f,gData.thrustY,0.f}, cheese.pEntity);
+
+    updateEntityLocation(cheese);
 
     // std::cout << "dx: " << md.x << " dy: " << md.y << std::endl;
 
@@ -355,7 +404,7 @@ if (currentTime - previousTime >= .1) {
    double fps = (double)frameCount / (currentTime - previousTime);
 
    // Display the FPS (e.g., in the window title)
-   std::cout << "[" << fps << " FPS]" << std::endl;
+//   std::cout << "[" << fps << " FPS]" << std::endl;
    // glfwSetWindowTitle(pWindow, ss.str().c_str()); // Replace pWindow with your GLFWwindow pointer
 
    // Reset the counter and time
@@ -384,6 +433,9 @@ void render()
 
     Draw3DGPU(ship, player1.camera, w2sShader, {255, 0, 0, 255}, ship.scale);
     Draw3DGPU(control, player1.camera, w2sShader, {255, 0, 0, 255}, control.scale);
+    Draw3DGPU(data, player1.camera, w2sShader, {255, 0, 0, 255}, data.scale);
+    Draw3DGPU(cheese, player1.camera, w2sShader, {255, 0, 0, 255}, cheese.scale);
+//    DrawPlaneGPU(plane, player1.camera, w2sShader, {1.f,0.f,0.f,1.f}, 25.f);
 
     EndShaderMode();
 

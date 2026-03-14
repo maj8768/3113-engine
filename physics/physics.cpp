@@ -7,7 +7,7 @@
  *
  *
  */
-bool spherePlaneCollide(player& player, planeMtx plane, vector3& applyAcc, float conservationPercent, float deltaTime, int& target, bool invertedNormals) {
+bool spherePlaneCollide(physicsEntity& player, planeMtx plane, vector3& applyAcc, float conservationPercent, float deltaTime, int& target, bool invertedNormals) {
     vector3 p1 = {plane.m[0][0], plane.m[0][1], plane.m[0][2]};
     vector3 p2 = {plane.m[1][0], plane.m[1][1], plane.m[1][2]};
     vector3 p3 = {plane.m[2][0], plane.m[2][1], plane.m[2][2]};
@@ -91,54 +91,91 @@ bool spherePlaneCollide(player& player, planeMtx plane, vector3& applyAcc, float
     return false;
 }
 
-void applyForce(vector3 newForce, sphere_& sphere) {
-    sphere.newForce = newForce;
+void applyForce(vector3 newForce, physicsEntity& pEntity) {
+    pEntity.newForce = newForce;
 }
 
-void applyAcceleration(vector3 newAccel, sphere_& sphere) {
-    if (sphere.accelForcesCount < sphere.maxAccelForces) {
-        sphere.accelForces[sphere.accelForcesCount] = newAccel;
-        sphere.accelForcesCount += 1;
-        std::cout << "you have applied: " << sphere.accelForcesCount << " forces." <<std::endl;
+void applyAcceleration(vector3 newAccel, physicsEntity& pEntity) {
+    if (pEntity.accelForcesCount < pEntity.maxAccelForces) {
+        pEntity.accelForces[pEntity.accelForcesCount] = newAccel;
+        pEntity.accelForcesCount += 1;
+        std::cout << pEntity.accelForcesCount << std::endl;
+        std::cout << "you have applied: " << pEntity.accelForcesCount << " forces." <<std::endl;
     }
     else {
         std::cout << "maximum number of constant accels applied, you are probably misusing this." << std::endl;
-        std::cout << "you have applied: " << sphere.maxAccelForces << " forces." <<std::endl;
+        std::cout << "you have applied: " << pEntity.maxAccelForces << " forces." <<std::endl;
     }
 }
 
-void processPhysics(float deltaTime, int frameRate, player& player, world& world, bool& end, int& target, bool invertedNormals) {
-
+void processPhysics(float deltaTime, int frameRate, physicsEntity& pEntity, world& world, bool& end, int& target, bool invertedNormals, bool collide) {
     bool acc = false;
-
+    
     // checking flat collision for each plane in the world (probably should dynamically build this)
-   for (int wtc = 0; wtc < world.planeCount; wtc++) {
-    // std::cout << wtc << std::endl;
-       (spherePlaneCollide(player, world.planes[wtc], player.applyAccel, 1, deltaTime,target, invertedNormals));
-   }
+    if (collide) {
+        for (int wtc = 0; wtc < world.planeCount; wtc++) {
+            // std::cout << wtc << std::endl;
+            (spherePlaneCollide(pEntity, world.planes[wtc], pEntity.applyAccel, 1, deltaTime,target, invertedNormals));
+        }
+    }
     // force transfer
 
-    if (player.newForce.x !=0 || player.newForce.y !=0 || player.newForce.z !=0 || acc == true) {
-        player.magnitude.x += player.newForce.x;
-        player.magnitude.y += player.newForce.y;
-        player.magnitude.z += player.newForce.z;
+    if (pEntity.newForce.x !=0 || pEntity.newForce.y !=0 || pEntity.newForce.z !=0 || acc == true) {
+        pEntity.magnitude.x += pEntity.newForce.x * deltaTime;
+        pEntity.magnitude.y += pEntity.newForce.y * deltaTime;
+        pEntity.magnitude.z += pEntity.newForce.z * deltaTime;
         
-        player.newForce.murder();
+        pEntity.newForce.murder();
     }
     // acceleration
-    if (player.accelForcesCount != 0) {
+    if (pEntity.accelForcesCount != 0) {
         acc = true;
-        for (int i = 0; i < player.accelForcesCount; i++) {
+        for (int i = 0; i < pEntity.accelForcesCount; i++) {
             // std::cout << "delta: " << deltaTime << std::endl;
-            
-            player.magnitude.x += player.accelForces[i].x * player.applyAccel.x * deltaTime;
-            player.magnitude.y += player.accelForces[i].y * player.applyAccel.y * deltaTime;
-            player.magnitude.z += player.accelForces[i].z * player.applyAccel.z * deltaTime;
+            std::cout << pEntity.applyAccel.y << std::endl;
+            pEntity.magnitude.x += pEntity.accelForces[i].x * pEntity.applyAccel.x * deltaTime;
+            pEntity.magnitude.y += pEntity.accelForces[i].y * pEntity.applyAccel.y * deltaTime;
+            pEntity.magnitude.z += pEntity.accelForces[i].z * pEntity.applyAccel.z * deltaTime;
         }
     }
 
-    player.location.x += player.magnitude.x * deltaTime;
-    player.location.y += player.magnitude.y * deltaTime;
-    player.location.z += player.magnitude.z * deltaTime;
+    pEntity.location.x += pEntity.magnitude.x * deltaTime;
+    pEntity.location.y += pEntity.magnitude.y * deltaTime;
+    pEntity.location.z += pEntity.magnitude.z * deltaTime;
 
+}
+
+/*
+ vector3 magnitude; // should make this substruct
+ vector3 newForce;
+ vector3* accelForces;
+ int maxAccelForces;
+ int accelForcesCount;
+ vector3 applyAccel;
+ */
+void initializePhysicsEntity(physicsEntity& pEntity, int maxAccelForces) {
+    pEntity.accelForces = new vector3[maxAccelForces];
+    pEntity.maxAccelForces = maxAccelForces;
+    pEntity.accelForcesCount = 0;
+    pEntity.applyAccel = {1.f, 1.f, 1.f};
+    pEntity.newForce = {0.f, 0.f, 0.f};
+    pEntity.magnitude = {0.f, 0.f, 0.f};
+}
+
+void updateEntityLocation(meshedObject& object) {
+    std::cout << object.pEntity.location.y << std::endl;
+//    std::cout << object.mesh.trisO[0].v[1] << std::endl;
+    for (int i = 0; i < object.mesh.count; i++) {
+        for (int j = 0; j < 3; j++) {
+            object.mesh.tris[i].v[j].x = object.mesh.trisO[i].v[j].x + object.pEntity.location.x;
+            object.mesh.tris[i].v[j].y = object.mesh.trisO[i].v[j].y + object.pEntity.location.y;
+            object.mesh.tris[i].v[j].z = object.mesh.trisO[i].v[j].z + object.pEntity.location.z;
+        }
+    }
+//    std::cout << object.mesh.tris[0].v[1] << std::endl;
+    
+}
+
+void intializePEntityLocation(meshedObject& object) {
+    
 }

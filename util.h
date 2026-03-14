@@ -8,6 +8,11 @@ constexpr int SCREEN_WIDTH        = 1000,
                 
 constexpr float eps = 1e-6;
 
+struct gameData {
+    float fuel;
+    float thrustY;
+    float alt;
+};
 
 struct triangleMtx {
     float x1, y1, z1;
@@ -147,19 +152,23 @@ struct camera {
     float fov;
 };
 
-struct player {
-    vector3 location; // bind camera to this
-    struct camera camera;
-    planeMtx* model; // probably leave blank
-    planeMtx* bounding; // top and bottom
-    vector4 controls;
-    
+struct physicsEntity {
+    vector3 location;
     vector3 magnitude;
     vector3 newForce;
     vector3* accelForces;
     int maxAccelForces;
     int accelForcesCount;
     vector3 applyAccel;
+};
+
+struct player {
+    struct camera camera;
+    planeMtx* model; // probably leave blank
+    planeMtx* bounding; // top and bottom
+    vector4 controls;
+
+    struct physicsEntity pEntity;
 };
 
 struct world {
@@ -174,6 +183,7 @@ struct tri {
 };
 
 struct triDomMesh {
+    tri* trisO;
     tri* tris;
     int count;
 };
@@ -184,7 +194,11 @@ struct meshedObject {
     int cPlaneCount;
     float scale;
     Texture2D texo;
+    
+    struct physicsEntity pEntity;
 };
+
+
 
 void objToQuads(const char* path, meshedObject& mesh, float scale);
 
@@ -215,3 +229,5 @@ float epsCheck(float val, float eps);
 vector3 transformToNDC(const mtx44& vp, float x, float y, float z);
 
 float getHypot(float a, float b);
+
+void moveUVs(triDomMesh& mesh, float deltaTime, int* coords, int coordcount, float adjustment);

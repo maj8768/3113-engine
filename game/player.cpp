@@ -7,22 +7,22 @@
 #include "../system/keyboard/keyboard.h"
 
 void haltPlayerLerp(player& player, bool swappedNormals, float deltaTime) {
-    player.magnitude.x = player.magnitude.x * (1 - deltaTime * 10.f);
-    player.magnitude.y = player.magnitude.y * (1 - deltaTime * 10.f);
-    player.magnitude.z = player.magnitude.z * (1 - deltaTime * 10.f);
+    player.pEntity.magnitude.x = player.pEntity.magnitude.x * (1 - deltaTime * 10.f);
+    player.pEntity.magnitude.y = player.pEntity.magnitude.y * (1 - deltaTime * 10.f);
+    player.pEntity.magnitude.z = player.pEntity.magnitude.z * (1 - deltaTime * 10.f);
     
-    if (abs(player.magnitude.x) < 0.02f) {
-        player.magnitude.x = 0;
+    if (abs(player.pEntity.magnitude.x) < 0.02f) {
+        player.pEntity.magnitude.x = 0;
     }
-    if (abs(player.magnitude.y) < 0.02f) {
-        player.magnitude.y = 0;
+    if (abs(player.pEntity.magnitude.y) < 0.02f) {
+        player.pEntity.magnitude.y = 0;
     }
-    if (abs(player.magnitude.z) < 0.02f) {
-        player.magnitude.z = 0;
+    if (abs(player.pEntity.magnitude.z) < 0.02f) {
+        player.pEntity.magnitude.z = 0;
     }
 }
 
-void movePlayer(player& player, bool swappedNormals, float deltaTime, float maxSpeed) {
+void movePlayer(gameData& gData, player& player, bool swappedNormals, float deltaTime, float maxSpeed) {
 
     bool holdKeys = false;
     
@@ -51,27 +51,33 @@ void movePlayer(player& player, bool swappedNormals, float deltaTime, float maxS
         moveX += xS;
         moveZ += zS;
     }
+    if (getAsyncKeyStateWrapper(KEY_SPACE)) {
+        gData.thrustY = -2.5;
+    }
+    else {
+        gData.thrustY = 0.f;
+    }
 
     float len = std::sqrt(moveX * moveX + moveZ * moveZ);
     if (len > 0.0f) {
         // std::cout << "he" << std::endl;
         moveX /= len;
         moveZ /= len;
-        player.magnitude.x += 50.f * moveX * deltaTime;
-        player.magnitude.z += 50.f * moveZ * deltaTime;
+        player.pEntity.magnitude.x += 50.f * moveX * deltaTime;
+        player.pEntity.magnitude.z += 50.f * moveZ * deltaTime;
         holdKeys = true;
     }
 
     if (holdKeys == false) {
         haltPlayerLerp(player, swappedNormals, deltaTime);
     }
-    float speed = std::sqrt(player.magnitude.x * player.magnitude.x +
-                            player.magnitude.z * player.magnitude.z);
+    float speed = std::sqrt(player.pEntity.magnitude.x * player.pEntity.magnitude.x +
+                            player.pEntity.magnitude.z * player.pEntity.magnitude.z);
 
     if (speed > maxSpeed) {
         float scale = maxSpeed / speed;
-        player.magnitude.x *= scale;
-        player.magnitude.z *= scale;
+        player.pEntity.magnitude.x *= scale;
+        player.pEntity.magnitude.z *= scale;
     }
     
 //    fmin(fmax(player.magnitude.x, -0.5), 0.5);
@@ -79,9 +85,9 @@ void movePlayer(player& player, bool swappedNormals, float deltaTime, float maxS
 //    fmin(fmax(player.magnitude.z, -0.5), 0.5);
     
     // snapping camera to players location
-    player.camera.camPos.z = player.location.z;
-    player.camera.camPos.x = player.location.x;
-    player.camera.camPos.y = player.location.y+5; // head level
+    player.camera.camPos.z = player.pEntity.location.z;
+    player.camera.camPos.x = player.pEntity.location.x;
+    player.camera.camPos.y = player.pEntity.location.y+5; // head level
 }
 
 void moveLook(player& player1, float deltaTime, vector2 md) {

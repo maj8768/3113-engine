@@ -203,3 +203,16 @@ void objToQuads(const char* path, meshedObject& mesh, float scale) {
     fclose(file_ptr);
 
 }
+
+void moveUVs(triDomMesh& mesh, float deltaTime, int* coords, int coordcount, float adjustment) {
+    const float scroll = adjustment * deltaTime;
+    
+    for (int i = 0; i < coordcount; i++) {
+        
+//        std::cout << coords[i] << std::endl;
+        mesh.tris[coords[i]].t[0].y += scroll;
+        mesh.tris[coords[i]].t[1].y += scroll;
+        mesh.tris[coords[i]].t[2].y += scroll;
+
+    }
+}
