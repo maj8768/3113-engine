@@ -447,7 +447,7 @@ void update() {
         updateEntityLocation(cheese);
     }
     else if (!(gData.gameStarted) || !(gData.infommercial)) {
-//        std::cout << gData.gameStarted << std::endl;
+    //    std::cout << gData.gameStarted << std::endl;
         getStartingInput(gData);
     }
 
@@ -541,7 +541,7 @@ int main(void)
         render();
         EndDrawing();
         #ifdef _WIN32
-            SwapScreenBuffer();
+            // SwapScreenBuffer();
             pumpMessages();
         #endif
     }

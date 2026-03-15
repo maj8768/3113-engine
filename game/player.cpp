@@ -2,7 +2,6 @@
 #include "../draw/gui.h"
 #include <cmath>
 #include <iostream>
-#include <algorithm>
 #include "raylib.h"
 #include "../system/keyboard/keyboard.h"
 
@@ -27,7 +26,7 @@ void haltPlayerLerp(player& player, bool swappedNormals, float deltaTime) {
 void getStartingInput(gameData& gData) {
 //    std::cout << "a" << std::endl;
     if(getAsyncKeyStateWrapper(KEY_ENTER)) {
-//        std::cout << "f" << std::endl;
+    //    std::cout << "f" << std::endl;
         if (canEnter) {
             if (gData.gameStarted == false) {
                 gData.gameStarted = true;

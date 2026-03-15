@@ -2,7 +2,7 @@
 #include <iostream>
 // #include "raylib.h"
 
-int winToMacKey(int key) {
+int rlToMacKey(int key) {
     switch (key) {
         case 87: return 13;
         case 65: return 0;
@@ -21,11 +21,32 @@ int winToMacKey(int key) {
     }
 }
 
+int rlToWinKey(int key) {
+    switch (key) {
+    case 87: return 87;   // W
+    case 65: return 65;   // A
+    case 83: return 83;   // S
+    case 68: return 68;   // D
+    case 32: return 32;   // Space
+
+    case 37: return 37;   // Left arrow
+    case 38: return 38;   // Up arrow
+    case 39: return 39;   // Right arrow
+    case 40: return 40;   // Down arrow
+
+    case 257: return 13;  // Enter (VK_RETURN)
+
+    default: return key;
+}
+}
+
 #ifdef _WIN32
     #include <windows.h>
 
     bool getAsyncKeyStateWrapper(int key) {
-        SHORT state = GetAsyncKeyState(key);
+        // std::cout << key << std::endl;
+        SHORT state = GetAsyncKeyState(rlToWinKey(key));
+        // if (state != 0) std::cout << state << std::endl;
         return (state & 0x8000) != 0;
     }
 
