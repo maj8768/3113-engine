@@ -30,7 +30,7 @@ void guiDrawEndPopup(float p1X, float p1Y, float width, float height, Color colo
 void guiDrawFailure(float p1X, float p1Y, float width, float height, Color color) {
     DrawRectangle(p1X, p1Y, width, height+ 20, color);
     DrawText("Lunar Lander", p1X+50, p1Y+25, 38, BLACK);
-    DrawText("You went to fast on reentry, you are dead", p1X+10, p1Y+100, 20, BLACK);
+    DrawText("You went to fast on reentry, you\n are dead", p1X+10, p1Y+100, 20, BLACK);
 }
 
 void guiDrawSuccess(float p1X, float p1Y, float width, float height, Color color) {
