@@ -54,7 +54,7 @@ int rlToWinKey(int key) {
     #include <ApplicationServices/ApplicationServices.h>
 
     bool getAsyncKeyStateWrapper(int key) {
-        int macKey = winToMacKey(key);
+        int macKey = rlToMacKey(key);
 //        std::cout << macKey << std::endl;
         return CGEventSourceKeyState(kCGEventSourceStateCombinedSessionState, macKey);
     }

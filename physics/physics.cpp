@@ -96,16 +96,7 @@ void applyForce(vector3 newForce, physicsEntity& pEntity) {
 }
 
 void applyAcceleration(vector3 newAccel, physicsEntity& pEntity) {
-    if (pEntity.accelForcesCount < pEntity.maxAccelForces) {
-        pEntity.accelForces[pEntity.accelForcesCount] = newAccel;
-        pEntity.accelForcesCount += 1;
-        std::cout << pEntity.accelForcesCount << std::endl;
-        std::cout << "you have applied: " << pEntity.accelForcesCount << " forces." <<std::endl;
-    }
-    else {
-        std::cout << "maximum number of constant accels applied, you are probably misusing this." << std::endl;
-        std::cout << "you have applied: " << pEntity.maxAccelForces << " forces." <<std::endl;
-    }
+    pEntity.acceleration = pEntity.acceleration + newAccel;
 }
 
 void processPhysics(float deltaTime, int frameRate, physicsEntity& pEntity, world& world, bool& end, int& target, bool invertedNormals, bool collide) {
@@ -121,25 +112,22 @@ void processPhysics(float deltaTime, int frameRate, physicsEntity& pEntity, worl
     // force transfer
 
     if (pEntity.newForce.x !=0 || pEntity.newForce.y !=0 || pEntity.newForce.z !=0 || acc == true) {
-        pEntity.magnitude.x += pEntity.newForce.x * deltaTime;
-        pEntity.magnitude.y += pEntity.newForce.y * deltaTime;
-        pEntity.magnitude.z += pEntity.newForce.z * deltaTime;
+        std::cout << pEntity.newForce.y << std::endl;
+        std::cout << pEntity.acceleration.y << std::endl;
+        pEntity.acceleration = (pEntity.acceleration + pEntity.newForce).fdiv(pEntity.weight);
         
         pEntity.newForce.murder();
+        std::cout << pEntity.newForce.y << std::endl;
     }
     // acceleration
-    if (pEntity.accelForcesCount != 0) {
-        acc = true;
-        for (int i = 0; i < pEntity.accelForcesCount; i++) {
             // std::cout << "delta: " << deltaTime << std::endl;
 //            std::cout << pEntity.applyAccel.y << std::endl;
-            pEntity.magnitude.x += pEntity.accelForces[i].x * pEntity.applyAccel.x * deltaTime;
-            pEntity.magnitude.y += pEntity.accelForces[i].y * pEntity.applyAccel.y * deltaTime;
-            pEntity.magnitude.z += pEntity.accelForces[i].z * pEntity.applyAccel.z * deltaTime;
-        }
-    }
+    pEntity.magnitude = pEntity.magnitude + (pEntity.acceleration * pEntity.applyAccel).fmult(deltaTime);
+    
+    
+    // force terminal velocity
     if (pEntity.magnitude.y > 214.f) {
-        pEntity.magnitude.y = 214.f; // roughly terminal velocity if a 3m sphere ;p
+        pEntity.magnitude.y = 214.f; // roughly terminal velocity if a 3m sphere weighing 12500kg ;p
     }
     pEntity.location.x += pEntity.magnitude.x * deltaTime;
     pEntity.location.y += pEntity.magnitude.y * deltaTime;
@@ -155,13 +143,13 @@ void processPhysics(float deltaTime, int frameRate, physicsEntity& pEntity, worl
  int accelForcesCount;
  vector3 applyAccel;
  */
-void initializePhysicsEntity(physicsEntity& pEntity, int maxAccelForces) {
-    pEntity.accelForces = new vector3[maxAccelForces];
-    pEntity.maxAccelForces = maxAccelForces;
-    pEntity.accelForcesCount = 0;
+void initializePhysicsEntity(physicsEntity& pEntity, float weight) {
+    // assume location is set in object/player creation
+    pEntity.acceleration = {0.f,0.f,0.f};
     pEntity.applyAccel = {1.f, 1.f, 1.f};
     pEntity.newForce = {0.f, 0.f, 0.f};
     pEntity.magnitude = {0.f, 0.f, 0.f};
+    pEntity.weight = weight;
 }
 
 void updateEntityLocation(meshedObject& object) {

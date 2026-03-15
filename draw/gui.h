@@ -5,3 +5,4 @@ void guiDrawText(float p1X, float p1Y, const char* text, int fontSize, Color col
 
 void guiDrawSuccess(float p1X, float p1Y, float width, float height, Color color);
 void guiDrawFailure(float p1X, float p1Y, float width, float height, Color color);
+void guiDrawHUD(float p1X, float p1Y, Color color, gameData gData, meshedObject cheese);

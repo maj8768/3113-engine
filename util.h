@@ -160,12 +160,11 @@ struct camera {
 };
 
 struct physicsEntity {
+    float weight;
     vector3 location;
     vector3 magnitude;
     vector3 newForce;
-    vector3* accelForces;
-    int maxAccelForces;
-    int accelForcesCount;
+    vector3 acceleration;
     vector3 applyAccel;
 };
 

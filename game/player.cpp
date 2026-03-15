@@ -6,6 +6,7 @@
 #include "../system/keyboard/keyboard.h"
 
 static bool canEnter = true;
+static bool canThrust = false;
 
 void haltPlayerLerp(player& player, bool swappedNormals, float deltaTime) {
     player.pEntity.magnitude.x = player.pEntity.magnitude.x * (1 - deltaTime * 10.f);
@@ -43,7 +44,7 @@ void getStartingInput(gameData& gData) {
     }
 }
 
-void movePlayer(gameData& gData, player& player, bool swappedNormals, float deltaTime, float maxSpeed) {
+void movePlayer(gameData& gData, player& player, bool swappedNormals, float deltaTime, float maxSpeed, Sound rocket) {
 
     bool holdKeys = false;
     
@@ -73,12 +74,16 @@ void movePlayer(gameData& gData, player& player, bool swappedNormals, float delt
         moveZ += zS;
     }
     if (getAsyncKeyStateWrapper(KEY_SPACE)) {
-        if (gData.fuel > 0 && gData.thrustY > -38.0) {
+        if (gData.fuel > 0 && gData.thrustY > -286250.f) {
             gData.oldThrustY = gData.thrustY;
-            gData.thrustY -= 0.1;
-            gData.propThrustY += 0.1;
+            gData.thrustY -= 1000;
+            gData.propThrustY += 1000;
             gData.oldFuel = gData.fuel;
             gData.fuel -= 0.01;
+            if(canThrust) {
+                PlaySound(rocket);
+                canThrust = false;
+            }
         }
         else if (gData.fuel > 0) {
             gData.oldThrustY = gData.thrustY;
@@ -86,11 +91,13 @@ void movePlayer(gameData& gData, player& player, bool swappedNormals, float delt
             gData.fuel -= 0.01;
         }
         else {
+            PauseSound(rocket);
+            canThrust = true;
             gData.oldFuel = gData.fuel;
             if (gData.thrustY < gData.propThrustY*2) {
                 gData.oldThrustY = gData.thrustY;
-                gData.thrustY += 0.1;
-                gData.propThrustY -= 0.1;
+                gData.thrustY += 1000;
+                gData.propThrustY -= 1000;
             }
             else {
                 gData.thrustY = 0;
@@ -100,11 +107,13 @@ void movePlayer(gameData& gData, player& player, bool swappedNormals, float delt
         }
     }
     else {
+        PauseSound(rocket);
+        canThrust = true;
         gData.oldFuel = gData.fuel;
         if (gData.thrustY < gData.propThrustY*2) {
             gData.oldThrustY = gData.thrustY;
-            gData.thrustY += 0.1;
-            gData.propThrustY -= 0.1;
+            gData.thrustY += 1000;
+            gData.propThrustY -= 1000;
         }
         else {
             gData.thrustY = 0;

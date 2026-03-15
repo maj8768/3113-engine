@@ -133,9 +133,12 @@ gameData gData = {
     100.f,0.f,0.f,100.f,0.f,0.f,false,false,false
 };
 
+static Sound introWAV;
+static Sound rocketWAV;
 static Sound WarningWAV;
 static Sound explosionWAV;
 static Sound yayWAV;
+static Sound bgmusicWAV;
 
 // static camera cam = {
 //     .camPos = { 5, 5, 5 },  // up and back
@@ -177,29 +180,27 @@ void initializePlayer(player& player1) {
     player1.controls = { 'W', 'A', 'S', 'D' };
 }
 
-void createSphere(sphere_& ball, int depth, float size, vector3 spawnpos, int maxAccelForces) {
-    static spungonMtx ngonSpun;
-    static vector3 location = spawnpos;
-    static vector3* accelForces = new vector3[maxAccelForces];
-    static vector3 newForce;
-    static vector3 magnitude;
-    static vector3 applyAccel = {1,1,1}; // whether or not to apply acceleration (used to nicely stop when acceleration shouldn't affect possition)
-    ngonSpun.size = depth;
-    ngonSpun.mtxarr = new gonalMtx[depth];
-    for (int f = 0; f < depth; f++) {
-        ngonSpun.mtxarr[f].size = depth;
-        ngonSpun.mtxarr[f].mtx  = new vector3[depth];
-    }
-    ball.spungon_mtx = ngonSpun;
-    ball.location =location;
-    ball.size = size;
-    ball.newForce = newForce;
-    ball.magnitude = magnitude;
-    ball.accelForces = accelForces;
-    ball.maxAccelForces = maxAccelForces;
-    ball.accelForcesCount = 0;
-    ball.applyAccel = applyAccel;
-}
+//void createSphere(sphere_& ball, int depth, float size, vector3 spawnpos) {
+//    static spungonMtx ngonSpun;
+//    static vector3 location = spawnpos;
+//    static vector3 acceleration = {0.f,0.f,0.f};
+//    static vector3 newForce;
+//    static vector3 magnitude;
+//    static vector3 applyAccel = {1.f,1.f,1.f}; // whether or not to apply acceleration (used to nicely stop when acceleration shouldn't affect possition)
+//    ngonSpun.size = depth;
+//    ngonSpun.mtxarr = new gonalMtx[depth];
+//    for (int f = 0; f < depth; f++) {
+//        ngonSpun.mtxarr[f].size = depth;
+//        ngonSpun.mtxarr[f].mtx  = new vector3[depth];
+//    }
+//    ball.spungon_mtx = ngonSpun;
+//    ball.location =location;
+//    ball.size = size;
+//    ball.newForce = newForce;
+//    ball.magnitude = magnitude;
+//    ball.acceleration = acceleration;
+//    ball.applyAccel = applyAccel;
+//}
 
 void createPlane(planeMtx& plane, int id, vector3 location, float dimensions[4][3], Texture2D texture, void (*action)(int)) {
     plane.id = id;
@@ -277,6 +278,12 @@ void initialise()
     WarningWAV = LoadSound("resources/warning.wav");
     explosionWAV = LoadSound("resources/explosion.mp3");
     yayWAV = LoadSound("resources/yay.mp3");
+    introWAV = LoadSound("resources/intro.wav");
+    rocketWAV = LoadSound("resources/rocket.mp3");
+    bgmusicWAV = LoadSound("resources/bgmusic.mp3");
+    
+    PlaySound(bgmusicWAV);
+    SetSoundVolume(bgmusicWAV, 0.8f);
     
     void* handle = GetWindowHandle();
     if (!RawMouseInitFromHWND(handle))
@@ -327,16 +334,18 @@ void initialise()
     con2 = LoadTexture("resources/panel1_2.png");
     con3 = LoadTexture("resources/panel1_3.png");
 
+    // call creates before initializing the physics entity
+    
     create3dObject(ship, "resources/ship.obj", "resources/ship_collider.obj", true, w2sShader, 3.f, {0.f,0.f,0.f});
     create3dObject(control, "resources/control.obj", "", false, w2sShader, 1.f,{0.f,0.25f,-3.8f});
     create3dObject(data, "resources/data.obj", "", false, w2sShader, 1.2f,{-0.66f,0.f,2.33f});
     create3dObject(cheese, "resources/cheese.obj", "", false, w2sShader, 100,{0.f,-10000.f,0.f});
     
-    initializePhysicsEntity(cheese.pEntity, 3);
-    initializePhysicsEntity(player1.pEntity, 3);
+    initializePhysicsEntity(cheese.pEntity, 12500.f);
+    initializePhysicsEntity(player1.pEntity, 1.f);
     
     applyAcceleration({0.f,9.8f,0.f},cheese.pEntity);
-    applyForce({0.f,150.f,0.f},cheese.pEntity);
+//    applyForce({0.f,150.f,0.f},cheese.pEntity);
 
     // std::cout << ship.collider[0].m[0][0];
 
@@ -364,14 +373,21 @@ bool start = false;
 int frameCount = 0;
 bool warning = false;
 bool success = false;
+bool intro = false;
+float musicVol = 0.2f;
 
 void update() {
+    double currentTime = GetTime();
+    frameCount++;
+    auto ticks = static_cast<float>(GetTime());          // step 1
+    float deltaTime = ticks - gPreviousTicks; // step 2
+    gPreviousTicks = ticks;
     if (!gData.gameEnded && gData.gameStarted == true && gData.infommercial == true) {
-        double currentTime = GetTime();
-        frameCount++;
-        auto ticks = static_cast<float>(GetTime());          // step 1
-        float deltaTime = ticks - gPreviousTicks; // step 2
-        gPreviousTicks = ticks;                   // step 3
+        if (!intro) {
+            SetSoundVolume(bgmusicWAV, musicVol);
+            PlaySound(introWAV);
+            intro = true;
+        }                  // step 3
         
         i += deltaTime * g;
         
@@ -390,22 +406,31 @@ void update() {
         else control.texo = con3;
         
         int fuelTarget = 0;
-        
+        if (cheese.pEntity.location.y > -100.f) {
+//            PauseSound(bgmusicWAV);
+            if (fabs(cheese.pEntity.magnitude.y) < 50) {
+                cheese.pEntity.magnitude.y = 10; // simulating a parachute :)
+            }
+        }
         if (cheese.pEntity.location.y > -0.1) {
+            musicVol = musicVol + (0.25f - ((musicVol > 0.25) ? 0.25 : musicVol) * deltaTime * .20);
+            SetSoundVolume(bgmusicWAV, musicVol);
             if (fabs(cheese.pEntity.magnitude.y) < 15) {
                 success = true;
+                PauseSound(rocketWAV);
                 PlaySound(yayWAV);
             }
             else {
+                PauseSound(rocketWAV);
                 PlaySound(explosionWAV);
+                SetSoundVolume(bgmusicWAV, 0.2f);
             }
             cheese.pEntity.location.y = -0.1;
-            cheese.pEntity.accelForces[0] = {0.f,0.f,0.f};
             cheese.pEntity.magnitude = {0.f,0.f,0.f};
             gData.gameEnded = true;
         }
         else {
-            cheese.pEntity.accelForces[0] = {0.f,9.8f,0.f};
+            cheese.pEntity.acceleration = {0.f,9.8f,0.f};
         }
         float deltaAlt = (gData.alt - fabs(cheese.pEntity.location.y));
         float deltaFuel = gData.fuel - gData.oldFuel;
@@ -417,28 +442,32 @@ void update() {
             moveUVs(data.mesh, fuel, 4, deltaFuel/700.f);
             moveUVs(data.mesh, alt, 4, deltaAlt/15500.f);
             //    std::cout << deltaAlt/10000.f * 0.8f << std::endl;
-            moveUVs(data.mesh, thrust, 4, deltaThrustY/350.f);
+            moveUVs(data.mesh, thrust, 4, deltaThrustY/2200000.f);
         }
         else {
             start = true;
         }
         
-        if (gData.alt < 1000 && warning == false) {
+        if (gData.alt < 1200 && warning == false) {
+//            musicVol = musicVol + (0.8 - musicVol) * deltaTime;
             PlaySound(WarningWAV);
             lightColor = {0.92f, 0.35f, 0.35f, 1};
             warning = true;
         }
-        if (gData.alt < 800) {
+        if (gData.alt < 950.f && gData.alt > 5.f) {
+            musicVol = musicVol + (1.0f - musicVol) * deltaTime * .20;
+            SetSoundVolume(bgmusicWAV, musicVol);
             lightColor = { 0.447, 0.816, 0.922, 1.0f };
         }
         
-        std::cout << gData.alt << ", " << cheese.pEntity.magnitude.y << std::endl;
+        
+//        std::cout << gData.alt << ", " << cheese.pEntity.magnitude.y << std::endl;
         
         // std::cout << i << std::endl;
         vector2 md;
         RawMouseGetDelta(md.x, md.y);
         moveLook(player1, deltaTime, md);
-        movePlayer(gData, player1, false, deltaTime, 10);
+        movePlayer(gData, player1, false, deltaTime, 10, rocketWAV);
         // void processPhysics(float deltaTime, int frameRate, player& player, world& world, bool& end, int& target)
         processPhysics(deltaTime, 0, player1.pEntity, worldInstance, iamreal, iamalsoreal, false, true);
         processPhysics(deltaTime, 0, cheese.pEntity, worldInstance, iamreal, iamalsoreal, false, false);
@@ -492,12 +521,19 @@ void render()
         Draw3DGPU(data, player1.camera, w2sShader, {255, 0, 0, 255}, data.scale);
         Draw3DGPU(cheese, player1.camera, w2sShader, {255, 0, 0, 255}, cheese.scale);
         EndShaderMode();
+        
+        
 
         rlMatrixMode(RL_PROJECTION);
         rlLoadIdentity();
         rlOrtho(0, SCREEN_WIDTH, SCREEN_HEIGHT, 0, -1, 1);
         rlMatrixMode(RL_MODELVIEW);
         rlLoadIdentity();
+        
+        rlDisableDepthTest();
+//        rlDisableDepthMask();
+        
+        guiDrawHUD(15, SCREEN_HEIGHT - 50, GREEN, gData, cheese);
         
     }
     else if (gData.gameEnded == true) {
@@ -521,7 +557,20 @@ void render()
 
 void shutdown() 
 {
+    /*
+     static Sound introWAV;
+     static Sound rocketWAV;
+     static Sound WarningWAV;
+     static Sound explosionWAV;
+     static Sound yayWAV;
+     static Sound bgmusicWAV;
+     */
     UnloadSound(WarningWAV);     // Unload sound data
+    UnloadSound(introWAV);     // Unload sound data
+    UnloadSound(rocketWAV);     // Unload sound data
+    UnloadSound(explosionWAV);     // Unload sound data
+    UnloadSound(yayWAV);     // Unload sound data
+    UnloadSound(bgmusicWAV);     // Unload sound data
     CloseAudioDevice();
     CloseWindow(); // Close window and OpenGL context
     UnloadShader(w2sShader.shader);
