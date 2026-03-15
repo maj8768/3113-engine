@@ -1,50 +1,62 @@
-# Source and target
-SRCS = main.cpp
-TARGET = raylib_app
+# Cross-platform Makefile for raylib
+# macOS uses your exact framework setup
+# Linux uses X11
+# Windows assumes MinGW/MSYS2
 
-# Add the CS3113 library if it exists
-ifeq ($(wildcard CS3113/cs3113.cpp),CS3113/cs3113.cpp)
-    SRCS += CS3113/cs3113.cpp
-endif
+CXX := g++
+TARGET := lunarlander
+SRC := $(shell find . -name "*.cpp")
 
-# OS detection (macOS = Darwin, Windows via MinGW = MINGW*)
-UNAME_S := $(shell uname -s)
+UNAME_S := $(shell uname -s 2>/dev/null)
 
-# Default values
-CXX = g++
-CXXFLAGS = -std=c++11
-
-# Raylib configuration using pkg-config
-RAYLIB_CFLAGS = $(shell pkg-config --cflags raylib)
-RAYLIB_LIBS = $(shell pkg-config --libs raylib)
-
-ifeq ($(UNAME_S), Darwin)
-    # macOS configuration
-    CXXFLAGS += -arch arm64 $(RAYLIB_CFLAGS)
-    LIBS = $(RAYLIB_LIBS) -framework OpenGL -framework Cocoa -framework IOKit -framework CoreVideo
-    EXEC = ./$(TARGET)
-else ifneq (,$(findstring MINGW,$(UNAME_S)))
-    # Windows configuration (assumes raylib in C:/raylib)
-    CXXFLAGS += -IC:/raylib/include
-    LIBS = -LC:/raylib/lib -lraylib -lopengl32 -lgdi32 -lwinmm
-    TARGET := $(TARGET).exe
-    EXEC = ./$(TARGET)
+ifeq ($(OS),Windows_NT)
+    PLATFORM := WINDOWS
+else ifeq ($(UNAME_S),Darwin)
+    PLATFORM := MACOS
 else
-    # Linux/WSL fallback
-    CXXFLAGS +=
-    LIBS = -lraylib -lGL -lm -lpthread -ldl -lrt -lX11
-    EXEC = ./$(TARGET)
+    PLATFORM := LINUX
 endif
 
-# Build rule
-$(TARGET): $(SRCS)
-	$(CXX) $(CXXFLAGS) -o $(TARGET) $(SRCS) $(LIBS)
+CXXFLAGS := -std=c++17
 
-# Clean rule
-clean:
-	@if [ -f "$(TARGET)" ]; then rm -f $(TARGET); fi
-	@if [ -f "$(TARGET).exe" ]; then rm -f $(TARGET).exe; fi
+ifeq ($(PLATFORM),MACOS)
+    TARGET := lunarlander
+    INCLUDES := -I/opt/homebrew/include
+    LIBDIRS  := -L/opt/homebrew/lib
+    LIBS     := -lraylib \
+                -framework OpenGL \
+                -framework Cocoa \
+                -framework IOKit \
+                -framework CoreVideo
+endif
 
-# Run rule
+ifeq ($(PLATFORM),LINUX)
+    TARGET := lunarlander
+    INCLUDES := -I/usr/local/include
+    LIBDIRS  := -L/usr/local/lib
+    LIBS     := -lraylib -lm -lpthread -ldl -lrt -lX11
+endif
+
+ifeq ($(PLATFORM),WINDOWS)
+    TARGET := lunarlander.exe
+    INCLUDES :=
+    LIBDIRS  :=
+    LIBS     := -lraylib -lopengl32 -lgdi32 -lwinmm
+endif
+
+all: $(TARGET)
+
+$(TARGET): $(SRC)
+	$(CXX) $(SRC) -o $(TARGET) $(CXXFLAGS) $(INCLUDES) $(LIBDIRS) $(LIBS)
+
 run: $(TARGET)
-	$(EXEC)
+	./$(TARGET)
+
+build-run: $(TARGET)
+	./$(TARGET)
+
+rebuild-run: clean $(TARGET)
+	./$(TARGET)
+
+clean:
+	rm -f lunarlander lunarlander.exe

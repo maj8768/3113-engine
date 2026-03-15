@@ -2,9 +2,6 @@
 
 Project 3 - Finished:
 
-** PLEASE RUN BUILD IN RELEASE **
-depends on a slightly patched raylib, cannot guarantee self-build will work.
-
 ![demo](https://github.com/maj8768/3113-engine/blob/3d-GPU/demos/lunardemo.gif)
 
 Current Features
@@ -19,6 +16,5 @@ Current Features
 
 Run with:
 
-``sh build.sh``       - x11
 ``sh build-mac.sh``   - macos
 ``sh buil-mingwd.sh`` - windows mingw
