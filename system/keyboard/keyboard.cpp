@@ -15,6 +15,8 @@ int winToMacKey(int key) {
         case 39: return 124;
         case 40: return 125;
             
+        case 257: return 36;
+            
         default: return key;
     }
 }
@@ -32,6 +34,7 @@ int winToMacKey(int key) {
 
     bool getAsyncKeyStateWrapper(int key) {
         int macKey = winToMacKey(key);
+//        std::cout << macKey << std::endl;
         return CGEventSourceKeyState(kCGEventSourceStateCombinedSessionState, macKey);
     }
 

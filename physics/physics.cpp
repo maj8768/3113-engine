@@ -132,13 +132,15 @@ void processPhysics(float deltaTime, int frameRate, physicsEntity& pEntity, worl
         acc = true;
         for (int i = 0; i < pEntity.accelForcesCount; i++) {
             // std::cout << "delta: " << deltaTime << std::endl;
-            std::cout << pEntity.applyAccel.y << std::endl;
+//            std::cout << pEntity.applyAccel.y << std::endl;
             pEntity.magnitude.x += pEntity.accelForces[i].x * pEntity.applyAccel.x * deltaTime;
             pEntity.magnitude.y += pEntity.accelForces[i].y * pEntity.applyAccel.y * deltaTime;
             pEntity.magnitude.z += pEntity.accelForces[i].z * pEntity.applyAccel.z * deltaTime;
         }
     }
-
+    if (pEntity.magnitude.y > 214.f) {
+        pEntity.magnitude.y = 214.f; // roughly terminal velocity if a 3m sphere ;p
+    }
     pEntity.location.x += pEntity.magnitude.x * deltaTime;
     pEntity.location.y += pEntity.magnitude.y * deltaTime;
     pEntity.location.z += pEntity.magnitude.z * deltaTime;
@@ -163,7 +165,7 @@ void initializePhysicsEntity(physicsEntity& pEntity, int maxAccelForces) {
 }
 
 void updateEntityLocation(meshedObject& object) {
-    std::cout << object.pEntity.location.y << std::endl;
+//    std::cout << object.pEntity.location.y << std::endl;
 //    std::cout << object.mesh.trisO[0].v[1] << std::endl;
     for (int i = 0; i < object.mesh.count; i++) {
         for (int j = 0; j < 3; j++) {

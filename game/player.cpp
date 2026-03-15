@@ -6,6 +6,8 @@
 #include "raylib.h"
 #include "../system/keyboard/keyboard.h"
 
+static bool canEnter = true;
+
 void haltPlayerLerp(player& player, bool swappedNormals, float deltaTime) {
     player.pEntity.magnitude.x = player.pEntity.magnitude.x * (1 - deltaTime * 10.f);
     player.pEntity.magnitude.y = player.pEntity.magnitude.y * (1 - deltaTime * 10.f);
@@ -19,6 +21,26 @@ void haltPlayerLerp(player& player, bool swappedNormals, float deltaTime) {
     }
     if (abs(player.pEntity.magnitude.z) < 0.02f) {
         player.pEntity.magnitude.z = 0;
+    }
+}
+
+void getStartingInput(gameData& gData) {
+//    std::cout << "a" << std::endl;
+    if(getAsyncKeyStateWrapper(KEY_ENTER)) {
+//        std::cout << "f" << std::endl;
+        if (canEnter) {
+            if (gData.gameStarted == false) {
+                gData.gameStarted = true;
+                canEnter = false;
+            }
+            else if (gData.gameStarted == true && gData.infommercial == false) {
+                gData.infommercial = true;
+                canEnter = false;
+            }
+        }
+    }
+    else {
+        canEnter = true;
     }
 }
 
@@ -52,10 +74,44 @@ void movePlayer(gameData& gData, player& player, bool swappedNormals, float delt
         moveZ += zS;
     }
     if (getAsyncKeyStateWrapper(KEY_SPACE)) {
-        gData.thrustY = -2.5;
+        if (gData.fuel > 0 && gData.thrustY > -38.0) {
+            gData.oldThrustY = gData.thrustY;
+            gData.thrustY -= 0.1;
+            gData.propThrustY += 0.1;
+            gData.oldFuel = gData.fuel;
+            gData.fuel -= 0.01;
+        }
+        else if (gData.fuel > 0) {
+            gData.oldThrustY = gData.thrustY;
+            gData.oldFuel = gData.fuel;
+            gData.fuel -= 0.01;
+        }
+        else {
+            gData.oldFuel = gData.fuel;
+            if (gData.thrustY < gData.propThrustY*2) {
+                gData.oldThrustY = gData.thrustY;
+                gData.thrustY += 0.1;
+                gData.propThrustY -= 0.1;
+            }
+            else {
+                gData.thrustY = 0;
+                gData.oldThrustY = 0;
+                gData.propThrustY = 0;
+            }
+        }
     }
     else {
-        gData.thrustY = 0.f;
+        gData.oldFuel = gData.fuel;
+        if (gData.thrustY < gData.propThrustY*2) {
+            gData.oldThrustY = gData.thrustY;
+            gData.thrustY += 0.1;
+            gData.propThrustY -= 0.1;
+        }
+        else {
+            gData.thrustY = 0;
+            gData.oldThrustY = 0;
+            gData.propThrustY = 0;
+        }
     }
 
     float len = std::sqrt(moveX * moveX + moveZ * moveZ);

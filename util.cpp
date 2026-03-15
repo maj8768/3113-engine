@@ -204,8 +204,8 @@ void objToQuads(const char* path, meshedObject& mesh, float scale) {
 
 }
 
-void moveUVs(triDomMesh& mesh, float deltaTime, int* coords, int coordcount, float adjustment) {
-    const float scroll = adjustment * deltaTime;
+void moveUVs(triDomMesh& mesh, int* coords, int coordcount, float adjustment) {
+    const float scroll = adjustment;
     
     for (int i = 0; i < coordcount; i++) {
         

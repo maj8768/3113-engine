@@ -36,9 +36,9 @@
 
 * Author: Maxim Jovanovic
 
-* Assignment: Pong Clone
+* Assignment: Lunar Lander
 
-* Date due: 02/14/2026
+* Date due: 03/14/2026
 
 * I pledge that I have completed this assignment without
 
@@ -130,8 +130,12 @@ static Texture2D con2;
 static Texture2D con3;
 
 gameData gData = {
-    0.f,0.f,0.f
+    100.f,0.f,0.f,100.f,0.f,0.f,false,false,false
 };
+
+static Sound WarningWAV;
+static Sound explosionWAV;
+static Sound yayWAV;
 
 // static camera cam = {
 //     .camPos = { 5, 5, 5 },  // up and back
@@ -268,7 +272,12 @@ void initialise()
 {
 
     InitWindow(SCREEN_WIDTH, SCREEN_HEIGHT, "Hello raylib!");
-
+    InitAudioDevice();
+    
+    WarningWAV = LoadSound("resources/warning.wav");
+    explosionWAV = LoadSound("resources/explosion.mp3");
+    yayWAV = LoadSound("resources/yay.mp3");
+    
     void* handle = GetWindowHandle();
     if (!RawMouseInitFromHWND(handle))
     {
@@ -321,12 +330,13 @@ void initialise()
     create3dObject(ship, "resources/ship.obj", "resources/ship_collider.obj", true, w2sShader, 3.f, {0.f,0.f,0.f});
     create3dObject(control, "resources/control.obj", "", false, w2sShader, 1.f,{0.f,0.25f,-3.8f});
     create3dObject(data, "resources/data.obj", "", false, w2sShader, 1.2f,{-0.66f,0.f,2.33f});
-    create3dObject(cheese, "resources/cheese.obj", "", false, w2sShader, 12.f,{0.f,-10.f,0.f});
+    create3dObject(cheese, "resources/cheese.obj", "", false, w2sShader, 100,{0.f,-10000.f,0.f});
     
     initializePhysicsEntity(cheese.pEntity, 3);
     initializePhysicsEntity(player1.pEntity, 3);
     
-    applyAcceleration({0.f,2.f,0.f},cheese.pEntity);
+    applyAcceleration({0.f,9.8f,0.f},cheese.pEntity);
+    applyForce({0.f,150.f,0.f},cheese.pEntity);
 
     // std::cout << ship.collider[0].m[0][0];
 
@@ -350,106 +360,169 @@ float floating = 1;
 int target = 0;
 
 double previousTime = GetTime();
+bool start = false;
 int frameCount = 0;
+bool warning = false;
+bool success = false;
 
 void update() {
-    double currentTime = GetTime();
-    frameCount++;
-    auto ticks = static_cast<float>(GetTime());          // step 1
-    float deltaTime = ticks - gPreviousTicks; // step 2
-    gPreviousTicks = ticks;                   // step 3
-
-    i += deltaTime * g;
-
-    if (i >= 1 || i <= -1) g *= -1;
-
-    lightPos.y = 4.5f + 1.f * sinf(i);
-
-//    std::cout << i << std::endl;
-
-    if (i > .5) {
-        control.texo = con1;
+    if (!gData.gameEnded && gData.gameStarted == true && gData.infommercial == true) {
+        double currentTime = GetTime();
+        frameCount++;
+        auto ticks = static_cast<float>(GetTime());          // step 1
+        float deltaTime = ticks - gPreviousTicks; // step 2
+        gPreviousTicks = ticks;                   // step 3
+        
+        i += deltaTime * g;
+        
+        if (i >= 1 || i <= -1) g *= -1;
+        
+        lightPos.y = 4.5f + 1.f * sinf(i);
+        
+        //    std::cout << i << std::endl;
+        
+        if (i > .5) {
+            control.texo = con1;
+        }
+        else if (i > -0.5) {
+            control.texo = con2;
+        }
+        else control.texo = con3;
+        
+        int fuelTarget = 0;
+        
+        if (cheese.pEntity.location.y > -0.1) {
+            if (fabs(cheese.pEntity.magnitude.y) < 15) {
+                success = true;
+                PlaySound(yayWAV);
+            }
+            else {
+                PlaySound(explosionWAV);
+            }
+            cheese.pEntity.location.y = -0.1;
+            cheese.pEntity.accelForces[0] = {0.f,0.f,0.f};
+            cheese.pEntity.magnitude = {0.f,0.f,0.f};
+            gData.gameEnded = true;
+        }
+        else {
+            cheese.pEntity.accelForces[0] = {0.f,9.8f,0.f};
+        }
+        float deltaAlt = (gData.alt - fabs(cheese.pEntity.location.y));
+        float deltaFuel = gData.fuel - gData.oldFuel;
+        float deltaThrustY = gData.thrustY - gData.oldThrustY;
+        gData.alt = fabs(cheese.pEntity.location.y);
+        
+        //    std::cout << "bruh" << deltaAlt/8000.f << std::endl;
+        if (start) {
+            moveUVs(data.mesh, fuel, 4, deltaFuel/700.f);
+            moveUVs(data.mesh, alt, 4, deltaAlt/15500.f);
+            //    std::cout << deltaAlt/10000.f * 0.8f << std::endl;
+            moveUVs(data.mesh, thrust, 4, deltaThrustY/350.f);
+        }
+        else {
+            start = true;
+        }
+        
+        if (gData.alt < 1000 && warning == false) {
+            PlaySound(WarningWAV);
+            lightColor = {0.92f, 0.35f, 0.35f, 1};
+            warning = true;
+        }
+        if (gData.alt < 800) {
+            lightColor = { 0.447, 0.816, 0.922, 1.0f };
+        }
+        
+        std::cout << gData.alt << ", " << cheese.pEntity.magnitude.y << std::endl;
+        
+        // std::cout << i << std::endl;
+        vector2 md;
+        RawMouseGetDelta(md.x, md.y);
+        moveLook(player1, deltaTime, md);
+        movePlayer(gData, player1, false, deltaTime, 10);
+        // void processPhysics(float deltaTime, int frameRate, player& player, world& world, bool& end, int& target)
+        processPhysics(deltaTime, 0, player1.pEntity, worldInstance, iamreal, iamalsoreal, false, true);
+        processPhysics(deltaTime, 0, cheese.pEntity, worldInstance, iamreal, iamalsoreal, false, false);
+        applyForce({0.f,gData.thrustY,0.f}, cheese.pEntity);
+        
+        updateEntityLocation(cheese);
     }
-    else if (i > -0.5) {
-        control.texo = con2;
+    else if (!(gData.gameStarted) || !(gData.infommercial)) {
+//        std::cout << gData.gameStarted << std::endl;
+        getStartingInput(gData);
     }
-    else control.texo = con3;
-    
-    int fuelTarget = 0;
-    
-    if (cheese.pEntity.location.y > -0.1) {
-        cheese.pEntity.location.y = -0.1;
-    }
-    
-    moveUVs(data.mesh, deltaTime, fuel, 4, -.01f);
-    moveUVs(data.mesh, deltaTime, alt, 4, .01f);
-    moveUVs(data.mesh, deltaTime, thrust, 4, -.01f);
-    
-    // std::cout << i << std::endl;
-    vector2 md;
-    RawMouseGetDelta(md.x, md.y);
-    moveLook(player1, deltaTime, md);
-    movePlayer(gData, player1, false, deltaTime, 10);
-    // void processPhysics(float deltaTime, int frameRate, player& player, world& world, bool& end, int& target)
-    processPhysics(deltaTime, 0, player1.pEntity, worldInstance, iamreal, iamalsoreal, false, true);
-    processPhysics(deltaTime, 0, cheese.pEntity, worldInstance, iamreal, iamalsoreal, false, false);
-    applyForce({0.f,gData.thrustY,0.f}, cheese.pEntity);
-
-    updateEntityLocation(cheese);
 
     // std::cout << "dx: " << md.x << " dy: " << md.y << std::endl;
 
-if (currentTime - previousTime >= .1) {
-   // Calculate FPS
-   double fps = (double)frameCount / (currentTime - previousTime);
-
-   // Display the FPS (e.g., in the window title)
-//   std::cout << "[" << fps << " FPS]" << std::endl;
-   // glfwSetWindowTitle(pWindow, ss.str().c_str()); // Replace pWindow with your GLFWwindow pointer
-
-   // Reset the counter and time
-   frameCount = 0;
-   previousTime = currentTime;
-}
+//if (currentTime - previousTime >= .1) {
+//   // Calculate FPS
+//   double fps = (double)frameCount / (currentTime - previousTime);
+//
+//   // Display the FPS (e.g., in the window title)
+////   std::cout << "[" << fps << " FPS]" << std::endl;
+//   // glfwSetWindowTitle(pWindow, ss.str().c_str()); // Replace pWindow with your GLFWwindow pointer
+//
+//   // Reset the counter and time
+//   frameCount = 0;
+//   previousTime = currentTime;
+//}
 }
 
 void render()
 {
     ClearBackground(BLACK);
 
-    rlEnableDepthTest();
-    rlEnableDepthMask();
+    if (gData.gameStarted == true && gData.gameEnded == false && gData.infommercial) {
+    
+        rlEnableDepthTest();
+        rlEnableDepthMask();
 
-    rlMatrixMode(RL_PROJECTION);
-    rlLoadIdentity();
-    rlMatrixMode(RL_MODELVIEW);
-    rlLoadIdentity();
+        rlMatrixMode(RL_PROJECTION);
+        rlLoadIdentity();
+        rlMatrixMode(RL_MODELVIEW);
+        rlLoadIdentity();
 
-    BeginShaderMode(w2sShader.shader);
-    SetShaderValue(w2sShader.shader, w2sShader.lightPosLoc, &lightPos, SHADER_UNIFORM_VEC3);
-    SetShaderValue(w2sShader.shader, w2sShader.lightDirLoc, &lightDir, SHADER_UNIFORM_VEC3);
-    SetShaderValue(w2sShader.shader, w2sShader.lightColorLoc, &lightColor, SHADER_UNIFORM_VEC4);
-    SetShaderValue(w2sShader.shader, w2sShader.ambientLoc, &ambient, SHADER_UNIFORM_FLOAT);
+        BeginShaderMode(w2sShader.shader);
+        SetShaderValue(w2sShader.shader, w2sShader.lightPosLoc, &lightPos, SHADER_UNIFORM_VEC3);
+        SetShaderValue(w2sShader.shader, w2sShader.lightDirLoc, &lightDir, SHADER_UNIFORM_VEC3);
+        SetShaderValue(w2sShader.shader, w2sShader.lightColorLoc, &lightColor, SHADER_UNIFORM_VEC4);
+        SetShaderValue(w2sShader.shader, w2sShader.ambientLoc, &ambient, SHADER_UNIFORM_FLOAT);
 
-    Draw3DGPU(ship, player1.camera, w2sShader, {255, 0, 0, 255}, ship.scale);
-    Draw3DGPU(control, player1.camera, w2sShader, {255, 0, 0, 255}, control.scale);
-    Draw3DGPU(data, player1.camera, w2sShader, {255, 0, 0, 255}, data.scale);
-    Draw3DGPU(cheese, player1.camera, w2sShader, {255, 0, 0, 255}, cheese.scale);
+        Draw3DGPU(ship, player1.camera, w2sShader, {255, 0, 0, 255}, ship.scale);
+        Draw3DGPU(control, player1.camera, w2sShader, {255, 0, 0, 255}, control.scale);
+        Draw3DGPU(data, player1.camera, w2sShader, {255, 0, 0, 255}, data.scale);
+        Draw3DGPU(cheese, player1.camera, w2sShader, {255, 0, 0, 255}, cheese.scale);
+        EndShaderMode();
+
+        rlMatrixMode(RL_PROJECTION);
+        rlLoadIdentity();
+        rlOrtho(0, SCREEN_WIDTH, SCREEN_HEIGHT, 0, -1, 1);
+        rlMatrixMode(RL_MODELVIEW);
+        rlLoadIdentity();
+        
+    }
+    else if (gData.gameEnded == true) {
+        if (success) {
+            guiDrawSuccess(SCREEN_WIDTH/2.f-175.f,  SCREEN_HEIGHT/2.f-100.f,  350,  200, WHITE);
+        }
+        else {
+            guiDrawFailure(SCREEN_WIDTH/2.f-175.f,  SCREEN_HEIGHT/2.f-100.f,  350,  200, WHITE);
+        }
+    }
+    else if (gData.gameStarted == false && gData.infommercial == false) {
+        guiDrawStartMenu( SCREEN_WIDTH/2.f-175.f,  SCREEN_HEIGHT/2.f-100.f,  350,  200, WHITE, 1);
+    }
+    else {
+        guiDrawStartPopup( SCREEN_WIDTH/2.f-175.f,  SCREEN_HEIGHT/2.f-100.f,  350,  200, WHITE);
+    }
 //    DrawPlaneGPU(plane, player1.camera, w2sShader, {1.f,0.f,0.f,1.f}, 25.f);
-
-    EndShaderMode();
-
-    rlMatrixMode(RL_PROJECTION);
-    rlLoadIdentity();
-    rlOrtho(0, SCREEN_WIDTH, SCREEN_HEIGHT, 0, -1, 1);
-    rlMatrixMode(RL_MODELVIEW);
-    rlLoadIdentity();
 
 //    DrawFPS(10, 10);
 }
 
 void shutdown() 
-{ 
+{
+    UnloadSound(WarningWAV);     // Unload sound data
+    CloseAudioDevice();
     CloseWindow(); // Close window and OpenGL context
     UnloadShader(w2sShader.shader);
     // UnloadTexture(pyramid.texture);  // right here!

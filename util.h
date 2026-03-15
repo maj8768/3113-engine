@@ -12,6 +12,13 @@ struct gameData {
     float fuel;
     float thrustY;
     float alt;
+    float oldFuel;
+    float oldThrustY;
+    float propThrustY;
+    
+    bool gameStarted;
+    bool gameEnded;
+    bool infommercial;
 };
 
 struct triangleMtx {
@@ -230,4 +237,4 @@ vector3 transformToNDC(const mtx44& vp, float x, float y, float z);
 
 float getHypot(float a, float b);
 
-void moveUVs(triDomMesh& mesh, float deltaTime, int* coords, int coordcount, float adjustment);
+void moveUVs(triDomMesh& mesh, int* coords, int coordcount, float adjustment);
