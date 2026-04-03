@@ -3,6 +3,7 @@
 #include <cmath>
 #include <iostream>
 #include "raylib.h"
+#include "../physics/physics.h"
 #include "../system/keyboard/keyboard.h"
 
 static bool canEnter = true;
@@ -10,14 +11,10 @@ static bool canThrust = false;
 
 void haltPlayerLerp(player& player, bool swappedNormals, float deltaTime) {
     player.pEntity.magnitude.x = player.pEntity.magnitude.x * (1 - deltaTime * 10.f);
-    player.pEntity.magnitude.y = player.pEntity.magnitude.y * (1 - deltaTime * 10.f);
     player.pEntity.magnitude.z = player.pEntity.magnitude.z * (1 - deltaTime * 10.f);
     
     if (abs(player.pEntity.magnitude.x) < 0.02f) {
         player.pEntity.magnitude.x = 0;
-    }
-    if (abs(player.pEntity.magnitude.y) < 0.02f) {
-        player.pEntity.magnitude.y = 0;
     }
     if (abs(player.pEntity.magnitude.z) < 0.02f) {
         player.pEntity.magnitude.z = 0;
@@ -74,56 +71,21 @@ void movePlayer(gameData& gData, player& player, bool swappedNormals, float delt
         moveZ += zS;
     }
     if (getAsyncKeyStateWrapper(KEY_SPACE)) {
-        if (gData.fuel > 0 && gData.thrustY > -286250.f) {
-            gData.oldThrustY = gData.thrustY;
-            gData.thrustY -= 1000;
-            gData.propThrustY += 1000;
-            gData.oldFuel = gData.fuel;
-            gData.fuel -= 0.01;
-            if(canThrust) {
-                PlaySound(rocket);
-                canThrust = false;
-            }
-        }
-        else if (gData.fuel > 0) {
-            gData.oldThrustY = gData.thrustY;
-            gData.oldFuel = gData.fuel;
-            gData.fuel -= 0.01;
-        }
-        else {
-            PauseSound(rocket);
-            canThrust = true;
-            gData.oldFuel = gData.fuel;
-            if (gData.thrustY < gData.propThrustY*2) {
-                gData.oldThrustY = gData.thrustY;
-                gData.thrustY += 1000;
-                gData.propThrustY -= 1000;
-            }
-            else {
-                gData.thrustY = 0;
-                gData.oldThrustY = 0;
-                gData.propThrustY = 0;
-            }
+//        player.pEntity.magnitude.y
+//        std::cout << player.pEntity.collidingY << std::endl;
+//        applyForce({0.f,5.f,0.f}, player.pEntity); apparently my code is to jank for this to work, i dont know why I changed this for entities but left this dogshit
+        if (player.pEntity.collidingY == true && player.pEntity.jumping == false) {
+            std::cout << "how high" << std::endl;
+            player.pEntity.magnitude.y = 5.f;
+            player.pEntity.jumping = true;
         }
     }
     else {
-        PauseSound(rocket);
-        canThrust = true;
-        gData.oldFuel = gData.fuel;
-        if (gData.thrustY < gData.propThrustY*2) {
-            gData.oldThrustY = gData.thrustY;
-            gData.thrustY += 1000;
-            gData.propThrustY -= 1000;
-        }
-        else {
-            gData.thrustY = 0;
-            gData.oldThrustY = 0;
-            gData.propThrustY = 0;
-        }
+        player.pEntity.jumping = false;
     }
 
     float len = std::sqrt(moveX * moveX + moveZ * moveZ);
-    if (len > 0.0f) {
+    if (len > 0.0f/* || player.pEntity.jumping == false*/) {
         // std::cout << "he" << std::endl;
         moveX /= len;
         moveZ /= len;
@@ -151,7 +113,7 @@ void movePlayer(gameData& gData, player& player, bool swappedNormals, float delt
     // snapping camera to players location
     player.camera.camPos.z = player.pEntity.location.z;
     player.camera.camPos.x = player.pEntity.location.x;
-    player.camera.camPos.y = player.pEntity.location.y+5; // head level
+    player.camera.camPos.y = player.pEntity.location.y+5; // head level (apparently 5 is to high)
 }
 
 void moveLook(player& player1, float deltaTime, vector2 md) {

@@ -170,6 +170,8 @@ struct physicsEntity {
     vector3 newForce;
     vector3 acceleration;
     vector3 applyAccel;
+    bool collidingY;
+    bool jumping;
 };
 
 struct player {

@@ -171,7 +171,7 @@ void initializePlayer(player& player1) {
     DisableCursor();
     // SetMousePosition(SCREEN_WIDTH/2, SCREEN_HEIGHT/2);
 
-    player1.pEntity.location = {0,0,0};
+    player1.pEntity.location = {0,5,0};
     player1.camera.camPos = {0,5,0};
     player1.camera.camTarget = {M_PI/2.f,0,0};
     player1.camera.up = {0,1,0};
@@ -339,18 +339,19 @@ void initialise()
     create3dObject(ship, "resources/ship.obj", "resources/ship_collider.obj", true, w2sShader, 3.f, {0.f,0.f,0.f});
     create3dObject(control, "resources/control.obj", "", false, w2sShader, 1.f,{0.f,0.25f,-3.8f});
     create3dObject(data, "resources/data.obj", "", false, w2sShader, 1.2f,{-0.66f,0.f,2.33f});
-    create3dObject(cheese, "resources/cheese.obj", "", false, w2sShader, 100,{0.f,-10000.f,0.f});
+//    create3dObject(cheese, "resources/cheese.obj", "", false, w2sShader, 100,{0.f,0.f,0.f});
     
-    initializePhysicsEntity(cheese.pEntity, 12500.f);
-    initializePhysicsEntity(player1.pEntity, 1.f);
+//    initializePhysicsEntity(cheese.pEntity, 12500.f); // all enities that need physics have to be initialized :/
+    initializePhysicsEntity(player1.pEntity, 1.f); // even players need to be initialized because they have physics and im lazy
+    applyAcceleration({0.f,-9.8f,0.f}, player1.pEntity);
     
-    applyAcceleration({0.f,9.8f,0.f},cheese.pEntity);
+//    applyAcceleration({0.f,9.8f,0.f},cheese.pEntity);
 //    applyForce({0.f,150.f,0.f},cheese.pEntity);
 
     // std::cout << ship.collider[0].m[0][0];
 
-    worldInstance.planes = ship.collider;
-    worldInstance.planeCount = ship.cPlaneCount; 
+    worldInstance.planes = ship.collider; // treats the ships collider as the entire collidable world, prob need to change this
+    worldInstance.planeCount = ship.cPlaneCount;
 
     // w2sShader = { w2s, SHADER_LOC_MATRIX_MVP, SHADER_LOC_COLOR_DIFFUSE, GetShaderLocation(w2s, "uLightDir") };
 }
@@ -375,6 +376,7 @@ bool warning = false;
 bool success = false;
 bool intro = false;
 float musicVol = 0.2f;
+vector2 md;
 
 void update() {
     double currentTime = GetTime();
@@ -382,103 +384,122 @@ void update() {
     auto ticks = static_cast<float>(GetTime());          // step 1
     float deltaTime = ticks - gPreviousTicks; // step 2
     gPreviousTicks = ticks;
-    if (!gData.gameEnded && gData.gameStarted == true && gData.infommercial == true) {
-        if (!intro) {
-            SetSoundVolume(bgmusicWAV, musicVol);
-            PlaySound(introWAV);
-            intro = true;
-        }                  // step 3
-        
-        i += deltaTime * g;
-        
-        if (i >= 1 || i <= -1) g *= -1;
-        
-        lightPos.y = 4.5f + 1.f * sinf(i);
-        
-        //    std::cout << i << std::endl;
-        
-        if (i > .5) {
-            control.texo = con1;
-        }
-        else if (i > -0.5) {
-            control.texo = con2;
-        }
-        else control.texo = con3;
-        
-        int fuelTarget = 0;
-        if (cheese.pEntity.location.y > -100.f) {
-//            PauseSound(bgmusicWAV);
-            if (fabs(cheese.pEntity.magnitude.y) < 50) {
-                cheese.pEntity.magnitude.y = 10; // simulating a parachute :)
-            }
-        }
-        if (cheese.pEntity.location.y > -0.1) {
-            musicVol = musicVol + (0.25f - ((musicVol > 0.25) ? 0.25 : musicVol) * deltaTime * .20);
-            SetSoundVolume(bgmusicWAV, musicVol);
-            if (fabs(cheese.pEntity.magnitude.y) < 15) {
-                success = true;
-                PauseSound(rocketWAV);
-                PlaySound(yayWAV);
-            }
-            else {
-                PauseSound(rocketWAV);
-                PlaySound(explosionWAV);
-                SetSoundVolume(bgmusicWAV, 0.2f);
-            }
-            cheese.pEntity.location.y = -0.1;
-            cheese.pEntity.magnitude = {0.f,0.f,0.f};
-            gData.gameEnded = true;
-        }
-        else {
-            cheese.pEntity.acceleration = {0.f,9.8f,0.f};
-        }
-        float deltaAlt = (gData.alt - fabs(cheese.pEntity.location.y));
-        float deltaFuel = gData.fuel - gData.oldFuel;
-        float deltaThrustY = gData.thrustY - gData.oldThrustY;
-        gData.alt = fabs(cheese.pEntity.location.y);
-        
-        //    std::cout << "bruh" << deltaAlt/8000.f << std::endl;
-        if (start) {
-            moveUVs(data.mesh, fuel, 4, deltaFuel/700.f);
-            moveUVs(data.mesh, alt, 4, deltaAlt/15500.f);
-            //    std::cout << deltaAlt/10000.f * 0.8f << std::endl;
-            moveUVs(data.mesh, thrust, 4, deltaThrustY/2200000.f);
-        }
-        else {
-            start = true;
-        }
-        
-        if (gData.alt < 1200 && warning == false) {
-//            musicVol = musicVol + (0.8 - musicVol) * deltaTime;
-            PlaySound(WarningWAV);
-            lightColor = {0.92f, 0.35f, 0.35f, 1};
-            warning = true;
-        }
-        if (gData.alt < 950.f && gData.alt > 5.f) {
-            musicVol = musicVol + (1.0f - musicVol) * deltaTime * .20;
-            SetSoundVolume(bgmusicWAV, musicVol);
-            lightColor = { 0.447, 0.816, 0.922, 1.0f };
-        }
-        
-        
-//        std::cout << gData.alt << ", " << cheese.pEntity.magnitude.y << std::endl;
-        
-        // std::cout << i << std::endl;
-        vector2 md;
-        RawMouseGetDelta(md.x, md.y);
-        moveLook(player1, deltaTime, md);
-        movePlayer(gData, player1, false, deltaTime, 10, rocketWAV);
-        // void processPhysics(float deltaTime, int frameRate, player& player, world& world, bool& end, int& target)
-        processPhysics(deltaTime, 0, player1.pEntity, worldInstance, iamreal, iamalsoreal, false, true);
-        processPhysics(deltaTime, 0, cheese.pEntity, worldInstance, iamreal, iamalsoreal, false, false);
-        applyForce({0.f,gData.thrustY,0.f}, cheese.pEntity);
-        
-        updateEntityLocation(cheese);
-    }
-    else if (!(gData.gameStarted) || !(gData.infommercial)) {
-    //    std::cout << gData.gameStarted << std::endl;
-        getStartingInput(gData);
-    }
+    
+    // default player movement/look updating
+    
+    RawMouseGetDelta(md.x, md.y);
+    moveLook(player1, deltaTime, md);
+    movePlayer(gData, player1, false, deltaTime, 10, rocketWAV);
+    // void processPhysics(float deltaTime, int frameRate, player& player, world& world, bool& end, int& target)
+    processPhysics(deltaTime, 0, player1.pEntity, worldInstance, iamreal, iamalsoreal, false, true); // last bool is for collision
+    
+    // entity physics updating
+    
+//    processPhysics(deltaTime, 0, cheese.pEntity, worldInstance, iamreal, iamalsoreal, false, false);
+//    applyForce({0.f,gData.thrustY,0.f}, cheese.pEntity);
+    
+//    updateEntityLocation(cheese);
+//    updateEntityLocation(player1);
+    
+    // old game logic
+    
+//    if (!gData.gameEnded && gData.gameStarted == true && gData.infommercial == true) {
+//        if (!intro) {
+//            SetSoundVolume(bgmusicWAV, musicVol);
+//            PlaySound(introWAV);
+//            intro = true;
+//        }                  // step 3
+//        
+//        i += deltaTime * g;
+//        
+//        if (i >= 1 || i <= -1) g *= -1;
+//        
+//        lightPos.y = 4.5f + 1.f * sinf(i);
+//        
+//        //    std::cout << i << std::endl;
+//        
+//        if (i > .5) {
+//            control.texo = con1;
+//        }
+//        else if (i > -0.5) {
+//            control.texo = con2;
+//        }
+//        else control.texo = con3;
+//        
+//        int fuelTarget = 0;
+//        if (cheese.pEntity.location.y > -100.f) {
+////            PauseSound(bgmusicWAV);
+//            if (fabs(cheese.pEntity.magnitude.y) < 50) {
+//                cheese.pEntity.magnitude.y = 10; // simulating a parachute :)
+//            }
+//        }
+//        if (cheese.pEntity.location.y > -0.1) {
+//            musicVol = musicVol + (0.25f - ((musicVol > 0.25) ? 0.25 : musicVol) * deltaTime * .20);
+//            SetSoundVolume(bgmusicWAV, musicVol);
+//            if (fabs(cheese.pEntity.magnitude.y) < 15) {
+//                success = true;
+//                PauseSound(rocketWAV);
+//                PlaySound(yayWAV);
+//            }
+//            else {
+//                PauseSound(rocketWAV);
+//                PlaySound(explosionWAV);
+//                SetSoundVolume(bgmusicWAV, 0.2f);
+//            }
+//            cheese.pEntity.location.y = -0.1;
+//            cheese.pEntity.magnitude = {0.f,0.f,0.f};
+//            gData.gameEnded = true;
+//        }
+//        else {
+//            cheese.pEntity.acceleration = {0.f,9.8f,0.f};
+//        }
+//        float deltaAlt = (gData.alt - fabs(cheese.pEntity.location.y));
+//        float deltaFuel = gData.fuel - gData.oldFuel;
+//        float deltaThrustY = gData.thrustY - gData.oldThrustY;
+//        gData.alt = fabs(cheese.pEntity.location.y);
+//        
+//        //    std::cout << "bruh" << deltaAlt/8000.f << std::endl;
+//        if (start) {
+//            moveUVs(data.mesh, fuel, 4, deltaFuel/700.f);
+//            moveUVs(data.mesh, alt, 4, deltaAlt/15500.f);
+//            //    std::cout << deltaAlt/10000.f * 0.8f << std::endl;
+//            moveUVs(data.mesh, thrust, 4, deltaThrustY/2200000.f);
+//        }
+//        else {
+//            start = true;
+//        }
+//        
+//        if (gData.alt < 1200 && warning == false) {
+////            musicVol = musicVol + (0.8 - musicVol) * deltaTime;
+//            PlaySound(WarningWAV);
+//            lightColor = {0.92f, 0.35f, 0.35f, 1};
+//            warning = true;
+//        }
+//        if (gData.alt < 950.f && gData.alt > 5.f) {
+//            musicVol = musicVol + (1.0f - musicVol) * deltaTime * .20;
+//            SetSoundVolume(bgmusicWAV, musicVol);
+//            lightColor = { 0.447, 0.816, 0.922, 1.0f };
+//        }
+//        
+//        
+////        std::cout << gData.alt << ", " << cheese.pEntity.magnitude.y << std::endl;
+//        
+//        // std::cout << i << std::endl;
+//        vector2 md;
+//        RawMouseGetDelta(md.x, md.y);
+//        moveLook(player1, deltaTime, md);
+//        movePlayer(gData, player1, false, deltaTime, 10, rocketWAV);
+//        // void processPhysics(float deltaTime, int frameRate, player& player, world& world, bool& end, int& target)
+//        processPhysics(deltaTime, 0, player1.pEntity, worldInstance, iamreal, iamalsoreal, false, true);
+//        processPhysics(deltaTime, 0, cheese.pEntity, worldInstance, iamreal, iamalsoreal, false, false);
+//        applyForce({0.f,gData.thrustY,0.f}, cheese.pEntity);
+//        
+//        updateEntityLocation(cheese);
+//    }
+//    else if (!(gData.gameStarted) || !(gData.infommercial)) {
+//    //    std::cout << gData.gameStarted << std::endl;
+//        getStartingInput(gData);
+//    }
 
     // std::cout << "dx: " << md.x << " dy: " << md.y << std::endl;
 
@@ -500,7 +521,7 @@ void render()
 {
     ClearBackground(BLACK);
 
-    if (gData.gameStarted == true && gData.gameEnded == false && gData.infommercial) {
+    if (/*gData.gameStarted == true && gData.gameEnded == false && gData.infommercial*/ true) { // true for now for stateless testing
     
         rlEnableDepthTest();
         rlEnableDepthMask();
@@ -519,7 +540,7 @@ void render()
         Draw3DGPU(ship, player1.camera, w2sShader, {255, 0, 0, 255}, ship.scale);
         Draw3DGPU(control, player1.camera, w2sShader, {255, 0, 0, 255}, control.scale);
         Draw3DGPU(data, player1.camera, w2sShader, {255, 0, 0, 255}, data.scale);
-        Draw3DGPU(cheese, player1.camera, w2sShader, {255, 0, 0, 255}, cheese.scale);
+//        Draw3DGPU(cheese, player1.camera, w2sShader, {255, 0, 0, 255}, cheese.scale);
         EndShaderMode();
         
         
@@ -533,23 +554,23 @@ void render()
         rlDisableDepthTest();
 //        rlDisableDepthMask();
         
-        guiDrawHUD(15, SCREEN_HEIGHT - 50, GREEN, gData, cheese);
+//        guiDrawHUD(15, SCREEN_HEIGHT - 50, GREEN, gData, cheese);
         
     }
-    else if (gData.gameEnded == true) {
-        if (success) {
-            guiDrawSuccess(SCREEN_WIDTH/2.f-175.f,  SCREEN_HEIGHT/2.f-100.f,  350,  200, WHITE);
-        }
-        else {
-            guiDrawFailure(SCREEN_WIDTH/2.f-175.f,  SCREEN_HEIGHT/2.f-100.f,  350,  200, WHITE);
-        }
-    }
-    else if (gData.gameStarted == false && gData.infommercial == false) {
-        guiDrawStartMenu( SCREEN_WIDTH/2.f-175.f,  SCREEN_HEIGHT/2.f-100.f,  350,  200, WHITE, 1);
-    }
-    else {
-        guiDrawStartPopup( SCREEN_WIDTH/2.f-175.f,  SCREEN_HEIGHT/2.f-100.f,  350,  200, WHITE);
-    }
+//    else if (gData.gameEnded == true) {
+//        if (success) {
+//            guiDrawSuccess(SCREEN_WIDTH/2.f-175.f,  SCREEN_HEIGHT/2.f-100.f,  350,  200, WHITE);
+//        }
+//        else {
+//            guiDrawFailure(SCREEN_WIDTH/2.f-175.f,  SCREEN_HEIGHT/2.f-100.f,  350,  200, WHITE);
+//        }
+//    }
+//    else if (gData.gameStarted == false && gData.infommercial == false) {
+//        guiDrawStartMenu( SCREEN_WIDTH/2.f-175.f,  SCREEN_HEIGHT/2.f-100.f,  350,  200, WHITE, 1);
+//    }
+//    else {
+//        guiDrawStartPopup( SCREEN_WIDTH/2.f-175.f,  SCREEN_HEIGHT/2.f-100.f,  350,  200, WHITE);
+//    }
 //    DrawPlaneGPU(plane, player1.camera, w2sShader, {1.f,0.f,0.f,1.f}, 25.f);
 
 //    DrawFPS(10, 10);

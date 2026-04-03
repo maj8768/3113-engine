@@ -61,18 +61,29 @@ bool spherePlaneCollide(physicsEntity& player, planeMtx plane, vector3& applyAcc
 
     // std::cout << "here" << std::endl;
     // std::cout << distance << std::endl;
+    
+    bool isGround = dot3(normalize3(normal), {0, 1, 0}) < -0.7; // inverted normals moment
+    
     if (signedDist > -0.2f && signedDist < 0.2f) {
-
+//        std::cout << "COLLIDING" << std::endl;
         vector3 repos = close_point + normal.fmult(-0.20001f / normal.mag());
 
         player.location.x = repos.x;
         player.location.z = repos.z;
+        player.location.y = repos.y; // ruh roh
+        
+//        std::cout << player.location.y << ", " << repos.y << std::endl;
+//        std::cout << dot3(normalize3(normal), {0, 1, 0}) << std::endl;
+        if (isGround) {
+//            std::cout << "im a dog" << std::endl;
+            player.collidingY = true;
+        }
 
         // player.magnitude.x -= post_impact_vel.x * (2) * conservationPercent;
         // player.magnitude.y -= post_impact_vel.y * (2) * conservationPercent;
         // player.magnitude.z -= post_impact_vel.z * (2) * conservationPercent; 
         player.magnitude.x -= post_impact_vel.x * (1) * conservationPercent;
-        player.magnitude.y -= post_impact_vel.y * (1) * conservationPercent;
+//        player.magnitude.y -= post_impact_vel.y * (1) * conservationPercent;
         player.magnitude.z -= post_impact_vel.z * (1) * conservationPercent; 
 
         // handle non-physics related collision
@@ -87,6 +98,11 @@ bool spherePlaneCollide(physicsEntity& player, planeMtx plane, vector3& applyAcc
         //     return true;
         // }
         return true;
+    }
+    else {
+        if (isGround) {
+            player.collidingY = false;
+        }
     }
     return false;
 }
@@ -112,23 +128,26 @@ void processPhysics(float deltaTime, int frameRate, physicsEntity& pEntity, worl
     // force transfer
 
     if (pEntity.newForce.x !=0 || pEntity.newForce.y !=0 || pEntity.newForce.z !=0 || acc == true) {
-        std::cout << pEntity.newForce.y << std::endl;
-        std::cout << pEntity.acceleration.y << std::endl;
+//        std::cout << pEntity.newForce.y << std::endl;
+//        std::cout << pEntity.acceleration.y << std::endl;
         pEntity.acceleration = (pEntity.acceleration + pEntity.newForce).fdiv(pEntity.weight);
         
         pEntity.newForce.murder();
-        std::cout << pEntity.newForce.y << std::endl;
+//        std::cout << pEntity.newForce.y << std::endl;
     }
     // acceleration
             // std::cout << "delta: " << deltaTime << std::endl;
 //            std::cout << pEntity.applyAccel.y << std::endl;
     pEntity.magnitude = pEntity.magnitude + (pEntity.acceleration * pEntity.applyAccel).fmult(deltaTime);
+//    std::cout << "player mag-y: " << pEntity.magnitude.y << std::endl;
     
     
-    // force terminal velocity
-    if (pEntity.magnitude.y > 214.f) {
-        pEntity.magnitude.y = 214.f; // roughly terminal velocity if a 3m sphere weighing 12500kg ;p
-    }
+    // lol no more terminal velocity...
+    
+//    // force terminal velocity
+//    if (pEntity.magnitude.y > 214.f) {
+//        pEntity.magnitude.y = 214.f; // roughly terminal velocity if a 3m sphere weighing 12500kg ;p
+//    }
     pEntity.location.x += pEntity.magnitude.x * deltaTime;
     pEntity.location.y += pEntity.magnitude.y * deltaTime;
     pEntity.location.z += pEntity.magnitude.z * deltaTime;
@@ -150,7 +169,11 @@ void initializePhysicsEntity(physicsEntity& pEntity, float weight) {
     pEntity.newForce = {0.f, 0.f, 0.f};
     pEntity.magnitude = {0.f, 0.f, 0.f};
     pEntity.weight = weight;
+    pEntity.collidingY = false;
+    pEntity.jumping = false;
 }
+
+//void updatePlayerLocation(player)
 
 void updateEntityLocation(meshedObject& object) {
 //    std::cout << object.pEntity.location.y << std::endl;
