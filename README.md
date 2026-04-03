@@ -14,8 +14,9 @@ Current Features
 - Patched Keyboard input (all devices)
 - Patched Mouse input (Windows)
 
-Run with ``make``  
+Run with ``make`` 
 
+If nothing else works you can try with g++ stuffs  
 ``sh build-mac.sh``   - macos  
 
 ``sh buil-mingwd.sh`` - windows mingw  
