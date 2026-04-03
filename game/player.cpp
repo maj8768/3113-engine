@@ -82,6 +82,9 @@ void movePlayer(gameData& gData, player& player, bool swappedNormals, float delt
     }
     else {
         player.pEntity.jumping = false;
+        if (player.pEntity.collidingY == true) {
+            player.pEntity.magnitude.y = 0.f;
+        }
     }
 
     float len = std::sqrt(moveX * moveX + moveZ * moveZ);
