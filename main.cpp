@@ -36,20 +36,14 @@
 
 /**
 
+/**
 * Author: Maxim Jovanovic
-
-* Assignment: Lunar Lander
-
-* Date due: 03/14/2026
-
+* Assignment: Rise of the AI
+* Date due: 2026-04-04, 11:59pm
 * I pledge that I have completed this assignment without
-
 * collaborating with anyone else, in conformance with the
-
 * NYU School of Engineering Policies and Procedures on
-
 * Academic Misconduct.
-
 **/
 
 /* 3 objects are:
@@ -748,7 +742,7 @@ void shutdown()
     UnloadTexture(con1);
     UnloadTexture(con2);
     UnloadTexture(con3);
-    
+
     CloseAudioDevice();
     CloseWindow(); // Close window and OpenGL context
     UnloadShader(w2sShader.shader);
