@@ -4,7 +4,7 @@
 # Windows assumes MinGW/MSYS2
 
 CXX := g++
-TARGET := lunarlander
+TARGET := TheGame
 SRC := $(shell find . -name "*.cpp")
 
 UNAME_S := $(shell uname -s 2>/dev/null)
@@ -20,7 +20,7 @@ endif
 CXXFLAGS := -std=c++17
 
 ifeq ($(PLATFORM),MACOS)
-    TARGET := lunarlander
+    TARGET := TheGame
     INCLUDES := -I/opt/homebrew/include
     LIBDIRS  := -L/opt/homebrew/lib
     LIBS     := -lraylib \
@@ -31,14 +31,14 @@ ifeq ($(PLATFORM),MACOS)
 endif
 
 ifeq ($(PLATFORM),LINUX)
-    TARGET := lunarlander
+    TARGET := TheGame
     INCLUDES := -I/usr/local/include
     LIBDIRS  := -L/usr/local/lib
     LIBS     := -lraylib -lm -lpthread -ldl -lrt -lX11
 endif
 
 ifeq ($(PLATFORM),WINDOWS)
-    TARGET := lunarlander.exe
+    TARGET := TheGame.exe
     INCLUDES :=
     LIBDIRS  :=
     LIBS     := -lraylib -lopengl32 -lgdi32 -lwinmm
@@ -59,4 +59,4 @@ rebuild-run: clean $(TARGET)
 	./$(TARGET)
 
 clean:
-	rm -f lunarlander lunarlander.exe
+	rm -f TheGame TheGame.exe
