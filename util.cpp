@@ -125,72 +125,58 @@ void objToQuads(const char* path, meshedObject& mesh, float scale) {
     int vertexCount = 0;
     int faceCount = 0;
     FILE *file_ptr;
-    char buffer[100];
+    char buffer[1024];
 
     file_ptr = fopen(path, "r");
 
     if (file_ptr == NULL) {
         perror("Error opening file");
+        return;
     }
 
-    // unfortunate first pass
-    while (fgets(buffer, 100, file_ptr) != NULL) {
+    while (fgets(buffer, sizeof(buffer), file_ptr) != NULL) {
         if (buffer[0] == 'v' && buffer[1] == ' ') {
             vertexCount++;
         }
-        else if (buffer[0] == 'f') {
+        else if (buffer[0] == 'f' && buffer[1] == ' ') {
             faceCount++;
         }
     }
 
-    float m[vertexCount][4][3];
+    float (*m)[4][3] = new float[vertexCount][4][3];
     mesh.cPlaneCount = faceCount;
-    mesh.collider = new planeMtx[faceCount];
+    mesh.collider  = new planeMtx[faceCount];
+    mesh.colliderO = new planeMtx[faceCount];
 
     fseek(file_ptr, 0, SEEK_SET);
 
-    // unfortunate second pass
-    /*
-        struct planeMtx {
-            float m[4][3];
-            Color color;
-            // float textureArea[4][2];
-            Texture2D texture;
-            int id;
-            void (*action)(int);
-        };
-    */
-    while (fgets(buffer, 100, file_ptr) != NULL) {
-        // std::cout << "here2" << std::endl;
-        if (buffer[0] == 'v' && buffer[1] == ' ') {
-            static int vertexIndex = 0;
+    int vertexIndex = 0;
+    int faceIndex = 0;
 
+    while (fgets(buffer, sizeof(buffer), file_ptr) != NULL) {
+        if (buffer[0] == 'v' && buffer[1] == ' ') {
             char* word = strtok(buffer, " ");
             int coord = 0;
 
-            while ((word = strtok(NULL, " ")) != NULL && coord < 3)
-            {
-                float f = atof(word);
-                m[vertexIndex][0][coord] = f * scale;
-                // std::cout << f << std::endl;
+            while ((word = strtok(NULL, " ")) != NULL && coord < 3) {
+                m[vertexIndex][0][coord] = atof(word) * scale;
                 coord++;
             }
 
             vertexIndex++;
         }
         else if (buffer[0] == 'f' && buffer[1] == ' ') {
-            static int faceIndex = 0;
-
             char* word = strtok(buffer, " ");
             int vertInFace = 0;
 
-            while ((word = strtok(NULL, " ")) != NULL && vertInFace < 4)
-            {
+            while ((word = strtok(NULL, " \n")) != NULL && vertInFace < 4) {
                 int idx = atoi(word) - 1;
 
-                mesh.collider[faceIndex].m[vertInFace][0] = m[idx][0][0];
-                mesh.collider[faceIndex].m[vertInFace][1] = m[idx][0][1];
-                mesh.collider[faceIndex].m[vertInFace][2] = m[idx][0][2];
+                if (idx >= 0 && idx < vertexCount) {
+                    mesh.collider[faceIndex].m[vertInFace][0] = m[idx][0][0];
+                    mesh.collider[faceIndex].m[vertInFace][1] = m[idx][0][1];
+                    mesh.collider[faceIndex].m[vertInFace][2] = m[idx][0][2];
+                }
 
                 vertInFace++;
             }
@@ -199,9 +185,10 @@ void objToQuads(const char* path, meshedObject& mesh, float scale) {
         }
     }
 
-    // Close the file
-    fclose(file_ptr);
+    memcpy(mesh.colliderO, mesh.collider, faceCount * sizeof(planeMtx));
 
+    delete[] m;
+    fclose(file_ptr);
 }
 
 void moveUVs(triDomMesh& mesh, int* coords, int coordcount, float adjustment) {

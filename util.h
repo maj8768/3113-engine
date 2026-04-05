@@ -13,16 +13,36 @@ constexpr int SCREEN_WIDTH        = 1000,
 constexpr float eps = 1e-6;
 
 struct gameData {
-    float fuel;
-    float thrustY;
-    float alt;
-    float oldFuel;
-    float oldThrustY;
-    float propThrustY;
     
+    float fadeTo;
+    bool isDying;
+
     bool gameStarted;
     bool gameEnded;
     bool infommercial;
+
+    bool bgMusicLevel1;
+    bool bgMusicLevel2;
+    bool bgMusicLevel3;
+
+    bool hasAudioLevel1;
+    bool hasAudioLevel2;
+    bool hasAudioLevel3;
+
+    bool hasChairScared;
+
+    enum levels {
+        LEVEL1,
+        LEVEL2,
+        LEVEL3,
+        GAMEEND,
+        GAMEWIN,
+        GAMESTART,
+        GAMEINFOMERCIAL
+    } currentLevel;
+
+    int lives;
+
 };
 
 struct triangleMtx {
@@ -42,6 +62,7 @@ struct shaderStore {
     int lightPosLoc;
     int normalLoc;
     int texoLoc;
+    int fadeToLoc;
     int vpLoc;
 };
 
@@ -172,6 +193,8 @@ struct physicsEntity {
     vector3 applyAccel;
     bool collidingY;
     bool jumping;
+    int groundPlane;
+    float velocity;
 };
 
 struct player {
@@ -179,7 +202,7 @@ struct player {
     planeMtx* model; // probably leave blank
     planeMtx* bounding; // top and bottom
     vector4 controls;
-
+    bool canMove;
     struct physicsEntity pEntity;
 };
 
@@ -203,10 +226,12 @@ struct triDomMesh {
 struct meshedObject {
     struct triDomMesh mesh;
     planeMtx* collider;
+    planeMtx* colliderO;
     int cPlaneCount;
     float scale;
+    float rotY;
     Texture2D texo;
-    
+
     struct physicsEntity pEntity;
 };
 

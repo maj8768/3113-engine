@@ -9,6 +9,7 @@ uniform vec3  uLightPos;
 uniform vec4  uLightColor;
 uniform float uAmbient;
 uniform sampler2D uTexo;
+uniform float fadeTo;
 
 out vec4 fragColor;
 
@@ -20,5 +21,5 @@ void main() {
     vec3 lit = (uAmbient + diffuse) * uLightColor.rgb;
     vec4 texoColor = texture(uTexo, TexCoord);
 
-    fragColor = vec4(lit, 1.0) * texoColor; // set 1.0 to vColor.a for vCo
+    fragColor = vec4(lit, 1.0) * texoColor * fadeTo; // set 1.0 to vColor.a for vCo
 }

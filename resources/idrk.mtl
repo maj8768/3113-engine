@@ -1,0 +1,42 @@
+# Blender 4.0.2 MTL File: 'None'
+# www.blender.org
+
+newmtl Armchair_08
+Ns 0.000000
+Ka 1.000000 1.000000 1.000000
+Ks 0.000000 0.000000 0.000000
+Ke 0.000000 0.000000 0.000000
+Ni 1.450000
+d 1.000000
+illum 1
+map_Kd C:/Users/Max J/Downloads/Objects_Interior(Village)_Demo/Objects_Interior(Village)_Demo/Textures/Armchair_08.png
+
+newmtl Chair_03
+Ns 0.000000
+Ka 1.000000 1.000000 1.000000
+Ks 0.000000 0.000000 0.000000
+Ke 0.000000 0.000000 0.000000
+Ni 1.450000
+d 1.000000
+illum 1
+map_Kd C:/Users/Max J/Downloads/Objects_Interior(Village)_Demo/Objects_Interior(Village)_Demo/Textures/Chair_03.png
+
+newmtl Trash_can
+Ns 0.000000
+Ka 1.000000 1.000000 1.000000
+Ks 0.000000 0.000000 0.000000
+Ke 0.000000 0.000000 0.000000
+Ni 1.450000
+d 1.000000
+illum 1
+map_Kd C:/Users/Max J/Downloads/Objects_Interior(Village)_Demo/Objects_Interior(Village)_Demo/Textures/Trash_can.png
+
+newmtl bed_04
+Ns 0.000000
+Ka 1.000000 1.000000 1.000000
+Ks 0.000000 0.000000 0.000000
+Ke 0.000000 0.000000 0.000000
+Ni 1.450000
+d 1.000000
+illum 1
+map_Kd C:/Users/Max J/Downloads/Objects_Interior(Village)_Demo/Objects_Interior(Village)_Demo/Textures/bed_04.png

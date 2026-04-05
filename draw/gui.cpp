@@ -8,25 +8,22 @@
 
 void guiDrawStartMenu(float p1X, float p1Y, float width, float height, Color color, int ballsSelected) {
     DrawRectangle(p1X, p1Y, width, height+ 20, color);
-    DrawText("Lunar Lander", p1X+50, p1Y+25, 38, BLACK);
+    DrawText("The Game", p1X+50, p1Y+25, 38, BLACK);
     DrawText("Press ENTER to start!", p1X+50, p1Y+100, 20, BLACK);
 }
 
-void guiDrawHUD(float p1X, float p1Y, Color color, gameData gData, meshedObject cheese) {
-//    std::cout << "JAMAJ" << std::endl;
-    DrawText((std::string("alt: ") + std::to_string(gData.alt)).c_str(), p1X, p1Y-50, 30, color);
-    DrawText((std::string("vel: ") + std::to_string(-cheese.pEntity.magnitude.y)).c_str(), p1X, p1Y-25, 30, color); // lol negative because cheese is moving not you.
-}
+// void guiDrawHUD(float p1X, float p1Y, Color color, gameData gData, meshedObject cheese) {
+// //    std::cout << "JAMAJ" << std::endl;
+//     DrawText((std::string("alt: ") + std::to_string(gData.alt)).c_str(), p1X, p1Y-50, 30, color);
+//     DrawText((std::string("vel: ") + std::to_string(-cheese.pEntity.magnitude.y)).c_str(), p1X, p1Y-25, 30, color); // lol negative because cheese is moving not you.
+// }
 
 void guiDrawStartPopup(float p1X, float p1Y, float width, float height, Color color) {
 //     DrawRectangle(p1X, p1Y, width, height, color);
     DrawRectangle(p1X, p1Y, width, height+ 20, color);
     DrawText("WASD to move", p1X +60, p1Y+25, 30, BLACK);
-    DrawText("SPACE to +thrust", p1X +30, p1Y+75, 30, BLACK);
-    DrawText("This is really difficult-- I'm sorry :( When the \nlight turns red, and you hear the sound\n you should start holding space to not blow up", p1X +10, p1Y+125, 15, BLACK);
-    
-    DrawRectangle(p1X, p1Y + height + 25, width, height - height/2.f, color);
-    DrawText("Parachutes open at 100m. \nTo successfully land, you\n need a velocity < 50m/s!", p1X + 5, p1Y+height + 25, 22, BLACK);
+    DrawText("SPACE to JUMP", p1X +30, p1Y+75, 30, BLACK);
+    DrawText("This is really difficult-- I'm sorry :(\nhave fun :)))", p1X +10, p1Y+125, 15, BLACK);
 }
 
 void guiDrawEndPopup(float p1X, float p1Y, float width, float height, Color color, int player) {
@@ -38,15 +35,17 @@ void guiDrawEndPopup(float p1X, float p1Y, float width, float height, Color colo
 }
 
 void guiDrawFailure(float p1X, float p1Y, float width, float height, Color color) {
-    DrawRectangle(p1X, p1Y, width, height+ 20, color);
-    DrawText("Lunar Lander", p1X+50, p1Y+25, 38, BLACK);
-    DrawText("You went to fast on reentry,\nyou are dead", p1X+10, p1Y+100, 20, BLACK);
+    DrawRectangle(p1X, p1Y, width, height+ 45, color);
+    DrawText("The Game", p1X+50, p1Y+25, 38, BLACK);
+    DrawText("You ran out of lives :(", p1X+10, p1Y+100, 20, BLACK);
+    DrawText("Press R to restart", p1X+10, p1Y+125, 20, BLACK);
 }
 
 void guiDrawSuccess(float p1X, float p1Y, float width, float height, Color color) {
-    DrawRectangle(p1X, p1Y, width, height+ 20, color);
-    DrawText("Lunar Lander", p1X+50, p1Y+25, 38, BLACK);
-    DrawText("You landed the lander!", p1X+50, p1Y+100, 20, BLACK);
+    DrawRectangle(p1X, p1Y, width, height+ 45, color);
+    DrawText("The Game", p1X+50, p1Y+25, 38, BLACK);
+    DrawText("Congratulations! You won!", p1X+50, p1Y+100, 15, BLACK);
+    DrawText("Press R to restart", p1X+10, p1Y+125, 20, BLACK);
 }
 
 void guiDrawText(float p1X, float p1Y, const char* text, int fontSize, Color color) {

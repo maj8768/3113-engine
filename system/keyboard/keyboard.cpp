@@ -9,7 +9,12 @@ int rlToMacKey(int key) {
         case 83: return 1;
         case 68: return 2;
         case 32: return 49;
+        case 82: return 15;
             
+        case 49: return 18;
+        case 50: return 19;
+        case 51: return 20;
+
         case 37: return 123;
         case 38: return 126;
         case 39: return 124;

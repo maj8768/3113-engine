@@ -1,13 +1,16 @@
 #include "../util.h"
 #include <iostream>
 #include <cmath>
+#include <cstring>
+#include "raylib.h"
+#include "string"
 
 /**
  * Math from ChatGPT: https://chatgpt.com/share/69a0d1cd-2908-8001-a52c-c762d5f91148
  *
  *
  */
-bool spherePlaneCollide(physicsEntity& player, planeMtx plane, vector3& applyAcc, float conservationPercent, float deltaTime, int& target, bool invertedNormals) {
+bool spherePlaneCollide(physicsEntity& player, planeMtx plane, vector3& applyAcc, float conservationPercent, float deltaTime, int& target, bool invertedNormals, bool& hasCollidedGround, bool& hasCollidedWall, int planeIndex) {
     vector3 p1 = {plane.m[0][0], plane.m[0][1], plane.m[0][2]};
     vector3 p2 = {plane.m[1][0], plane.m[1][1], plane.m[1][2]};
     vector3 p3 = {plane.m[2][0], plane.m[2][1], plane.m[2][2]};
@@ -41,50 +44,39 @@ bool spherePlaneCollide(physicsEntity& player, planeMtx plane, vector3& applyAcc
     float normedYD = (dotwu * dotv - dotwv * dotuv) / d_check;
     float normedZD = (dotwv * dotu - dotwu * dotuv) / d_check;
 
-    if (normedYD < 0.f) {
-        normedYD = 0.f;
-    }
-    else if (normedYD > 1.f) {
-        normedYD = 1.f;
-    }
-    if (normedZD < 0.f) {
-        normedZD = 0.f; 
-    }
-    else if (normedZD > 1.f) {
-        normedZD = 1.f;
-    }
+    if (normedYD < 0.f || normedYD > 1.f) return false;
+    if (normedZD < 0.f || normedZD > 1.f) return false;
+
+    bool isGround = dot3(normalize3(normal), {0, 1, 0}) < -0.7; // inverted normals moment
 
     vector3 close_point = p1 + u.fmult(normedYD) + v.fmult(normedZD); // p1 coz its with respect to the plane
     float signedDist = dot3(player.location - close_point, normal) / normal.mag();
-    
     // old but still works
 
     // std::cout << "here" << std::endl;
     // std::cout << distance << std::endl;
-    
-    bool isGround = dot3(normalize3(normal), {0, 1, 0}) < -0.7; // inverted normals moment
-    
+
     if (signedDist > -0.2f && signedDist < 0.2f) {
 //        std::cout << "COLLIDING" << std::endl;
-        vector3 repos = close_point + normal.fmult(-0.20001f / normal.mag());
-
-        player.location.x = repos.x;
-        player.location.z = repos.z;
-        player.location.y = repos.y; // ruh roh
-        
-//        std::cout << player.location.y << ", " << repos.y << std::endl;
-//        std::cout << dot3(normalize3(normal), {0, 1, 0}) << std::endl;
         if (isGround) {
-//            std::cout << "im a dog" << std::endl;
+            if (!hasCollidedGround) {
+                vector3 repos = close_point + normal.fmult(-0.20001f / normal.mag());
+                if (repos.y > player.location.y) player.location.y = repos.y;
+                hasCollidedGround = true;
+                std::cout << "standing on plane: " << planeIndex << std::endl;
+                player.groundPlane = planeIndex;
+            }
             player.collidingY = true;
+        } else {
+            if (!hasCollidedWall) {
+                vector3 repos = close_point + normal.fmult(-0.20001f / normal.mag());
+                player.location.x = repos.x;
+                player.location.z = repos.z;
+                hasCollidedWall = true;
+            }
+            player.magnitude.x -= post_impact_vel.x * (1) * conservationPercent;
+            player.magnitude.z -= post_impact_vel.z * (1) * conservationPercent;
         }
-
-        // player.magnitude.x -= post_impact_vel.x * (2) * conservationPercent;
-        // player.magnitude.y -= post_impact_vel.y * (2) * conservationPercent;
-        // player.magnitude.z -= post_impact_vel.z * (2) * conservationPercent; 
-        player.magnitude.x -= post_impact_vel.x * (1) * conservationPercent;
-//        player.magnitude.y -= post_impact_vel.y * (1) * conservationPercent;
-        player.magnitude.z -= post_impact_vel.z * (1) * conservationPercent; 
 
         // handle non-physics related collision
         // (plane->action)(plane->id);
@@ -99,11 +91,6 @@ bool spherePlaneCollide(physicsEntity& player, planeMtx plane, vector3& applyAcc
         // }
         return true;
     }
-    else {
-        if (isGround) {
-            player.collidingY = false;
-        }
-    }
     return false;
 }
 
@@ -117,12 +104,14 @@ void applyAcceleration(vector3 newAccel, physicsEntity& pEntity) {
 
 void processPhysics(float deltaTime, int frameRate, physicsEntity& pEntity, world& world, bool& end, int& target, bool invertedNormals, bool collide) {
     bool acc = false;
-    
+    bool hasCollidedGround = false;
+    bool hasCollidedWall = false;
+
     // checking flat collision for each plane in the world (probably should dynamically build this)
     if (collide) {
+        pEntity.collidingY = false;
         for (int wtc = 0; wtc < world.planeCount; wtc++) {
-            // std::cout << wtc << std::endl;
-            (spherePlaneCollide(pEntity, world.planes[wtc], pEntity.applyAccel, 1, deltaTime,target, invertedNormals));
+            spherePlaneCollide(pEntity, world.planes[wtc], pEntity.applyAccel, 1, deltaTime, target, invertedNormals, hasCollidedGround, hasCollidedWall, wtc);
         }
     }
     // force transfer
@@ -131,7 +120,7 @@ void processPhysics(float deltaTime, int frameRate, physicsEntity& pEntity, worl
 //        std::cout << pEntity.newForce.y << std::endl;
 //        std::cout << pEntity.acceleration.y << std::endl;
         pEntity.acceleration = (pEntity.acceleration + pEntity.newForce).fdiv(pEntity.weight);
-        
+
         pEntity.newForce.murder();
 //        std::cout << pEntity.newForce.y << std::endl;
     }
@@ -140,10 +129,10 @@ void processPhysics(float deltaTime, int frameRate, physicsEntity& pEntity, worl
 //            std::cout << pEntity.applyAccel.y << std::endl;
     pEntity.magnitude = pEntity.magnitude + (pEntity.acceleration * pEntity.applyAccel).fmult(deltaTime);
 //    std::cout << "player mag-y: " << pEntity.magnitude.y << std::endl;
-    
-    
+
+
     // lol no more terminal velocity...
-    
+
 //    // force terminal velocity
 //    if (pEntity.magnitude.y > 214.f) {
 //        pEntity.magnitude.y = 214.f; // roughly terminal velocity if a 3m sphere weighing 12500kg ;p
@@ -171,24 +160,80 @@ void initializePhysicsEntity(physicsEntity& pEntity, float weight) {
     pEntity.weight = weight;
     pEntity.collidingY = false;
     pEntity.jumping = false;
+    pEntity.groundPlane = -1;
+    pEntity.velocity = 0.f;
 }
 
 //void updatePlayerLocation(player)
 
 void updateEntityLocation(meshedObject& object) {
-//    std::cout << object.pEntity.location.y << std::endl;
-//    std::cout << object.mesh.trisO[0].v[1] << std::endl;
+    float c = cosf(object.rotY);
+    float s = sinf(object.rotY);
     for (int i = 0; i < object.mesh.count; i++) {
         for (int j = 0; j < 3; j++) {
-            object.mesh.tris[i].v[j].x = object.mesh.trisO[i].v[j].x + object.pEntity.location.x;
-            object.mesh.tris[i].v[j].y = object.mesh.trisO[i].v[j].y + object.pEntity.location.y;
-            object.mesh.tris[i].v[j].z = object.mesh.trisO[i].v[j].z + object.pEntity.location.z;
+            float ox = object.mesh.trisO[i].v[j].x;
+            float oy = object.mesh.trisO[i].v[j].y;
+            float oz = object.mesh.trisO[i].v[j].z;
+            object.mesh.tris[i].v[j].x = (ox * c - oz * s) + object.pEntity.location.x;
+            object.mesh.tris[i].v[j].y = oy + object.pEntity.location.y;
+            object.mesh.tris[i].v[j].z = (ox * s + oz * c) + object.pEntity.location.z;
         }
     }
-//    std::cout << object.mesh.tris[0].v[1] << std::endl;
-    
+}
+
+void updateColliderLocation(meshedObject& object) {
+    for (int i = 0; i < object.cPlaneCount; i++) {
+        for (int v = 0; v < 4; v++) {
+            object.collider[i].m[v][0] = object.colliderO[i].m[v][0] + object.pEntity.location.x;
+            object.collider[i].m[v][1] = object.colliderO[i].m[v][1] + object.pEntity.location.y;
+            object.collider[i].m[v][2] = object.colliderO[i].m[v][2] + object.pEntity.location.z;
+        }
+    }
+}
+
+void resetMeshedLocation(meshedObject& object) {
+    for (int i = 0; i < object.mesh.count; i++) {
+        for (int j = 0; j < 3; j++) {
+            object.mesh.tris[i].v[j].x = object.mesh.trisO[i].v[j].x;
+            object.mesh.tris[i].v[j].y = object.mesh.trisO[i].v[j].y;
+            object.mesh.tris[i].v[j].z = object.mesh.trisO[i].v[j].z;
+        }
+    }
+    for (int i = 0; i < object.cPlaneCount; i++) {
+        for (int v = 0; v < 4; v++) {
+            object.collider[i].m[v][0] = object.colliderO[i].m[v][0];
+            object.collider[i].m[v][1] = object.colliderO[i].m[v][1];
+            object.collider[i].m[v][2] = object.colliderO[i].m[v][2];
+        }
+    }
+}
+
+
+world buildWorld(meshedObject** objects, int objectCount) {
+    static planeMtx* planes = nullptr;
+    static int allocatedCount = 0;
+
+    int totalPlanes = 0;
+    for (int i = 0; i < objectCount; i++) {
+        updateColliderLocation(*objects[i]);
+        totalPlanes += objects[i]->cPlaneCount;
+    }
+
+    if (totalPlanes > allocatedCount) {
+        delete[] planes;
+        planes = new planeMtx[totalPlanes];
+        allocatedCount = totalPlanes;
+    }
+
+    int offset = 0;
+    for (int i = 0; i < objectCount; i++) {
+        std::memcpy(planes + offset, objects[i]->collider, objects[i]->cPlaneCount * sizeof(planeMtx));
+        offset += objects[i]->cPlaneCount;
+    }
+
+    return { planes, totalPlanes };
 }
 
 void intializePEntityLocation(meshedObject& object) {
-    
+
 }
