@@ -63,7 +63,7 @@ bool spherePlaneCollide(physicsEntity& player, planeMtx plane, vector3& applyAcc
                 vector3 repos = close_point + normal.fmult(-0.20001f / normal.mag());
                 if (repos.y > player.location.y) player.location.y = repos.y;
                 hasCollidedGround = true;
-                std::cout << "standing on plane: " << planeIndex << std::endl;
+                // std::cout << "standing on plane: " << planeIndex << std::endl;
                 player.groundPlane = planeIndex;
             }
             player.collidingY = true;
@@ -110,7 +110,21 @@ void processPhysics(float deltaTime, int frameRate, physicsEntity& pEntity, worl
     // checking flat collision for each plane in the world (probably should dynamically build this)
     if (collide) {
         pEntity.collidingY = false;
+        constexpr float CULL_DIST = 250.0f; // skip planes whose center is farther than this
         for (int wtc = 0; wtc < world.planeCount; wtc++) {
+            // Early exit: both ground and wall already resolved
+            if (hasCollidedGround && hasCollidedWall) break;
+
+            // Distance cull: skip planes whose AABB center is far from the player
+            const planeMtx& pl = world.planes[wtc];
+            float cx = (pl.m[0][0] + pl.m[1][0] + pl.m[2][0] + pl.m[3][0]) * 0.25f;
+            float cy = (pl.m[0][1] + pl.m[1][1] + pl.m[2][1] + pl.m[3][1]) * 0.25f;
+            float cz = (pl.m[0][2] + pl.m[1][2] + pl.m[2][2] + pl.m[3][2]) * 0.25f;
+            float dx = cx - pEntity.location.x;
+            float dy = cy - pEntity.location.y;
+            float dz = cz - pEntity.location.z;
+            if (dx*dx + dy*dy + dz*dz > CULL_DIST * CULL_DIST) continue;
+
             spherePlaneCollide(pEntity, world.planes[wtc], pEntity.applyAccel, 1, deltaTime, target, invertedNormals, hasCollidedGround, hasCollidedWall, wtc);
         }
     }
@@ -215,7 +229,12 @@ world buildWorld(meshedObject** objects, int objectCount) {
 
     int totalPlanes = 0;
     for (int i = 0; i < objectCount; i++) {
-        updateColliderLocation(*objects[i]);
+        // Only recompute collider positions for objects that actually move
+        if (objects[i]->pEntity.magnitude.x != 0.f ||
+            objects[i]->pEntity.magnitude.y != 0.f ||
+            objects[i]->pEntity.magnitude.z != 0.f) {
+            updateColliderLocation(*objects[i]);
+        }
         totalPlanes += objects[i]->cPlaneCount;
     }
 

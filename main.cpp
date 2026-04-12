@@ -107,27 +107,23 @@ static planeMtx plane2;
 
 static shaderStore w2sShader;
 
-static Vector3 lightPos = { 0.f, 15.f, 0.f };
+static Vector3 lightPos = { 0.f, 10.f, 0.f };
 static Vector3 lightDir = { 0.0f, -1.f, 0.f };
 static Vector4 lightColor = { 0.447, 0.816, 0.922, 1.0f };
-static float ambient  = 0.05f;
+static float ambient  = 0.125f;
 
-static meshedObject ship;
-static meshedObject control;
-static meshedObject data;
-static meshedObject platforms1;
-static meshedObject platforms2;
-static meshedObject platforms3;
-static meshedObject chair1;
-static meshedObject evilroomba2;
+static Vector3 boxMins[8];
+static Vector3 boxMaxs[8];
+static int boxCount = 0;
+static int shadowsEnabled = 1;
+static int shadowsEnabledLoc = -1;
+
 static meshedObject skysphere1;
+static meshedObject cube;
+static meshedObject testingplatforms;
 
 static bool iamreal = false;
 static int iamalsoreal = 1;
-
-static Texture2D con1;
-static Texture2D con2;
-static Texture2D con3;
 
 gameData gData = {
     .fadeTo = 1.0f,
@@ -142,19 +138,11 @@ gameData gData = {
     .hasAudioLevel2 = false,
     .hasAudioLevel3 = false,
     .hasChairScared = false,
-    .currentLevel = gameData::LEVEL3,
+    .currentLevel = gameData::TESTING_ENVIRONMENT,
     .lives = 3
 };
 
-static Sound introWAV;
-static Sound rocketWAV;
-static Sound WarningWAV;
-static Sound explosionWAV;
-static Sound yayWAV;
-static Sound bgmusicWAV;
-static Sound bgMusicLevel1;
-static Sound bgMusicLevel2;
-static Sound bgMusicLevel3;
+
 static Sound jump1;
 static Sound jump2;
 static Sound jump3;
@@ -162,29 +150,11 @@ static Sound jump4;
 static Sound jump5;
 static Sound jump6;
 static Sound jump7;
-static Sound chairSound;
-static Sound chairScared;
-static Sound deathSound;
-static Sound level1win;
-static Sound level2win;
-static Sound level3win;
-static Sound roombaDialog;
-static Sound woosh;
 
+AppStatus gAppStatus = RUNNING;
 
-
-// static camera cam = {
-//     .camPos = { 5, 5, 5 },  // up and back
-//     .camTarget = { 0, 0, 0 },
-//     .up = {0, 1, 0},
-//     .aspect = (float)SCREEN_WIDTH / (float)SCREEN_HEIGHT,
-//     .fov = 90.0f * M_PI / 180.0f
-// };
-
-// pyramidMtx pyramid2 = { pyramidPosX2, pyramidPosY2, 0, pyramidPosX2+size*0.5, pyramidPosY2 + size*std::sqrt(3) * 0.5, 0, pyramidPosX2+size, pyramidPosY2, 0, pyramidPosX2+size*0.5, pyramidPosY2, size };
 
 // Global Variables
-AppStatus gAppStatus   = RUNNING;
 
 // Function Declarations
 void initialise();
@@ -192,17 +162,11 @@ void processInput();
 void update();
 void render();
 void shutdown();
-
-void temp(int d) {
-    std::cout << d << std::endl;
-}
+void updateShadowBoxes();
 
 void initializePlayer(player& player1) {
     // set up pc environment for player here as well
-    // HideCursor();
-//    SetMousePosition(SCREEN_WIDTH/2, SCREEN_HEIGHT/2);
     DisableCursor();
-    // SetMousePosition(SCREEN_WIDTH/2, SCREEN_HEIGHT/2);
 
     player1.pEntity.location = {0.f,5.f,0.f};
     player1.camera.camPos = {0,5,0};
@@ -213,28 +177,6 @@ void initializePlayer(player& player1) {
     player1.controls = { 'W', 'A', 'S', 'D' };
     player1.canMove = true;
 }
-
-//void createSphere(sphere_& ball, int depth, float size, vector3 spawnpos) {
-//    static spungonMtx ngonSpun;
-//    static vector3 location = spawnpos;
-//    static vector3 acceleration = {0.f,0.f,0.f};
-//    static vector3 newForce;
-//    static vector3 magnitude;
-//    static vector3 applyAccel = {1.f,1.f,1.f}; // whether or not to apply acceleration (used to nicely stop when acceleration shouldn't affect possition)
-//    ngonSpun.size = depth;
-//    ngonSpun.mtxarr = new gonalMtx[depth];
-//    for (int f = 0; f < depth; f++) {
-//        ngonSpun.mtxarr[f].size = depth;
-//        ngonSpun.mtxarr[f].mtx  = new vector3[depth];
-//    }
-//    ball.spungon_mtx = ngonSpun;
-//    ball.location =location;
-//    ball.size = size;
-//    ball.newForce = newForce;
-//    ball.magnitude = magnitude;
-//    ball.acceleration = acceleration;
-//    ball.applyAccel = applyAccel;
-//}
 
 void createPlane(planeMtx& plane, int id, vector3 location, float dimensions[4][3], Texture2D texture, void (*action)(int)) {
     plane.id = id;
@@ -300,6 +242,27 @@ void create3dObject(meshedObject& object, const char* path, const char* collider
     }
     // std::cout << "v count: " << mesh.count << std::endl;
     object.mesh = mesh;
+    UnloadModel(model); // all data copied into our own mesh; release raylib's copy
+}
+
+void updateShadowBoxes()
+{
+    boxCount = 0;
+    Vector3 bmin = { 1e30f, 1e30f, 1e30f };
+    Vector3 bmax = { -1e30f, -1e30f, -1e30f };
+    for (int i = 0; i < cube.mesh.count; i++) {
+        for (int v = 0; v < 3; v++) {
+            float wx = cube.mesh.tris[i].v[v].x * cube.scale;
+            float wy = cube.mesh.tris[i].v[v].y * cube.scale;
+            float wz = cube.mesh.tris[i].v[v].z * cube.scale;
+            if (wx < bmin.x) bmin.x = wx; if (wx > bmax.x) bmax.x = wx;
+            if (wy < bmin.y) bmin.y = wy; if (wy > bmax.y) bmax.y = wy;
+            if (wz < bmin.z) bmin.z = wz; if (wz > bmax.z) bmax.z = wz;
+        }
+    }
+    boxMins[boxCount] = bmin;
+    boxMaxs[boxCount] = bmax;
+    boxCount++;
 }
 
 // Function Definitions
@@ -309,12 +272,6 @@ void initialise()
     InitWindow(SCREEN_WIDTH, SCREEN_HEIGHT, "Hello raylib!");
     InitAudioDevice();
     
-    WarningWAV = LoadSound("resources/warning.wav");
-    explosionWAV = LoadSound("resources/explosion.mp3");
-    yayWAV = LoadSound("resources/yay.mp3");
-    introWAV = LoadSound("resources/intro.wav");
-    rocketWAV = LoadSound("resources/rocket.mp3");
-    bgmusicWAV = LoadSound("resources/bgmusic.mp3");
     jump1 = LoadSound("resources/sounds/jumps/j1.mp3");
     jump2 = LoadSound("resources/sounds/jumps/j2.mp3");
     jump3 = LoadSound("resources/sounds/jumps/j3.mp3");
@@ -322,24 +279,7 @@ void initialise()
     jump5 = LoadSound("resources/sounds/jumps/j5.mp3");
     jump6 = LoadSound("resources/sounds/jumps/j6.mp3");
     jump7 = LoadSound("resources/sounds/jumps/j7.mp3");
-    chairSound = LoadSound("resources/sounds/chairdialog.mp3");
-    chairScared = LoadSound("resources/sounds/chairscared.mp3");
-    bgMusicLevel1 = LoadSound("resources/levels/level1/Chopin_-_The_Lost_Nocturne_KLICKAUD.mp3");
-    bgMusicLevel2 = LoadSound("resources/levels/level2/Nocturne_Op9_No2_KLICKAUD.mp3");
-    bgMusicLevel3 = LoadSound("resources/levels/level3/Fantaisie-Impromptu_in_C_Sharp_Minor_Op66_KLICKAUD.mp3");
-    deathSound = LoadSound("resources/sounds/fall2.mp3");
-    level1win = LoadSound("resources/levels/level1/win.mp3");
-    level2win = LoadSound("resources/levels/level2/win.mp3");
-    level3win = LoadSound("resources/levels/level3/win.mp3");
-    roombaDialog = LoadSound("resources/sounds/roombadialog.mp3");
-    woosh = LoadSound("resources/sounds/woosh.mp3");
 
-    SetSoundVolume(bgMusicLevel1, 0.5f);
-    SetSoundVolume(bgMusicLevel2, 0.5f);
-    SetSoundVolume(bgMusicLevel3, 0.5f);
-
-    // PlaySound(bgmusicWAV);
-    SetSoundVolume(bgmusicWAV, 0.8f);
     
     void* handle = GetWindowHandle();
     if (!RawMouseInitFromHWND(handle))
@@ -369,8 +309,8 @@ void initialise()
     };
 
 
-    createPlane(plane,0,{0,0,0},dimensions,texo,temp);
-    createPlane(plane2,0,{0,1,0},dimensions2,texo,temp);
+    // createPlane(plane,0,{0,0,0},dimensions,texo,temp);
+    // createPlane(plane2,0,{0,1,0},dimensions2,texo,temp);
     initializePlayer(player1);
     SetTargetFPS(FPS);
 
@@ -386,10 +326,10 @@ void initialise()
     w2sShader.texoLoc = GetShaderLocation(w2sShader.shader, "uTexo");
     w2sShader.fadeToLoc = GetShaderLocation(w2sShader.shader, "fadeTo");
     w2sShader.vpLoc = GetShaderLocation(w2sShader.shader, "uVP");
-    
-    con1 = LoadTexture("resources/panel1_1.png");
-    con2 = LoadTexture("resources/panel1_2.png");
-    con3 = LoadTexture("resources/panel1_3.png");
+    w2sShader.boxMinsLoc  = GetShaderLocation(w2sShader.shader, "uBoxMins");
+    w2sShader.boxMaxsLoc  = GetShaderLocation(w2sShader.shader, "uBoxMaxs");
+    w2sShader.boxCountLoc = GetShaderLocation(w2sShader.shader, "uBoxCount");
+    shadowsEnabledLoc     = GetShaderLocation(w2sShader.shader, "uShadowsEnabled");
 
     // call creates before initializing the physics entity
     
@@ -397,12 +337,16 @@ void initialise()
     // create3dObject(control, "resources/control.obj", "", false, w2sShader, 1.f,{0.f,0.25f,-3.8f});
     // create3dObject(data, "resources/data.obj", "", false, w2sShader, 1.2f,{-0.66f,0.f,2.33f});
 //    create3dObject(cheese, "resources/cheese.obj", "", false, w2sShader, 100,{0.f,0.f,0.f});
-    create3dObject(platforms1, "resources/levels/level1/level1.obj", "resources/levels/level1/colliders/level1collider.obj", true, w2sShader, 4.f, {0.f,0.f,0.f});
-    create3dObject(platforms2, "resources/levels/level2/level2.obj", "resources/levels/level2/colliders/level2collider.obj", true, w2sShader, 4.f, {0.f,0.f,0.f});
-    create3dObject(chair1, "resources/levels/level1/chair.obj", "resources/levels/level1/colliders/chaircollider.obj", true, w2sShader, 4.f, {0.f,0.f,0.f});
+    // create3dObject(platforms1, "resources/levels/level1/level1.obj", "resources/levels/level1/colliders/level1collider.obj", true, w2sShader, 4.f, {0.f,0.f,0.f});
+    // create3dObject(platforms2, "resources/levels/level2/level2.obj", "resources/levels/level2/colliders/level2collider.obj", true, w2sShader, 4.f, {0.f,0.f,0.f});
+    // create3dObject(chair1, "resources/levels/level1/chair.obj", "resources/levels/level1/colliders/chaircollider.obj", true, w2sShader, 4.f, {0.f,0.f,0.f});
     create3dObject(skysphere1, "resources/levels/skysphere.obj", "", false, w2sShader, 25.f, {0.f,0.f,0.f});
-    create3dObject(evilroomba2, "resources/levels/level2/evilroomba.obj", "", true, w2sShader, 1.f, {0.f,0.f,0.f});
-    create3dObject(platforms3, "resources/levels/level3/level3.obj", "resources/levels/level3/colliders/level3collider.obj", true, w2sShader, 4.f, {0.f,0.f,0.f});
+    // create3dObject(evilroomba2, "resources/levels/level2/evilroomba.obj", "", true, w2sShader, 1.f, {0.f,0.f,0.f});
+    // create3dObject(platforms3, "resources/levels/level3/level3.obj", "resources/levels/level3/colliders/level3collider.obj", true, w2sShader, 4.f, {0.f,0.f,0.f});
+    create3dObject(testingplatforms, "resources/levels/testing/testplatform.obj", "resources/levels/testing/colliders/testplatformcollider.obj", true, w2sShader, 1.f, {0.f,0.f,0.f});
+    create3dObject(cube, "resources/levels/testing/cube.obj", "", false, w2sShader, 1.f, {7.f,5.f,3.f});
+
+    // updateShadowBoxes();
 
     /* planeMtx struct for reference:
      * struct planeMtx {
@@ -412,10 +356,10 @@ void initialise()
     
 //    initializePhysicsEntity(cheese.pEntity, 12500.f); // all enities that need physics have to be initialized :/
     initializePhysicsEntity(player1.pEntity, 1.f); // even players need to be initialized because they have physics and im lazy
-    initializePhysicsEntity(chair1.pEntity, 100.f);
-    initializePhysicsEntity(evilroomba2.pEntity, 50.f);
+    // initializePhysicsEntity(chair1.pEntity, 100.f);
+    // initializePhysicsEntity(evilroomba2.pEntity, 50.f);
     applyAcceleration({0.f,-20.5f,0.f}, player1.pEntity);
-    
+
 //    applyAcceleration({0.f,9.8f,0.f},cheese.pEntity);
 //    applyForce({0.f,150.f,0.f},cheese.pEntity);
 
@@ -424,14 +368,12 @@ void initialise()
 
     gPreviousTicks = static_cast<float>(GetTime());
     // w2sShader = { w2s, SHADER_LOC_MATRIX_MVP, SHADER_LOC_COLOR_DIFFUSE, GetShaderLocation(w2s, "uLightDir") };
-
-    gData.currentLevel = gameData::GAMESTART; // start on level 1 for testing purposes
 }
 
-void processInput() 
-{
-    if (WindowShouldClose()) gAppStatus = TERMINATED;
-}
+// void processInput()
+// {
+//     if (WindowShouldClose()) gAppStatus = TERMINATED;
+// }
 
 static bool pRot = true;
 
@@ -441,18 +383,21 @@ int g = 1;
 float floating = 1;
 int target = 0;
 
-double previousTime = GetTime();
 bool start = false;
-int frameCount = 0;
 bool warning = false;
 bool success = false;
 bool intro = false;
 float musicVol = 0.2f;
 vector2 md;;
 
+
 void update() {
-    double currentTime = GetTime();
-    frameCount++;
+
+    // static bool pWasDown = false;
+    // bool pDown = getAsyncKeyStateWrapper(KEY_P);
+    // if (pDown && !pWasDown) shadowsEnabled = !shadowsEnabled;
+    // pWasDown = pDown;
+
     auto ticks = static_cast<float>(GetTime());          // step 1
     float deltaTime = ticks - gPreviousTicks; // step 2
     gPreviousTicks = ticks;
@@ -464,156 +409,65 @@ void update() {
     int r = rand() % 7 + 1;
     Sound jumpSound = r == 1 ? jump1 : r == 2 ? jump2 : r == 3 ? jump3 : r == 4 ? jump4 : r == 5 ? jump5 : r == 6 ? jump6 : jump7; 
     
-    movePlayer(gData, player1, false, deltaTime, 13, jumpSound, woosh);
-    
-    if (gData.currentLevel == gameData::LEVEL1) {
-        meshedObject* worldObjects[] = { &platforms1, &chair1 }; 
-        world worldInstance = buildWorld(worldObjects, 2);
-        processPhysics(deltaTime, 0, player1.pEntity, worldInstance, iamreal, iamalsoreal, false, true); // last bool is for collision
-        processPhysics(deltaTime, 0, chair1.pEntity, worldInstance, iamreal, iamalsoreal, false, false);
+    movePlayer(gData, player1, false, deltaTime, 13, jumpSound);
+    // lightPos.y = player1.pEntity.location.y + 10.f;
+    // lightPos.x = player1.pEntity.location.x;
+    // lightPos.z = player1.pEntity.location.z;
+    g++;
+    cube.pEntity.location.x = 1.f + sinf(g * 0.00025) * 5.f;
+    cube.pEntity.location.z = -1.f + sinf(g * 0.00025) * 5.f;
+    // lightPos.x = player1.pEntity.location.x;
+    // lightPos.z = player1.pEntity.location.z;
+    // lightPos.y = player1.pEntity.location.y + 9.f;
+    updateEntityLocation(cube);
+    updateShadowBoxes();
+// meshedObject* worldObjects[] = { &testingplatforms };
+//             world worldInstance = buildWorld(worldObjects, 1);
+//             processPhysics(deltaTime, 0, player1.pEntity, worldInstance, iamreal, iamalsoreal, false, true); // last bool is for collision
+            // break;
+    switch (gData.currentLevel) {
+        case gameData::TESTING_ENVIRONMENT: {
+            meshedObject* worldObjects[] = { &testingplatforms };
+            world worldInstance = buildWorld(worldObjects, 1);
+            processPhysics(deltaTime, 0, player1.pEntity, worldInstance, iamreal, iamalsoreal, false, true); // last bool is for collision
+            break;
+        }
+        case gameData::LEVEL1: {
+            meshedObject* worldObjects[] = {  };
+            world worldInstance = buildWorld(worldObjects, 0);
+            processPhysics(deltaTime, 0, player1.pEntity, worldInstance, iamreal, iamalsoreal, false, true); // last bool is for collision
+            break;
+        }
+        case gameData::LEVEL2: {
+            meshedObject* worldObjects[] = {  };
+            world worldInstance = buildWorld(worldObjects, 0);
+            processPhysics(deltaTime, 0, player1.pEntity, worldInstance, iamreal, iamalsoreal, false, true); // last bool is for collision
+            break;
+        }
+        case gameData::LEVEL3: {
+            meshedObject* worldObjects[] = {  };
+            world worldInstance = buildWorld(worldObjects, 0);
+            processPhysics(deltaTime, 0, player1.pEntity, worldInstance, iamreal, iamalsoreal, false, true); // last bool is for collision
+            break;
+        }
+        case gameData::GAMESTART:
+        case gameData::GAMEINFOMERCIAL:
+            getStartingInput(gData);
+            break;
+        case gameData::GAMEEND:
+        case gameData::GAMEWIN:
+            getRestartInput(gData);
+            break;
     }
-    else if (gData.currentLevel == gameData::LEVEL2) {
-        meshedObject* worldObjects[] = { &platforms2, &evilroomba2 }; 
-        world worldInstance = buildWorld(worldObjects, 2);
-        processPhysics(deltaTime, 0, player1.pEntity, worldInstance, iamreal, iamalsoreal, false, true); // last bool is for collision
-        processPhysics(deltaTime, 0, evilroomba2.pEntity, worldInstance, iamreal, iamalsoreal, false, false);
-    }
-    else if(gData.currentLevel == gameData::LEVEL3) {
-        meshedObject* worldObjects[] = { &platforms3 }; 
-        world worldInstance = buildWorld(worldObjects, 1);
-        processPhysics(deltaTime, 0, player1.pEntity, worldInstance, iamreal, iamalsoreal, false, true); // last bool is for collision
-    }
-    else if(gData.currentLevel == gameData::GAMESTART || gData.currentLevel == gameData::GAMEINFOMERCIAL) {
-        getStartingInput(gData);
-    }
-    else if (gData.currentLevel == gameData::GAMEEND || gData.currentLevel == gameData::GAMEWIN) {
-        getRestartInput(gData);
+
+    static double lastPrintTime = 0.0;
+    double now = GetTime();
+    if (now - lastPrintTime >= 0.25) {
+        std::cout << "FPS: " << GetFPS() << std::endl;
+        lastPrintTime = now;
     }
 
-    levelLogic(player1, deltaTime, gData, deathSound, level1win, level2win, level3win, bgMusicLevel1, bgMusicLevel2, bgMusicLevel3, chairSound, chairScared, roombaDialog, chair1, evilroomba2);
-
-
-
-    //    processPhysics(deltaTime, 0, cheese.pEntity, worldInstance, iamreal, iamalsoreal, false, false);
-//    applyForce({0.f,gData.thrustY,0.f}, cheese.pEntity);
-    
-//    updateEntityLocation(cheese);
-//    updateEntityLocation(player1);
-    
-    // old game logic
-    
-//    if (!gData.gameEnded && gData.gameStarted == true && gData.infommercial == true) {
-//        if (!intro) {
-//            SetSoundVolume(bgmusicWAV, musicVol);
-//            PlaySound(introWAV);
-//            intro = true;
-//        }                  // step 3
-//        
-//        i += deltaTime * g;
-//        
-//        if (i >= 1 || i <= -1) g *= -1;
-//        
-//        lightPos.y = 4.5f + 1.f * sinf(i);
-//        
-//        //    std::cout << i << std::endl;
-//        
-//        if (i > .5) {
-//            control.texo = con1;
-//        }
-//        else if (i > -0.5) {
-//            control.texo = con2;
-//        }
-//        else control.texo = con3;
-//        
-//        int fuelTarget = 0;
-//        if (cheese.pEntity.location.y > -100.f) {
-////            PauseSound(bgmusicWAV);
-//            if (fabs(cheese.pEntity.magnitude.y) < 50) {
-//                cheese.pEntity.magnitude.y = 10; // simulating a parachute :)
-//            }
-//        }
-//        if (cheese.pEntity.location.y > -0.1) {
-//            musicVol = musicVol + (0.25f - ((musicVol > 0.25) ? 0.25 : musicVol) * deltaTime * .20);
-//            SetSoundVolume(bgmusicWAV, musicVol);
-//            if (fabs(cheese.pEntity.magnitude.y) < 15) {
-//                success = true;
-//                PauseSound(rocketWAV);
-//                PlaySound(yayWAV);
-//            }
-//            else {
-//                PauseSound(rocketWAV);
-//                PlaySound(explosionWAV);
-//                SetSoundVolume(bgmusicWAV, 0.2f);
-//            }
-//            cheese.pEntity.location.y = -0.1;
-//            cheese.pEntity.magnitude = {0.f,0.f,0.f};
-//            gData.gameEnded = true;
-//        }
-//        else {
-//            cheese.pEntity.acceleration = {0.f,9.8f,0.f};
-//        }
-//        float deltaAlt = (gData.alt - fabs(cheese.pEntity.location.y));
-//        float deltaFuel = gData.fuel - gData.oldFuel;
-//        float deltaThrustY = gData.thrustY - gData.oldThrustY;
-//        gData.alt = fabs(cheese.pEntity.location.y);
-//        
-//        //    std::cout << "bruh" << deltaAlt/8000.f << std::endl;
-//        if (start) {
-//            moveUVs(data.mesh, fuel, 4, deltaFuel/700.f);
-//            moveUVs(data.mesh, alt, 4, deltaAlt/15500.f);
-//            //    std::cout << deltaAlt/10000.f * 0.8f << std::endl;
-//            moveUVs(data.mesh, thrust, 4, deltaThrustY/2200000.f);
-//        }
-//        else {
-//            start = true;
-//        }
-//        
-//        if (gData.alt < 1200 && warning == false) {
-////            musicVol = musicVol + (0.8 - musicVol) * deltaTime;
-//            PlaySound(WarningWAV);
-//            lightColor = {0.92f, 0.35f, 0.35f, 1};
-//            warning = true;
-//        }
-//        if (gData.alt < 950.f && gData.alt > 5.f) {
-//            musicVol = musicVol + (1.0f - musicVol) * deltaTime * .20;
-//            SetSoundVolume(bgmusicWAV, musicVol);
-//            lightColor = { 0.447, 0.816, 0.922, 1.0f };
-//        }
-//        
-//        
-////        std::cout << gData.alt << ", " << cheese.pEntity.magnitude.y << std::endl;
-//        
-//        // std::cout << i << std::endl;
-//        vector2 md;
-//        RawMouseGetDelta(md.x, md.y);
-//        moveLook(player1, deltaTime, md);
-//        movePlayer(gData, player1, false, deltaTime, 10, rocketWAV);
-//        // void processPhysics(float deltaTime, int frameRate, player& player, world& world, bool& end, int& target)
-//        processPhysics(deltaTime, 0, player1.pEntity, worldInstance, iamreal, iamalsoreal, false, true);
-//        processPhysics(deltaTime, 0, cheese.pEntity, worldInstance, iamreal, iamalsoreal, false, false);
-//        applyForce({0.f,gData.thrustY,0.f}, cheese.pEntity);
-//        
-//        updateEntityLocation(cheese);
-//    }
-//    else if (!(gData.gameStarted) || !(gData.infommercial)) {
-//    //    std::cout << gData.gameStarted << std::endl;
-//        getStartingInput(gData);
-//    }
-
-    // std::cout << "dx: " << md.x << " dy: " << md.y << std::endl;
-
-//if (currentTime - previousTime >= .1) {
-//   // Calculate FPS
-//   double fps = (double)frameCount / (currentTime - previousTime);
-//
-//   // Display the FPS (e.g., in the window title)
-////   std::cout << "[" << fps << " FPS]" << std::endl;
-//   // glfwSetWindowTitle(pWindow, ss.str().c_str()); // Replace pWindow with your GLFWwindow pointer
-//
-//   // Reset the counter and time
-//   frameCount = 0;
-//   previousTime = currentTime;
-//}
+    // levelLogic(player1, deltaTime, gData, deathSound, level1win, level2win, level3win, bgMusicLevel1, bgMusicLevel2, bgMusicLevel3, chairSound, chairScared, roombaDialog, chair1, evilroomba2);
 }
 
 void render()
@@ -621,7 +475,7 @@ void render()
     ClearBackground(BLACK);
 
     if (/*gData.gameStarted == true && gData.gameEnded == false && gData.infommercial*/ true) { // true for now for stateless testing
-    
+
         rlEnableDepthTest();
         rlEnableDepthMask();
 
@@ -630,8 +484,17 @@ void render()
         rlMatrixMode(RL_MODELVIEW);
         rlLoadIdentity();
 
+        // Compute VP once per frame and share across all Draw3DGPU calls
+        mtx44 frameView = viewMtx44(player1.camera.camPos, player1.camera.camTarget, player1.camera.up);
+        mtx44 frameProj = projMtx44(player1.camera.fov, player1.camera.aspect, 0.1f, 1000000000000000000.0f);
+        mtx44 frameVP   = mmult4(frameProj, frameView);
+
         BeginShaderMode(w2sShader.shader);
-        SetShaderValue(w2sShader.shader, w2sShader.lightPosLoc, &lightPos, SHADER_UNIFORM_VEC3);
+        SetShaderValue(w2sShader.shader, w2sShader.lightPosLoc,  &lightPos, SHADER_UNIFORM_VEC3);
+        SetShaderValueV(w2sShader.shader, w2sShader.boxMinsLoc, boxMins, SHADER_UNIFORM_VEC3, boxCount);
+        SetShaderValueV(w2sShader.shader, w2sShader.boxMaxsLoc, boxMaxs, SHADER_UNIFORM_VEC3, boxCount);
+        SetShaderValue(w2sShader.shader, w2sShader.boxCountLoc, &boxCount, SHADER_UNIFORM_INT);
+        SetShaderValue(w2sShader.shader, shadowsEnabledLoc, &shadowsEnabled, SHADER_UNIFORM_INT);
         SetShaderValue(w2sShader.shader, w2sShader.lightDirLoc, &lightDir, SHADER_UNIFORM_VEC3);
         SetShaderValue(w2sShader.shader, w2sShader.lightColorLoc, &lightColor, SHADER_UNIFORM_VEC4);
         SetShaderValue(w2sShader.shader, w2sShader.ambientLoc, &ambient, SHADER_UNIFORM_FLOAT);
@@ -641,19 +504,19 @@ void render()
         // Draw3DGPU(control, player1.camera, w2sShader, {255, 0, 0, 255}, control.scale);
         // Draw3DGPU(data, player1.camera, w2sShader, {255, 0, 0, 255}, data.scale);
         switch(gData.currentLevel) {
+            case gameData::TESTING_ENVIRONMENT:
+                Draw3DGPU(skysphere1, player1.camera, w2sShader, {255, 0, 0, 255}, skysphere1.scale, &frameVP);
+                Draw3DGPU(testingplatforms, player1.camera, w2sShader, {255, 0, 0, 255}, testingplatforms.scale, &frameVP);
+                Draw3DGPU(cube, player1.camera, w2sShader, {255, 0, 0, 255}, cube.scale, &frameVP);
+                break;
             case gameData::LEVEL1:
-                Draw3DGPU(skysphere1, player1.camera, w2sShader, {255, 0, 0, 255}, skysphere1.scale);
-                Draw3DGPU(platforms1, player1.camera, w2sShader, {255, 0, 0, 255}, platforms1.scale);
-                Draw3DGPU(chair1, player1.camera, w2sShader, {255, 0, 0, 255}, chair1.scale);
+                Draw3DGPU(skysphere1, player1.camera, w2sShader, {255, 0, 0, 255}, skysphere1.scale, &frameVP);
                 break;
             case gameData::LEVEL2:
-                Draw3DGPU(skysphere1, player1.camera, w2sShader, {255, 0, 0, 255}, skysphere1.scale);
-                Draw3DGPU(platforms2, player1.camera, w2sShader, {255, 0, 0, 255}, platforms2.scale);
-                Draw3DGPU(evilroomba2, player1.camera, w2sShader, {255, 0, 0, 255}, evilroomba2.scale);
+                Draw3DGPU(skysphere1, player1.camera, w2sShader, {255, 0, 0, 255}, skysphere1.scale, &frameVP);
                 break;
             case gameData::LEVEL3:
-                Draw3DGPU(skysphere1, player1.camera, w2sShader, {255, 0, 0, 255}, skysphere1.scale);
-                Draw3DGPU(platforms3, player1.camera, w2sShader, {255, 0, 0, 255}, platforms3.scale);
+                Draw3DGPU(skysphere1, player1.camera, w2sShader, {255, 0, 0, 255}, skysphere1.scale, &frameVP);
                 break;
             default:
                 break;
@@ -685,26 +548,7 @@ void render()
             default:
                 break;
         }
-//        guiDrawHUD(15, SCREEN_HEIGHT - 50, GREEN, gData, cheese);
-
     }
-//    else if (gData.gameEnded == true) {
-//        if (success) {
-//            guiDrawSuccess(SCREEN_WIDTH/2.f-175.f,  SCREEN_HEIGHT/2.f-100.f,  350,  200, WHITE);
-//        }
-//        else {
-//            guiDrawFailure(SCREEN_WIDTH/2.f-175.f,  SCREEN_HEIGHT/2.f-100.f,  350,  200, WHITE);
-//        }
-//    }
-//    else if (gData.gameStarted == false && gData.infommercial == false) {
-//        guiDrawStartMenu( SCREEN_WIDTH/2.f-175.f,  SCREEN_HEIGHT/2.f-100.f,  350,  200, WHITE, 1);
-//    }
-//    else {
-//        guiDrawStartPopup( SCREEN_WIDTH/2.f-175.f,  SCREEN_HEIGHT/2.f-100.f,  350,  200, WHITE);
-//    }
-//    DrawPlaneGPU(plane, player1.camera, w2sShader, {1.f,0.f,0.f,1.f}, 25.f);
-
-//    DrawFPS(10, 10);
 }
 
 void shutdown() 
@@ -717,12 +561,6 @@ void shutdown()
      static Sound yayWAV;
      static Sound bgmusicWAV;
      */
-    UnloadSound(WarningWAV);     // Unload sound data
-    UnloadSound(introWAV);     // Unload sound data
-    UnloadSound(rocketWAV);     // Unload sound data
-    UnloadSound(explosionWAV);     // Unload sound data
-    UnloadSound(yayWAV);     // Unload sound data
-    UnloadSound(bgmusicWAV);     // Unload sound data
     UnloadSound(jump1);
     UnloadSound(jump2);
     UnloadSound(jump3);
@@ -730,22 +568,22 @@ void shutdown()
     UnloadSound(jump5);
     UnloadSound(jump6);
     UnloadSound(jump7);
-    UnloadSound(chairSound);
-    UnloadSound(chairScared);
-    UnloadSound(deathSound);
-    UnloadSound(level1win);
-    UnloadSound(level2win);
-    UnloadSound(level3win);
-    UnloadSound(roombaDialog);
-    UnloadSound(woosh);
 
-    UnloadTexture(con1);
-    UnloadTexture(con2);
-    UnloadTexture(con3);
+
+    UnloadShader(w2sShader.shader);
+
+    // Free CPU mesh data for all loaded objects
+    free(skysphere1.mesh.tris);
+    free(skysphere1.mesh.trisO);
+    free(testingplatforms.mesh.tris);
+    free(testingplatforms.mesh.trisO);
+    delete[] testingplatforms.collider;
+    delete[] testingplatforms.colliderO;
+    free(cube.mesh.tris);
+    free(cube.mesh.trisO);
 
     CloseAudioDevice();
     CloseWindow(); // Close window and OpenGL context
-    UnloadShader(w2sShader.shader);
     // UnloadTexture(pyramid.texture);  // right here!
 }
 

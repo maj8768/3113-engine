@@ -73,6 +73,31 @@ mtx44 viewMtx44(const vector3& pos, const vector3& target, const vector3& up) {
   return view;
 }
 
+mtx44 lookAtMtx44(const vector3& eye, const vector3& target, const vector3& up) {
+  vector3 F = normalize3(target - eye);
+  vector3 R = normalize3(cross3(F, up));
+  vector3 U = cross3(R, F);
+
+  mtx44 view{};
+  view.m[0][0] = R.x;  view.m[0][1] = R.y;  view.m[0][2] = R.z;  view.m[0][3] = -dot3(R, eye);
+  view.m[1][0] = U.x;  view.m[1][1] = U.y;  view.m[1][2] = U.z;  view.m[1][3] = -dot3(U, eye);
+  view.m[2][0] = -F.x; view.m[2][1] = -F.y; view.m[2][2] = -F.z; view.m[2][3] =  dot3(F, eye);
+  view.m[3][0] = 0.f;  view.m[3][1] = 0.f;  view.m[3][2] = 0.f;  view.m[3][3] = 1.f;
+  return view;
+}
+
+mtx44 orthoMtx44(float l, float r, float b, float t, float zn, float zf) {
+  mtx44 m{};
+  m.m[0][0] = 2.f / (r - l);
+  m.m[1][1] = 2.f / (t - b);
+  m.m[2][2] = -2.f / (zf - zn);
+  m.m[0][3] = -(r + l) / (r - l);
+  m.m[1][3] = -(t + b) / (t - b);
+  m.m[2][3] = -(zf + zn) / (zf - zn);
+  m.m[3][3] = 1.f;
+  return m;
+}
+
 mtx44 projMtx44(float fovYRad, float aspect, float zn, float zf) {
   float f = 1.0f / tan(fovYRad * 0.5f);
 

@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(sh build-mingw.sh)",
+      "Bash(make clean:*)",
+      "Bash(make)",
+      "Bash(/c/msys64/usr/bin/make clean:*)",
+      "Bash(/c/msys64/usr/bin/make)"
+    ]
+  }
+}

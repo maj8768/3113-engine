@@ -10,17 +10,22 @@
 
 // current (GPU)
 
-void Draw3DGPU(const meshedObject& object, const camera& cam, shaderStore& shader, vector4 color, float scale) {
+void Draw3DGPU(const meshedObject& object, const camera& cam, shaderStore& shader, vector4 color, float scale, const mtx44* precomputedVP) {
     triDomMesh mesh = object.mesh;
-    mtx44 view = viewMtx44(cam.camPos, cam.camTarget, cam.up);
-    mtx44 proj = projMtx44(cam.fov, cam.aspect, 0.1f, 1000000000000000000.0f);
-    mtx44 vp   = mmult4(proj, view);
+    mtx44 vp;
+    if (precomputedVP) {
+        vp = *precomputedVP;
+    } else {
+        mtx44 view = viewMtx44(cam.camPos, cam.camTarget, cam.up);
+        mtx44 proj = projMtx44(cam.fov, cam.aspect, 0.1f, 1000000000000000000.0f);
+        vp = mmult4(proj, view);
+    }
 
     
-    rlDrawRenderBatchActive(); // flush texture and load new
-    
+    rlDrawRenderBatchActive(); // flush previous batch — counter resets here
+
+    // Both textures must be bound AFTER the flush so they get consecutive units
     SetShaderValueTexture(shader.shader, shader.texoLoc, object.texo);
-//    SetShaderValue(shader.shader, shader.texoLoc, object.texo.id, SHADER_UNIFORM_SAMPLER2D);
     SetShaderValueMatrix(shader.shader, shader.vpLoc, ToRaylibMatrix(vp));
 
 //    rlSetTexture(object.texo.id);
@@ -55,6 +60,21 @@ void Draw3DGPU(const meshedObject& object, const camera& cam, shaderStore& shade
     rlEnd();
     // rlSetTexture(0);
 //    SetShaderValueTexture(shader.shader, shader.texoLoc, );
+}
+
+void DrawShadow3DGPU(const meshedObject& object, Shader depthShader, int lightSpaceLoc, mtx44 lightSpaceMatrix, float scale) {
+    triDomMesh mesh = object.mesh;
+
+    rlDrawRenderBatchActive();
+    SetShaderValueMatrix(depthShader, lightSpaceLoc, ToRaylibMatrix(lightSpaceMatrix));
+
+    rlBegin(RL_TRIANGLES);
+    for (int i = 0; i < mesh.count; i++) {
+        rlVertex3f(mesh.tris[i].v[0].x * scale, mesh.tris[i].v[0].y * scale, mesh.tris[i].v[0].z * scale);
+        rlVertex3f(mesh.tris[i].v[1].x * scale, mesh.tris[i].v[1].y * scale, mesh.tris[i].v[1].z * scale);
+        rlVertex3f(mesh.tris[i].v[2].x * scale, mesh.tris[i].v[2].y * scale, mesh.tris[i].v[2].z * scale);
+    }
+    rlEnd();
 }
 
 void DrawPlaneGPU(planeMtx plane, camera cam, shaderStore shader, vector4 color, float scale) {

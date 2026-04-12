@@ -65,7 +65,7 @@ void getStartingInput(gameData& gData) {
     else canEnter = true;
 }
 
-void movePlayer(gameData& gData, player& player, bool swappedNormals, float deltaTime, float maxSpeed, Sound js, Sound woosh) {
+void movePlayer(gameData& gData, player& player, bool swappedNormals, float deltaTime, float maxSpeed, Sound js) {
     // always run ground reset regardless of canMove
     if (player.pEntity.collidingY && player.pEntity.magnitude.y <= 0.f) {
         player.pEntity.jumping = false;
@@ -91,66 +91,7 @@ void movePlayer(gameData& gData, player& player, bool swappedNormals, float delt
         float moveX = 0.0f;
         float moveZ = 0.0f;
 
-        if (getAsyncKeyStateWrapper('1')) {
-            player.pEntity.location = {0.f, 5.f, 0.f};
-            player.pEntity.magnitude = {0.f, 0.f, 0.f};
-            gData = {
-                .fadeTo = 1.0f,
-                .isDying = false,
-                .gameStarted = false,
-                .gameEnded = false,
-                .infommercial = false,
-                .bgMusicLevel1 = false,
-                .bgMusicLevel2 = false,
-                .bgMusicLevel3 = false,
-                .hasAudioLevel1 = false,
-                .hasAudioLevel2 = false,
-                .hasAudioLevel3 = false,
-                .hasChairScared = false,
-                .currentLevel = gameData::LEVEL1,
-                .lives = 3
-            };
-        }
-        if (getAsyncKeyStateWrapper('2')) {
-            player.pEntity.location = {0.f, 5.f, 0.f};
-            player.pEntity.magnitude = {0.f, 0.f, 0.f};
-            gData = {
-                .fadeTo = 1.0f,
-                .isDying = false,
-                .gameStarted = false,
-                .gameEnded = false,
-                .infommercial = false,
-                .bgMusicLevel1 = false,
-                .bgMusicLevel2 = false,
-                .bgMusicLevel3 = false,
-                .hasAudioLevel1 = false,
-                .hasAudioLevel2 = false,
-                .hasAudioLevel3 = false,
-                .hasChairScared = false,
-                .currentLevel = gameData::LEVEL2,
-                .lives = 3
-            };
-        }
-        if (getAsyncKeyStateWrapper('3')) {
-            player.pEntity.location = {0.f, 5.f, 0.f};
-            player.pEntity.magnitude = {0.f, 0.f, 0.f};
-            gData = {
-                .fadeTo = 1.0f,
-                .isDying = false,
-                .gameStarted = false,
-                .gameEnded = false,
-                .infommercial = false,
-                .bgMusicLevel1 = false,
-                .bgMusicLevel2 = false,
-                .bgMusicLevel3 = false,
-                .hasAudioLevel1 = false,
-                .hasAudioLevel2 = false,
-                .hasAudioLevel3 = false,
-                .hasChairScared = false,
-                .currentLevel = gameData::LEVEL3,
-                .lives = 3
-            };
-        }
+
         if (getAsyncKeyStateWrapper(player.controls.x)) {
             moveX += xR;
             moveZ += zR;
@@ -172,27 +113,6 @@ void movePlayer(gameData& gData, player& player, bool swappedNormals, float delt
                 player.pEntity.magnitude.y = 10.f;
                 player.pEntity.jumping = true;
                 PlaySound(js);
-                //bs for platformer:
-                if (gData.currentLevel == gameData::LEVEL2) {
-                    int r = rand() % 8 + 1;
-                    int slam = rand() % 25 + 50;
-                    if (r == 1) {
-                        player.pEntity.magnitude.x += slam;
-                        PlaySound(woosh);
-                    }
-                    else if (r == 2) {
-                        player.pEntity.magnitude.x -= slam;
-                        PlaySound(woosh);
-                    }
-                    else if (r == 3) {
-                        player.pEntity.magnitude.z += slam;
-                        PlaySound(woosh);
-                    }
-                    else if (r == 4) {
-                        player.pEntity.magnitude.z -= slam;
-                        PlaySound(woosh);
-                    }
-                }
             }
         }
 

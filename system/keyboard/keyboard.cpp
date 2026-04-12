@@ -10,39 +10,51 @@ int rlToMacKey(int key) {
         case 68: return 2;
         case 32: return 49;
         case 82: return 15;
-            
+
+        // 1, 2, 3
         case 49: return 18;
         case 50: return 19;
         case 51: return 20;
+
+        // P
+        case 80: return 35;
 
         case 37: return 123;
         case 38: return 126;
         case 39: return 124;
         case 40: return 125;
-            
+
         case 257: return 36;
-            
+
         default: return key;
     }
 }
 
 int rlToWinKey(int key) {
     switch (key) {
-    case 87: return 87;   // W
-    case 65: return 65;   // A
-    case 83: return 83;   // S
-    case 68: return 68;   // D
-    case 32: return 32;   // Space
+        case 87: return 87;   // W
+        case 65: return 65;   // A
+        case 83: return 83;   // S
+        case 68: return 68;   // D
+        case 32: return 32;   // Space
 
-    case 37: return 37;   // Left arrow
-    case 38: return 38;   // Up arrow
-    case 39: return 39;   // Right arrow
-    case 40: return 40;   // Down arrow
+        // 1, 2, 3
+        case 49: return 49;
+        case 50: return 50;
+        case 51: return 51;
 
-    case 257: return 13;  // Enter (VK_RETURN)
+        // P
+        case 80: return 80;
 
-    default: return key;
-}
+        case 37: return 37;   // Left arrow
+        case 38: return 38;   // Up arrow
+        case 39: return 39;   // Right arrow
+        case 40: return 40;   // Down arrow
+
+        case 257: return 13;  // Enter
+
+        default: return key;
+    }
 }
 
 #ifdef _WIN32

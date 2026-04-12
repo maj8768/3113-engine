@@ -38,7 +38,8 @@ struct gameData {
         GAMEEND,
         GAMEWIN,
         GAMESTART,
-        GAMEINFOMERCIAL
+        GAMEINFOMERCIAL,
+        TESTING_ENVIRONMENT
     } currentLevel;
 
     int lives;
@@ -64,6 +65,9 @@ struct shaderStore {
     int texoLoc;
     int fadeToLoc;
     int vpLoc;
+    int boxMinsLoc;
+    int boxMaxsLoc;
+    int boxCountLoc;
 };
 
 struct pyramidMtx {

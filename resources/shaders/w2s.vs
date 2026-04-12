@@ -9,12 +9,12 @@ out vec4 vColor;
 out vec3 vNormal;
 out vec2 TexCoord;
 out vec3 fragPos;
+
 uniform mat4 uVP;
 
-void main()
-{
+void main() {
     vColor = vertexColor;
-    vNormal = vertexNormal;
+    vNormal = normalize(vertexNormal);
     TexCoord = vertexTexCoord;
     fragPos = vertexPosition;
     gl_Position = uVP * vec4(vertexPosition, 1.0);
