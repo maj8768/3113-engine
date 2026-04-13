@@ -3,72 +3,69 @@
 in vec4 vColor;
 in vec3 vNormal;
 in vec2 TexCoord;
-in vec3 fragPos;
+in vec4 fragPosLightSpace;
 
-uniform vec3  uLightPos;
+uniform vec3  uLightDir;
 uniform vec4  uLightColor;
 uniform float uAmbient;
 uniform sampler2D uTexo;
+uniform sampler2D uShadowMap;
 uniform float fadeTo;
-
-#define MAX_BOXES 8
-uniform vec3 uBoxMins[MAX_BOXES];
-uniform vec3 uBoxMaxs[MAX_BOXES];
-uniform int  uBoxCount;
-uniform int  uShadowsEnabled;
 
 out vec4 fragColor;
 
+// https://noino.substack.com/p/raylib-graphics-shading
+// https://renderdiagrams.org/2024/12/18/shadowmap-bias/
+// https://ndotl.wordpress.com/2014/12/19/notes-on-shadow-bias/
+float ShadowCalculation(float ndotl)
+{
+    vec3 projCoords = fragPosLightSpace.xyz / fragPosLightSpace.w;
+    projCoords = projCoords * 0.5 + 0.5;
 
-// https://tavianator.com/2011/ray_box.html
-bool rayAABB(vec3 origin, vec3 dir, vec3 bmin, vec3 bmax, out float tmin) {
-    vec3 invDir = 1.0 / dir;
-
-    vec3 t0 = (bmin - origin) * invDir;
-    vec3 t1 = (bmax - origin) * invDir;
-
-    vec3 tNear = min(t0, t1);
-    vec3 tFar = max(t0, t1);
-    float tmax = min(min(tFar.x, tFar.y), tFar.z);
-
-    tmin = max(max(tNear.x, tNear.y), tNear.z);
-    return tmax >= tmin && tmax > 0.0;
-}
-
-// https://learnopengl.com/Advanced-Lighting/Shadows/Shadow-Mapping
-// https://www.pbr-book.org/3ed-2018/Light_Sources/Light_Interface?utm_source=chatgpt.com
-float ShadowCalculation(vec3 worldPos) {
-    vec3  origin = worldPos + normalize(vNormal) * 0.05;
-    vec3  toLight = uLightPos - origin;
-    float distToLight = length(toLight);
-    vec3  dir = toLight / distToLight;
-
-    for (int i = 0; i < uBoxCount; i++) {
-        vec3 eps3 = vec3(0.05);
-        if (all(greaterThanEqual(worldPos, uBoxMins[i] - eps3)) && all(lessThanEqual(worldPos, uBoxMaxs[i] + eps3))) {
-            continue;
-        }
-
-        float tmin;
-        if (rayAABB(origin, dir, uBoxMins[i], uBoxMaxs[i], tmin)) {
-            if (tmin > 0.0 && tmin < distToLight) {
-                return 1.0;
-            }
-        }
+    if (projCoords.z < 0.0 || projCoords.z > 1.0 ||
+        projCoords.x < 0.0 || projCoords.x > 1.0 ||
+        projCoords.y < 0.0 || projCoords.y > 1.0) {
+        return 0.0;
     }
-    return 0.0;
+
+    float currentDepth = projCoords.z;
+    float sampleDepth = texture(uShadowMap, projCoords.xy).r;
+    
+    // https://developer.nvidia.com/gpugems/gpugems/part-ii-lighting-and-shadows/chapter-11-shadow-map-antialiasing
+
+    float bias = max(0.001, 0.0005 * (1.0 - ndotl));
+    vec2 texelSize = 1.0 / vec2(textureSize(uShadowMap, 0));
+
+    vec2 offset = vec2(0.0);
+    vec2 fracPos = fract(gl_FragCoord.xy * 0.5);
+    offset.x = (fracPos.x > 0.25) ? 1.0 : 0.0;
+    offset.y = (fracPos.y > 0.25) ? 1.0 : 0.0;
+    offset.y = mod(offset.y + offset.x, 2.0);
+
+    vec2 taps[4] = vec2[](
+        offset + vec2(-1.5,  0.5),
+        offset + vec2( 0.5,  0.5),
+        offset + vec2(-1.5, -1.5),
+        offset + vec2( 0.5, -1.5)
+    );
+
+    float sum = 0.0;
+    for (int i = 0; i < 4; i++) {
+        vec2 uv = clamp(projCoords.xy + taps[i] * texelSize, 0.0, 1.0);
+        float sampleDepth = texture(uShadowMap, uv).r;
+        sum += (currentDepth - bias > sampleDepth) ? 1.0 : 0.0;
+    }
+
+    return sum * 0.25;
 }
 
 void main() {
-    vec3  n = normalize(vNormal);
-    vec3  lightVec = uLightPos - fragPos;
-    float dist = length(lightVec);
-    vec3  toLight = lightVec / dist;
+    vec3 n = normalize(vNormal);
+    vec3 toLight = normalize(-uLightDir);
 
     float diffuse = max(dot(n, toLight), 0.0);
-    float attenuation = 1.0 / (1.0 + 0.01 * dist + 0.002 * dist * dist);
-    float shadow = uShadowsEnabled != 0 ? ShadowCalculation(fragPos) : 0.0;
-
-    vec3 lit = (uAmbient + (1.0 - shadow) * diffuse * attenuation) * uLightColor.rgb;
+    float ndotl = max(dot(n, toLight), 0.0);
+    float shadow = ShadowCalculation(ndotl);
+    vec3 lit = (uAmbient + (1.0 - shadow) * diffuse) * uLightColor.rgb;
     fragColor = vec4(lit, 1.0) * texture(uTexo, TexCoord) * fadeTo;
 }

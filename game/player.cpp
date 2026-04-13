@@ -9,6 +9,7 @@
 static bool canEnter = true;
 static bool canR = true;
 static bool canThrust = false;
+static bool canDebug = true;
 
 void haltPlayerLerp(player& player, bool swappedNormals, float deltaTime) {
         player.pEntity.magnitude.x = player.pEntity.magnitude.x * (1 - deltaTime * 10.f);
@@ -114,6 +115,15 @@ void movePlayer(gameData& gData, player& player, bool swappedNormals, float delt
                 player.pEntity.jumping = true;
                 PlaySound(js);
             }
+        }
+        if (getAsyncKeyStateWrapper(KEY_P)) {
+            if (canDebug) {
+                debugMode = !debugMode;
+                canDebug = false;
+                std::cout << "debug mode: " << (debugMode ? "on" : "off") << std::endl;
+            }
+        } else {
+            canDebug = true;
         }
 
         float len = std::sqrt(moveX * moveX + moveZ * moveZ);

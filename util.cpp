@@ -5,6 +5,9 @@
 #include <iostream>
 #include <cstdio>
 
+bool debugMode = false;
+
+
 vector4 modmmult(const mtx44& mat, const vector4& vec) {
     vector4 out;
     out.x = mat.m[0][0]*vec.x + mat.m[0][1]*vec.y + mat.m[0][2]*vec.z + mat.m[0][3]*vec.t;

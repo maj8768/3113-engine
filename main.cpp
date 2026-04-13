@@ -106,21 +106,29 @@ static planeMtx plane;
 static planeMtx plane2;
 
 static shaderStore w2sShader;
+static Shader depthShader;
 
-static Vector3 lightPos = { 0.f, 10.f, 0.f };
-static Vector3 lightDir = { 0.0f, -1.f, 0.f };
+static int depthLightSpaceLoc = -1;
+
+static RenderTexture2D shadowMapRT = { 0 };
+static constexpr int SHADOW_MAP_SIZE = 4096;
+static constexpr float SHADOW_RANGE = 60.0f;
+static constexpr float SHADOW_NEAR = 1.0f;
+static constexpr float SHADOW_FAR = 180.0f;
+static constexpr float LIGHT_ORBIT_SPEED = 0.15f;
+static constexpr float LIGHT_ORBIT_RADIUS_Y = 70.0f;
+static constexpr float LIGHT_ORBIT_RADIUS_Z = 70.0f;
+static constexpr float LIGHT_ORBIT_X_OFFSET = 55.0f;
+
+static Vector3 lightPos = { 250.f, 1000.f, 0.f };
+static Vector3 lightDir = { -0.10f, -0.99f, -0.05f };
 static Vector4 lightColor = { 0.447, 0.816, 0.922, 1.0f };
-static float ambient  = 0.125f;
-
-static Vector3 boxMins[8];
-static Vector3 boxMaxs[8];
-static int boxCount = 0;
-static int shadowsEnabled = 1;
-static int shadowsEnabledLoc = -1;
+static float ambient  = 0.05f;
 
 static meshedObject skysphere1;
 static meshedObject cube;
 static meshedObject testingplatforms;
+static meshedObject testcar;
 
 static bool iamreal = false;
 static int iamalsoreal = 1;
@@ -162,7 +170,118 @@ void processInput();
 void update();
 void render();
 void shutdown();
-void updateShadowBoxes();
+static mtx44 BuildLightSpaceMatrix();
+static void RenderShadowMapPass(const mtx44& lightSpace);
+static void DrawSceneWithShadows(const mtx44& frameVP, const mtx44& lightSpace);
+
+static RenderTexture2D LoadShadowMapRenderTexture(int width, int height) {
+    RenderTexture2D target = { 0 };
+
+    target.id = rlLoadFramebuffer();
+    if (target.id <= 0) return target;
+
+    rlEnableFramebuffer(target.id);
+
+    target.texture.id = rlLoadTexture(nullptr, width, height, PIXELFORMAT_UNCOMPRESSED_R8G8B8A8, 1);
+    target.texture.width = width;
+    target.texture.height = height;
+    target.texture.format = PIXELFORMAT_UNCOMPRESSED_R8G8B8A8;
+    target.texture.mipmaps = 1;
+
+    target.depth.id = rlLoadTextureDepth(width, height, false);
+    target.depth.width = width;
+    target.depth.height = height;
+    target.depth.format = PIXELFORMAT_UNCOMPRESSED_R32;
+    target.depth.mipmaps = 1;
+
+    rlFramebufferAttach(target.id, target.texture.id, RL_ATTACHMENT_COLOR_CHANNEL0, RL_ATTACHMENT_TEXTURE2D, 0);
+    rlFramebufferAttach(target.id, target.depth.id, RL_ATTACHMENT_DEPTH, RL_ATTACHMENT_TEXTURE2D, 0);
+
+    if (!rlFramebufferComplete(target.id)) {
+        std::cout << "Shadow map framebuffer incomplete!" << std::endl;
+    }
+
+    rlDisableFramebuffer();
+
+    SetTextureFilter(target.depth, TEXTURE_FILTER_POINT);
+    SetTextureWrap(target.depth, TEXTURE_WRAP_CLAMP);
+
+    return target;
+}
+
+static mtx44 BuildLightSpaceMatrix() {
+    // Orbit the light source around the testing plane center in the YZ plane.
+    vector3 sceneCenter = testingplatforms.pEntity.location;
+    const float angle = static_cast<float>(GetTime()) * LIGHT_ORBIT_SPEED;
+    vector3 lightPos3 = {
+        sceneCenter.x + LIGHT_ORBIT_X_OFFSET,
+        sceneCenter.y + cosf(angle) * LIGHT_ORBIT_RADIUS_Y,
+        sceneCenter.z + sinf(angle) * LIGHT_ORBIT_RADIUS_Z
+    };
+    lightPos = { lightPos3.x, lightPos3.y, lightPos3.z };
+
+    vector3 lightDirVec = sceneCenter - lightPos3;
+    if (len3(lightDirVec) <= eps) lightDirVec = { 0.f, -1.f, 0.f };
+    lightDirVec = normalize3(lightDirVec);
+    lightDir = { lightDirVec.x, lightDirVec.y, lightDirVec.z };
+
+    mtx44 lightView = lookAtMtx44(lightPos3, sceneCenter, {0.f, 1.f, 0.f});
+    mtx44 lightProj = orthoMtx44(-SHADOW_RANGE, SHADOW_RANGE, -SHADOW_RANGE, SHADOW_RANGE, SHADOW_NEAR, SHADOW_FAR);
+    return mmult4(lightProj, lightView);
+}
+
+static void RenderShadowMapPass(const mtx44& lightSpace) {
+    if (shadowMapRT.id == 0) return;
+
+    rlViewport(0, 0, SHADOW_MAP_SIZE, SHADOW_MAP_SIZE);
+    rlEnableFramebuffer(shadowMapRT.id);
+    rlClearScreenBuffers();
+
+    BeginShaderMode(depthShader);
+    SetShaderValueMatrix(depthShader, depthLightSpaceLoc, ToRaylibMatrix(lightSpace));
+
+    rlEnableBackfaceCulling();
+    // Keep standard back-face culling in the shadow pass to avoid caster/receiver separation.
+    rlSetCullFace(RL_CULL_FACE_BACK);
+    Draw3DDepthGPU(cube);
+    Draw3DDepthGPU(testcar);
+    Draw3DDepthGPU(testingplatforms);
+    rlSetCullFace(RL_CULL_FACE_BACK);
+    EndShaderMode();
+
+    rlDisableFramebuffer();
+    rlViewport(0, 0, GetScreenWidth(), GetScreenHeight());
+}
+
+static void DrawSceneWithShadows(const mtx44& frameVP, const mtx44& lightSpace) {
+    BeginShaderMode(w2sShader.shader);
+    SetShaderValue(w2sShader.shader, w2sShader.lightDirLoc, &lightDir, SHADER_UNIFORM_VEC3);
+    SetShaderValue(w2sShader.shader, w2sShader.lightColorLoc, &lightColor, SHADER_UNIFORM_VEC4);
+    SetShaderValue(w2sShader.shader, w2sShader.ambientLoc, &ambient, SHADER_UNIFORM_FLOAT);
+    SetShaderValue(w2sShader.shader, w2sShader.fadeToLoc, &gData.fadeTo, SHADER_UNIFORM_FLOAT);
+    SetShaderValueMatrix(w2sShader.shader, w2sShader.lightSpaceMatrixLoc, ToRaylibMatrix(lightSpace));
+    const bool hasShadowMap = shadowMapRT.depth.id != 0;
+    const Texture2D* shadowTex = hasShadowMap ? &shadowMapRT.depth : nullptr;
+
+    switch(gData.currentLevel) {
+        case gameData::TESTING_ENVIRONMENT:
+            Draw3DGPU(skysphere1, player1.camera, w2sShader, {255, 0, 0, 255}, &frameVP, shadowTex, false);
+            Draw3DGPU(testingplatforms, player1.camera, w2sShader, {255, 0, 0, 255}, &frameVP, shadowTex, hasShadowMap);
+            Draw3DGPU(testcar, player1.camera, w2sShader, {255, 0, 0, 255}, &frameVP, shadowTex, hasShadowMap);
+            Draw3DGPU(cube, player1.camera, w2sShader, {255, 0, 0, 255}, &frameVP, shadowTex, hasShadowMap);
+            DrawColliderGPU(testcar, player1.camera, w2sShader, {0, 255, 0, 255}, &frameVP);
+            break;
+        case gameData::LEVEL1:
+        case gameData::LEVEL2:
+        case gameData::LEVEL3:
+            Draw3DGPU(skysphere1, player1.camera, w2sShader, {255, 0, 0, 255}, &frameVP, shadowTex, false);
+            break;
+        default:
+            break;
+    }
+
+    EndShaderMode();
+}
 
 void initializePlayer(player& player1) {
     // set up pc environment for player here as well
@@ -216,19 +335,19 @@ void create3dObject(meshedObject& object, const char* path, const char* collider
             tri ot;
             int vi = j * 9; // splits by 3 verts and then by 3 coords
             int uv = j * 6; // split by 3verts and then by 2uv coords
-            t.v[0] = { m->vertices[vi+0] + object.pEntity.location.x, m->vertices[vi+1] + object.pEntity.location.y, m->vertices[vi+2] + object.pEntity.location.z };
-            t.v[1] = { m->vertices[vi+3] + object.pEntity.location.x, m->vertices[vi+4] + object.pEntity.location.y, m->vertices[vi+5] + object.pEntity.location.z };
-            t.v[2] = { m->vertices[vi+6] + object.pEntity.location.x, m->vertices[vi+7] + object.pEntity.location.y, m->vertices[vi+8] + object.pEntity.location.z };
+            t.v[0] = { m->vertices[vi+0] * scale + object.pEntity.location.x, m->vertices[vi+1] * scale + object.pEntity.location.y, m->vertices[vi+2] * scale + object.pEntity.location.z };
+            t.v[1] = { m->vertices[vi+3] * scale + object.pEntity.location.x, m->vertices[vi+4] * scale + object.pEntity.location.y, m->vertices[vi+5] * scale + object.pEntity.location.z };
+            t.v[2] = { m->vertices[vi+6] * scale + object.pEntity.location.x, m->vertices[vi+7] * scale + object.pEntity.location.y, m->vertices[vi+8] * scale + object.pEntity.location.z };
             t.n[0] = { m->normals[vi+0],  m->normals[vi+1],  m->normals[vi+2]  };
             t.n[1] = { m->normals[vi+3],  m->normals[vi+4],  m->normals[vi+5]  };
             t.n[2] = { m->normals[vi+6],  m->normals[vi+7],  m->normals[vi+8]  };
             t.t[0] = { m->texcoords[uv+0],  m->texcoords[uv+1]  };
             t.t[1] = { m->texcoords[uv+2],  m->texcoords[uv+3]  };
             t.t[2] = { m->texcoords[uv+4],  m->texcoords[uv+5]  };
-            
-            ot.v[0] = { m->vertices[vi+0], m->vertices[vi+1], m->vertices[vi+2] };
-            ot.v[1] = { m->vertices[vi+3], m->vertices[vi+4], m->vertices[vi+5] };
-            ot.v[2] = { m->vertices[vi+6], m->vertices[vi+7], m->vertices[vi+8] };
+
+            ot.v[0] = { m->vertices[vi+0] * scale, m->vertices[vi+1] * scale, m->vertices[vi+2] * scale };
+            ot.v[1] = { m->vertices[vi+3] * scale, m->vertices[vi+4] * scale, m->vertices[vi+5] * scale };
+            ot.v[2] = { m->vertices[vi+6] * scale, m->vertices[vi+7] * scale, m->vertices[vi+8] * scale };
             ot.n[0] = { m->normals[vi+0],  m->normals[vi+1],  m->normals[vi+2]  };
             ot.n[1] = { m->normals[vi+3],  m->normals[vi+4],  m->normals[vi+5]  };
             ot.n[2] = { m->normals[vi+6],  m->normals[vi+7],  m->normals[vi+8]  };
@@ -243,26 +362,6 @@ void create3dObject(meshedObject& object, const char* path, const char* collider
     // std::cout << "v count: " << mesh.count << std::endl;
     object.mesh = mesh;
     UnloadModel(model); // all data copied into our own mesh; release raylib's copy
-}
-
-void updateShadowBoxes()
-{
-    boxCount = 0;
-    Vector3 bmin = { 1e30f, 1e30f, 1e30f };
-    Vector3 bmax = { -1e30f, -1e30f, -1e30f };
-    for (int i = 0; i < cube.mesh.count; i++) {
-        for (int v = 0; v < 3; v++) {
-            float wx = cube.mesh.tris[i].v[v].x * cube.scale;
-            float wy = cube.mesh.tris[i].v[v].y * cube.scale;
-            float wz = cube.mesh.tris[i].v[v].z * cube.scale;
-            if (wx < bmin.x) bmin.x = wx; if (wx > bmax.x) bmax.x = wx;
-            if (wy < bmin.y) bmin.y = wy; if (wy > bmax.y) bmax.y = wy;
-            if (wz < bmin.z) bmin.z = wz; if (wz > bmax.z) bmax.z = wz;
-        }
-    }
-    boxMins[boxCount] = bmin;
-    boxMaxs[boxCount] = bmax;
-    boxCount++;
 }
 
 // Function Definitions
@@ -321,15 +420,18 @@ void initialise()
     w2sShader.colorLoc = GetShaderLocation(w2sShader.shader, "uColor");
     w2sShader.lightColorLoc = GetShaderLocation(w2sShader.shader, "uLightColor");
     w2sShader.ambientLoc    = GetShaderLocation(w2sShader.shader, "uAmbient");
-    w2sShader.lightPosLoc = GetShaderLocation(w2sShader.shader, "uLightPos");
     w2sShader.normalLoc = GetShaderLocation(w2sShader.shader, "uNormal");
     w2sShader.texoLoc = GetShaderLocation(w2sShader.shader, "uTexo");
     w2sShader.fadeToLoc = GetShaderLocation(w2sShader.shader, "fadeTo");
     w2sShader.vpLoc = GetShaderLocation(w2sShader.shader, "uVP");
-    w2sShader.boxMinsLoc  = GetShaderLocation(w2sShader.shader, "uBoxMins");
-    w2sShader.boxMaxsLoc  = GetShaderLocation(w2sShader.shader, "uBoxMaxs");
-    w2sShader.boxCountLoc = GetShaderLocation(w2sShader.shader, "uBoxCount");
-    shadowsEnabledLoc     = GetShaderLocation(w2sShader.shader, "uShadowsEnabled");
+    w2sShader.lightSpaceMatrixLoc = GetShaderLocation(w2sShader.shader, "uLightSpaceMatrix");
+    w2sShader.shadowMapLoc = GetShaderLocation(w2sShader.shader, "uShadowMap");
+    w2sShader.shadowsEnabledLoc = GetShaderLocation(w2sShader.shader, "uShadowsEnabled");
+
+    depthShader = LoadShader("resources/shaders/depth.vs", "resources/shaders/depth.fs");
+    depthLightSpaceLoc = GetShaderLocation(depthShader, "uLightSpaceMatrix");
+
+    shadowMapRT = LoadShadowMapRenderTexture(SHADOW_MAP_SIZE, SHADOW_MAP_SIZE);
 
     // call creates before initializing the physics entity
     
@@ -345,8 +447,8 @@ void initialise()
     // create3dObject(platforms3, "resources/levels/level3/level3.obj", "resources/levels/level3/colliders/level3collider.obj", true, w2sShader, 4.f, {0.f,0.f,0.f});
     create3dObject(testingplatforms, "resources/levels/testing/testplatform.obj", "resources/levels/testing/colliders/testplatformcollider.obj", true, w2sShader, 1.f, {0.f,0.f,0.f});
     create3dObject(cube, "resources/levels/testing/cube.obj", "", false, w2sShader, 1.f, {7.f,5.f,3.f});
+    create3dObject(testcar, "resources/levels/testing/testcar.obj", "resources/levels/testing/colliders/testcarcollider.obj", true, w2sShader, 4.f, {0.f,5.f,15.f});
 
-    // updateShadowBoxes();
 
     /* planeMtx struct for reference:
      * struct planeMtx {
@@ -355,12 +457,15 @@ void initialise()
             */
     
 //    initializePhysicsEntity(cheese.pEntity, 12500.f); // all enities that need physics have to be initialized :/
-    initializePhysicsEntity(player1.pEntity, 1.f); // even players need to be initialized because they have physics and im lazy
+    initializePhysicsEntity(player1.pEntity, 1.f, SIMPLE); // even players need to be initialized because they have physics and im lazy
+    initializePhysicsEntity(testcar.pEntity, 1000.f, COMPLEX);
+    updateColliderLocation(testcar);
+
     // initializePhysicsEntity(chair1.pEntity, 100.f);
     // initializePhysicsEntity(evilroomba2.pEntity, 50.f);
     applyAcceleration({0.f,-20.5f,0.f}, player1.pEntity);
 
-//    applyAcceleration({0.f,9.8f,0.f},cheese.pEntity);
+    applyAcceleration({0.f,-20.5f,0.f},testcar.pEntity);
 //    applyForce({0.f,150.f,0.f},cheese.pEntity);
 
     // std::cout << ship.collider[0].m[0][0];
@@ -368,6 +473,8 @@ void initialise()
 
     gPreviousTicks = static_cast<float>(GetTime());
     // w2sShader = { w2s, SHADER_LOC_MATRIX_MVP, SHADER_LOC_COLOR_DIFFUSE, GetShaderLocation(w2s, "uLightDir") };
+    // temporary debug in update(), after updateColliderLocation(testcar)
+
 }
 
 // void processInput()
@@ -393,11 +500,6 @@ vector2 md;;
 
 void update() {
 
-    // static bool pWasDown = false;
-    // bool pDown = getAsyncKeyStateWrapper(KEY_P);
-    // if (pDown && !pWasDown) shadowsEnabled = !shadowsEnabled;
-    // pWasDown = pDown;
-
     auto ticks = static_cast<float>(GetTime());          // step 1
     float deltaTime = ticks - gPreviousTicks; // step 2
     gPreviousTicks = ticks;
@@ -420,34 +522,39 @@ void update() {
     // lightPos.z = player1.pEntity.location.z;
     // lightPos.y = player1.pEntity.location.y + 9.f;
     updateEntityLocation(cube);
-    updateShadowBoxes();
 // meshedObject* worldObjects[] = { &testingplatforms };
 //             world worldInstance = buildWorld(worldObjects, 1);
 //             processPhysics(deltaTime, 0, player1.pEntity, worldInstance, iamreal, iamalsoreal, false, true); // last bool is for collision
             // break;
     switch (gData.currentLevel) {
         case gameData::TESTING_ENVIRONMENT: {
-            meshedObject* worldObjects[] = { &testingplatforms };
-            world worldInstance = buildWorld(worldObjects, 1);
-            processPhysics(deltaTime, 0, player1.pEntity, worldInstance, iamreal, iamalsoreal, false, true); // last bool is for collision
+            meshedObject* worldObjects[] = { &testingplatforms, &testcar };
+            meshedObject* secondaryObjects[] = { &testingplatforms };
+            world worldInstance = buildWorld(worldObjects, 2);
+            world secondaryInstance = buildWorld(secondaryObjects, 1);
+            processPhysics(deltaTime, 0, player1.pEntity, worldInstance, iamreal, iamalsoreal, false, true, nullptr, 0); // last bool is for collision
+            processPhysics(deltaTime, 0, testcar.pEntity, secondaryInstance, iamreal, iamalsoreal, false, true, testcar.collider, testcar.cPlaneCount); // last bool is for collision
+            updateEntityLocation(testcar);
+            updateColliderLocation(testcar);
+
             break;
         }
         case gameData::LEVEL1: {
             meshedObject* worldObjects[] = {  };
             world worldInstance = buildWorld(worldObjects, 0);
-            processPhysics(deltaTime, 0, player1.pEntity, worldInstance, iamreal, iamalsoreal, false, true); // last bool is for collision
+            processPhysics(deltaTime, 0, player1.pEntity, worldInstance, iamreal, iamalsoreal, false, true, nullptr, 0); // last bool is for collision
             break;
         }
         case gameData::LEVEL2: {
             meshedObject* worldObjects[] = {  };
             world worldInstance = buildWorld(worldObjects, 0);
-            processPhysics(deltaTime, 0, player1.pEntity, worldInstance, iamreal, iamalsoreal, false, true); // last bool is for collision
+            processPhysics(deltaTime, 0, player1.pEntity, worldInstance, iamreal, iamalsoreal, false, true, nullptr, 0); // last bool is for collision
             break;
         }
         case gameData::LEVEL3: {
             meshedObject* worldObjects[] = {  };
             world worldInstance = buildWorld(worldObjects, 0);
-            processPhysics(deltaTime, 0, player1.pEntity, worldInstance, iamreal, iamalsoreal, false, true); // last bool is for collision
+            processPhysics(deltaTime, 0, player1.pEntity, worldInstance, iamreal, iamalsoreal, false, true, nullptr, 0); // last bool is for collision
             break;
         }
         case gameData::GAMESTART:
@@ -473,6 +580,7 @@ void update() {
 void render()
 {
     ClearBackground(BLACK);
+    rlClearScreenBuffers();
 
     if (/*gData.gameStarted == true && gData.gameEnded == false && gData.infommercial*/ true) { // true for now for stateless testing
 
@@ -484,45 +592,15 @@ void render()
         rlMatrixMode(RL_MODELVIEW);
         rlLoadIdentity();
 
+        mtx44 lightSpace = BuildLightSpaceMatrix();
+        RenderShadowMapPass(lightSpace);
+
         // Compute VP once per frame and share across all Draw3DGPU calls
         mtx44 frameView = viewMtx44(player1.camera.camPos, player1.camera.camTarget, player1.camera.up);
         mtx44 frameProj = projMtx44(player1.camera.fov, player1.camera.aspect, 0.1f, 1000000000000000000.0f);
         mtx44 frameVP   = mmult4(frameProj, frameView);
 
-        BeginShaderMode(w2sShader.shader);
-        SetShaderValue(w2sShader.shader, w2sShader.lightPosLoc,  &lightPos, SHADER_UNIFORM_VEC3);
-        SetShaderValueV(w2sShader.shader, w2sShader.boxMinsLoc, boxMins, SHADER_UNIFORM_VEC3, boxCount);
-        SetShaderValueV(w2sShader.shader, w2sShader.boxMaxsLoc, boxMaxs, SHADER_UNIFORM_VEC3, boxCount);
-        SetShaderValue(w2sShader.shader, w2sShader.boxCountLoc, &boxCount, SHADER_UNIFORM_INT);
-        SetShaderValue(w2sShader.shader, shadowsEnabledLoc, &shadowsEnabled, SHADER_UNIFORM_INT);
-        SetShaderValue(w2sShader.shader, w2sShader.lightDirLoc, &lightDir, SHADER_UNIFORM_VEC3);
-        SetShaderValue(w2sShader.shader, w2sShader.lightColorLoc, &lightColor, SHADER_UNIFORM_VEC4);
-        SetShaderValue(w2sShader.shader, w2sShader.ambientLoc, &ambient, SHADER_UNIFORM_FLOAT);
-        SetShaderValue(w2sShader.shader, w2sShader.fadeToLoc, &gData.fadeTo, SHADER_UNIFORM_FLOAT);
-
-        // Draw3DGPU(ship, player1.camera, w2sShader, {255, 0, 0, 255}, ship.scale);
-        // Draw3DGPU(control, player1.camera, w2sShader, {255, 0, 0, 255}, control.scale);
-        // Draw3DGPU(data, player1.camera, w2sShader, {255, 0, 0, 255}, data.scale);
-        switch(gData.currentLevel) {
-            case gameData::TESTING_ENVIRONMENT:
-                Draw3DGPU(skysphere1, player1.camera, w2sShader, {255, 0, 0, 255}, skysphere1.scale, &frameVP);
-                Draw3DGPU(testingplatforms, player1.camera, w2sShader, {255, 0, 0, 255}, testingplatforms.scale, &frameVP);
-                Draw3DGPU(cube, player1.camera, w2sShader, {255, 0, 0, 255}, cube.scale, &frameVP);
-                break;
-            case gameData::LEVEL1:
-                Draw3DGPU(skysphere1, player1.camera, w2sShader, {255, 0, 0, 255}, skysphere1.scale, &frameVP);
-                break;
-            case gameData::LEVEL2:
-                Draw3DGPU(skysphere1, player1.camera, w2sShader, {255, 0, 0, 255}, skysphere1.scale, &frameVP);
-                break;
-            case gameData::LEVEL3:
-                Draw3DGPU(skysphere1, player1.camera, w2sShader, {255, 0, 0, 255}, skysphere1.scale, &frameVP);
-                break;
-            default:
-                break;
-        }
-//        Draw3DGPU(cheese, player1.camera, w2sShader, {255, 0, 0, 255}, cheese.scale);
-        EndShaderMode();
+        DrawSceneWithShadows(frameVP, lightSpace);
 
         rlMatrixMode(RL_PROJECTION);
         rlLoadIdentity();
@@ -571,6 +649,10 @@ void shutdown()
 
 
     UnloadShader(w2sShader.shader);
+    UnloadShader(depthShader);
+    if (shadowMapRT.texture.id != 0) rlUnloadTexture(shadowMapRT.texture.id);
+    if (shadowMapRT.depth.id != 0) rlUnloadTexture(shadowMapRT.depth.id);
+    if (shadowMapRT.id != 0) rlUnloadFramebuffer(shadowMapRT.id);
 
     // Free CPU mesh data for all loaded objects
     free(skysphere1.mesh.tris);
@@ -581,6 +663,8 @@ void shutdown()
     delete[] testingplatforms.colliderO;
     free(cube.mesh.tris);
     free(cube.mesh.trisO);
+    free(testcar.mesh.tris);
+    free(testcar.mesh.trisO);
 
     CloseAudioDevice();
     CloseWindow(); // Close window and OpenGL context

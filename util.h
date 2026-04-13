@@ -12,6 +12,14 @@ constexpr int SCREEN_WIDTH        = 1000,
                 
 constexpr float eps = 1e-6;
 
+enum physicsComplexity {
+    SIMPLE,
+    COMPLEX
+};
+
+extern bool debugMode;
+
+
 struct gameData {
     
     float fadeTo;
@@ -65,9 +73,9 @@ struct shaderStore {
     int texoLoc;
     int fadeToLoc;
     int vpLoc;
-    int boxMinsLoc;
-    int boxMaxsLoc;
-    int boxCountLoc;
+    int lightSpaceMatrixLoc;
+    int shadowMapLoc;
+    int shadowsEnabledLoc;
 };
 
 struct pyramidMtx {
@@ -199,6 +207,7 @@ struct physicsEntity {
     bool jumping;
     int groundPlane;
     float velocity;
+    bool complexGeometry;
 };
 
 struct player {

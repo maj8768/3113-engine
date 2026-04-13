@@ -6,6 +6,114 @@
 #include "string"
 
 /**
+ * Analytical edge collision detection FROM -> Claude.ai
+ * Segment-Quad Intersection:
+
+    Given:
+    A, B       — endpoints of the edge (world space)
+    p1         — first vertex of the quad
+    normal     — cross(p2-p1, p4-p1)
+
+    Step 1 — find t where segment crosses the infinite plane:
+
+    denom = dot(B - A, normal)
+    if |denom| < eps → edge is parallel, skip
+
+    t = dot(p1 - A, normal) / denom
+    if t < 0 or t > 1 → crossing is outside segment, skip
+
+    Step 2 — compute crossing point:
+
+    P = A + t * (B - A)
+
+    Step 3 — check P is inside the quad:
+
+    u = p2 - p1
+    v = p4 - p1
+    w = P  - p1
+
+    denom2  = dot(u,u)*dot(v,v) - dot(u,v)^2
+    normedYD = (dot(w,u)*dot(v,v) - dot(w,v)*dot(u,v)) / denom2
+    normedZD = (dot(w,v)*dot(u,u) - dot(w,u)*dot(u,v)) / denom2
+
+    if normedYD in [0,1] and normedZD in [0,1] → COLLISION at point P
+
+    Repositioning:
+    t tells you how far along the edge the hit occurred.
+    Push the object back along its velocity by (1-t) * |B-A|
+    or reposition so P sits exactly on the quad surface.
+
+ */
+bool analyticalEdgeCollision(physicsEntity& player, planeMtx plane, vector3& applyAcc, planeMtx* collider, int collider_depth,float conservationPercent, float deltaTime, int& target, bool invertedNormals, bool& hasCollidedGround, bool& hasCollidedWall, int planeIndex) {
+    vector3 p1 = {plane.m[0][0], plane.m[0][1], plane.m[0][2]};
+    vector3 p2 = {plane.m[1][0], plane.m[1][1], plane.m[1][2]};
+    vector3 p3 = {plane.m[2][0], plane.m[2][1], plane.m[2][2]};
+    vector3 p4 = {plane.m[3][0], plane.m[3][1], plane.m[3][2]};
+    
+    vector3 v1 = p2 - p1;
+    vector3 v2 = p4 - p1;
+
+    vector3 normal = cross3(v1, v2);
+
+    // new math for closest point on finite quad and NOT infinite plane ! very important
+
+    float n2 = dot3(normal, normal);
+    if (n2 < eps) return false;
+
+    vector3 post_impact_vel = normal.fmult(dot3(player.magnitude, normal) / n2);
+    
+    // checking collision for each edge of each plane in the collider
+    for (int i = 0; i < collider_depth; i++) {
+        for (int j = 0; j < 4; j++) {
+            planeMtx colPlane = collider[i];
+            int next = (j + 1) % 4;
+            vector3 A = {colPlane.m[j][0], colPlane.m[j][1], colPlane.m[j][2]};
+            vector3 B = {colPlane.m[next][0], colPlane.m[next][1], colPlane.m[next][2]};
+
+            float denom = dot3(B - A, normal);
+            if (fabsf(denom) < eps) continue;
+
+            float tplane = dot3(p1 - A, normal) / denom;
+            if (tplane < 0.f || tplane > 1.f) continue;
+
+            vector3 P = A + (B - A).fmult(tplane);
+            vector3 u = p2 - p1;
+            vector3 v = p4 - p1;
+            vector3 w = P - p1;
+
+            float denom2 = dot3(u,u)*dot3(v,v) - dot3(u,v)*dot3(u,v);
+            if (fabsf(denom2) < eps) continue;
+            float normedYD = (dot3(w,u)*dot3(v,v) - dot3(w,v)*dot3(u,v)) / denom2;
+            float normedZD = (dot3(w,v)*dot3(u,u) - dot3(w,u)*dot3(u,v)) / denom2;
+
+            if (normedYD >= 0.f && normedYD <= 1.f && normedZD >= 0.f && normedZD <= 1.f) {
+                // collision with edge plane
+                bool isGround = dot3(normalize3(normal), {0, 1, 0}) < -0.7f;
+                if (isGround) {
+                    if (!hasCollidedGround) {
+                        float distA = dot3(A - p1, normal) / normal.mag();
+                        float distB = dot3(B - p1, normal) / normal.mag();
+                        float penetration = (distA < distB) ? distA : distB;
+                        player.location = player.location + eps;
+                        hasCollidedGround = true;
+                        player.groundPlane = planeIndex;
+                    }
+                    player.collidingY = true;
+                } else {
+                    if (!hasCollidedWall) {
+                        player.magnitude.x -= post_impact_vel.x * conservationPercent;
+                        player.magnitude.z -= post_impact_vel.z * conservationPercent;
+                        hasCollidedWall = true;
+                    }
+                }
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+/**
  * Math from ChatGPT: https://chatgpt.com/share/69a0d1cd-2908-8001-a52c-c762d5f91148
  *
  *
@@ -102,7 +210,7 @@ void applyAcceleration(vector3 newAccel, physicsEntity& pEntity) {
     pEntity.acceleration = pEntity.acceleration + newAccel;
 }
 
-void processPhysics(float deltaTime, int frameRate, physicsEntity& pEntity, world& world, bool& end, int& target, bool invertedNormals, bool collide) {
+void processPhysics(float deltaTime, int frameRate, physicsEntity& pEntity, world& world, bool& end, int& target, bool invertedNormals, bool collide, planeMtx* collider, int collider_depth) {
     bool acc = false;
     bool hasCollidedGround = false;
     bool hasCollidedWall = false;
@@ -125,7 +233,12 @@ void processPhysics(float deltaTime, int frameRate, physicsEntity& pEntity, worl
             float dz = cz - pEntity.location.z;
             if (dx*dx + dy*dy + dz*dz > CULL_DIST * CULL_DIST) continue;
 
-            spherePlaneCollide(pEntity, world.planes[wtc], pEntity.applyAccel, 1, deltaTime, target, invertedNormals, hasCollidedGround, hasCollidedWall, wtc);
+            if (pEntity.complexGeometry) {
+                analyticalEdgeCollision(pEntity, world.planes[wtc], pEntity.applyAccel, collider, collider_depth, 1, deltaTime, target, invertedNormals, hasCollidedGround, hasCollidedWall, wtc);
+            }
+            else {
+                spherePlaneCollide(pEntity, world.planes[wtc], pEntity.applyAccel, 1, deltaTime, target, invertedNormals, hasCollidedGround, hasCollidedWall, wtc);
+            }
         }
     }
     // force transfer
@@ -142,6 +255,7 @@ void processPhysics(float deltaTime, int frameRate, physicsEntity& pEntity, worl
             // std::cout << "delta: " << deltaTime << std::endl;
 //            std::cout << pEntity.applyAccel.y << std::endl;
     pEntity.magnitude = pEntity.magnitude + (pEntity.acceleration * pEntity.applyAccel).fmult(deltaTime);
+    if (pEntity.collidingY && pEntity.magnitude.y < 0.f) pEntity.magnitude.y = 0.f;
 //    std::cout << "player mag-y: " << pEntity.magnitude.y << std::endl;
 
 
@@ -165,7 +279,7 @@ void processPhysics(float deltaTime, int frameRate, physicsEntity& pEntity, worl
  int accelForcesCount;
  vector3 applyAccel;
  */
-void initializePhysicsEntity(physicsEntity& pEntity, float weight) {
+void initializePhysicsEntity(physicsEntity& pEntity, float weight, physicsComplexity complexity) {
     // assume location is set in object/player creation
     pEntity.acceleration = {0.f,0.f,0.f};
     pEntity.applyAccel = {1.f, 1.f, 1.f};
@@ -176,6 +290,11 @@ void initializePhysicsEntity(physicsEntity& pEntity, float weight) {
     pEntity.jumping = false;
     pEntity.groundPlane = -1;
     pEntity.velocity = 0.f;
+    if (complexity == COMPLEX) {
+        pEntity.complexGeometry = true;
+    } else {
+        pEntity.complexGeometry = false;
+    }
 }
 
 //void updatePlayerLocation(player)
@@ -191,6 +310,13 @@ void updateEntityLocation(meshedObject& object) {
             object.mesh.tris[i].v[j].x = (ox * c - oz * s) + object.pEntity.location.x;
             object.mesh.tris[i].v[j].y = oy + object.pEntity.location.y;
             object.mesh.tris[i].v[j].z = (ox * s + oz * c) + object.pEntity.location.z;
+
+            float onx = object.mesh.trisO[i].n[j].x;
+            float ony = object.mesh.trisO[i].n[j].y;
+            float onz = object.mesh.trisO[i].n[j].z;
+            object.mesh.tris[i].n[j].x = (onx * c - onz * s);
+            object.mesh.tris[i].n[j].y = ony;
+            object.mesh.tris[i].n[j].z = (onx * s + onz * c);
         }
     }
 }
@@ -229,12 +355,7 @@ world buildWorld(meshedObject** objects, int objectCount) {
 
     int totalPlanes = 0;
     for (int i = 0; i < objectCount; i++) {
-        // Only recompute collider positions for objects that actually move
-        if (objects[i]->pEntity.magnitude.x != 0.f ||
-            objects[i]->pEntity.magnitude.y != 0.f ||
-            objects[i]->pEntity.magnitude.z != 0.f) {
-            updateColliderLocation(*objects[i]);
-        }
+        updateColliderLocation(*objects[i]);
         totalPlanes += objects[i]->cPlaneCount;
     }
 

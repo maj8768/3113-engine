@@ -1,8 +1,9 @@
 
 // current
 void DrawPlaneGPU(planeMtx plane, camera cam, shaderStore shader, vector4 color, float scale);
-void Draw3DGPU(const meshedObject& object, const camera& cam, shaderStore& shader, vector4 color, float scale, const mtx44* precomputedVP = nullptr);
-void DrawShadow3DGPU(const meshedObject& object, Shader depthShader, int lightSpaceLoc, mtx44 lightSpaceMatrix, float scale);
+void Draw3DGPU(const meshedObject& object, const camera& cam, shaderStore& shader, vector4 color, const mtx44* precomputedVP = nullptr, const Texture2D* shadowTex = nullptr, bool receiveShadows = false);
+void DrawColliderGPU(const meshedObject& object, const camera& cam, shaderStore& shader, vector4 color, const mtx44* precomputedVP = nullptr);
+void Draw3DDepthGPU(const meshedObject& object);
 
 
 // deprecated
@@ -26,4 +27,3 @@ void ZRotateTriangleAboutPoint(triangleMtx& triangle, float px, float py, float 
 void XYScaleTriangleAroundCenter(triangleMtx& triangle, float scaleFactor);
 
 Color ColorFromHex(const char *hex);
-
