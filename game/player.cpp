@@ -70,8 +70,8 @@ void moveCar() {
 
 }
 
-void changeCarState() {
-    if (incar) {
+void changeCarState(player& player) {
+    if (player.pState.inCar == false) {
         std::cout << "player has entered the car" << std::endl;
     }
     else {
