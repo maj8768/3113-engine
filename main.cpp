@@ -210,7 +210,6 @@ static RenderTexture2D LoadShadowMapRenderTexture(int width, int height) {
 }
 
 static mtx44 BuildLightSpaceMatrix() {
-    // Orbit the light source around the testing plane center in the YZ plane.
     vector3 sceneCenter = testingplatforms.pEntity.location;
     const float angle = static_cast<float>(GetTime()) * LIGHT_ORBIT_SPEED;
     vector3 lightPos3 = {
@@ -241,7 +240,6 @@ static void RenderShadowMapPass(const mtx44& lightSpace) {
     SetShaderValueMatrix(depthShader, depthLightSpaceLoc, ToRaylibMatrix(lightSpace));
 
     rlEnableBackfaceCulling();
-    // Keep standard back-face culling in the shadow pass to avoid caster/receiver separation.
     rlSetCullFace(RL_CULL_FACE_BACK);
     Draw3DDepthGPU(cube);
     Draw3DDepthGPU(testcar);
@@ -250,7 +248,7 @@ static void RenderShadowMapPass(const mtx44& lightSpace) {
     EndShaderMode();
 
     rlDisableFramebuffer();
-    rlViewport(0, 0, GetScreenWidth(), GetScreenHeight());
+    rlViewport(0, 0, GetRenderWidth(), GetRenderHeight());
 }
 
 static void DrawSceneWithShadows(const mtx44& frameVP, const mtx44& lightSpace) {
@@ -295,6 +293,7 @@ void initializePlayer(player& player1) {
     player1.camera.fov = 90.0f * M_PI / 180.0f;
     player1.controls = { 'W', 'A', 'S', 'D' };
     player1.canMove = true;
+    player1.pState = { false, 0.f, 0.f, 100.f };
 }
 
 void createPlane(planeMtx& plane, int id, vector3 location, float dimensions[4][3], Texture2D texture, void (*action)(int)) {
@@ -361,7 +360,7 @@ void create3dObject(meshedObject& object, const char* path, const char* collider
     }
     // std::cout << "v count: " << mesh.count << std::endl;
     object.mesh = mesh;
-    UnloadModel(model); // all data copied into our own mesh; release raylib's copy
+    UnloadModel(model);
 }
 
 // Function Definitions
@@ -472,8 +471,6 @@ void initialise()
 
 
     gPreviousTicks = static_cast<float>(GetTime());
-    // w2sShader = { w2s, SHADER_LOC_MATRIX_MVP, SHADER_LOC_COLOR_DIFFUSE, GetShaderLocation(w2s, "uLightDir") };
-    // temporary debug in update(), after updateColliderLocation(testcar)
 
 }
 

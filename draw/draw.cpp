@@ -22,7 +22,7 @@ void Draw3DGPU(const meshedObject& object, const camera& cam, shaderStore& shade
     }
 
     
-    rlDrawRenderBatchActive(); // flush previous batch — counter resets here
+    rlDrawRenderBatchActive();
 
     if (shader.shadowsEnabledLoc >= 0) {
         const int shadowFlag = receiveShadows ? 1 : 0;

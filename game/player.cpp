@@ -66,6 +66,19 @@ void getStartingInput(gameData& gData) {
     else canEnter = true;
 }
 
+void moveCar() {
+
+}
+
+void changeCarState() {
+    if (incar) {
+        std::cout << "player has entered the car" << std::endl;
+    }
+    else {
+        std::cout << "player has exited the car" << std::endl;
+    }
+}
+
 void movePlayer(gameData& gData, player& player, bool swappedNormals, float deltaTime, float maxSpeed, Sound js) {
     // always run ground reset regardless of canMove
     if (player.pEntity.collidingY && player.pEntity.magnitude.y <= 0.f) {

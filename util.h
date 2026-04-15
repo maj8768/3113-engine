@@ -19,6 +19,12 @@ enum physicsComplexity {
 
 extern bool debugMode;
 
+struct playerState {
+    bool inCar;
+    float drunkenness;
+    float cigaretteTimer;
+    float carFuel;
+};
 
 struct gameData {
     
@@ -217,6 +223,7 @@ struct player {
     vector4 controls;
     bool canMove;
     struct physicsEntity pEntity;
+    struct playerState pState;
 };
 
 struct world {
