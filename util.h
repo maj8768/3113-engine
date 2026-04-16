@@ -251,7 +251,10 @@ struct meshedObject {
     float scale;
     float rotY;
     Texture2D texo;
-
+    char text[100];
+    float textRenderDistance;
+    bool renderText;
+    vector3 relativeTextOffset;
     struct physicsEntity pEntity;
 };
 

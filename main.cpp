@@ -307,7 +307,11 @@ void createPlane(planeMtx& plane, int id, vector3 location, float dimensions[4][
     plane.color = BLACK;
 }
 
-void create3dObject(meshedObject& object, const char* path, const char* colliderPath, bool collider, shaderStore& shader, float scale, vector3 location) {
+void create3dObject(meshedObject& object, const char* path, const char* colliderPath, bool collider, shaderStore& shader, float scale, vector3 location, char text[100], bool renderText, float textRenderDistance, vector3 relativeTextOffset ) {
+    memcpy(object.text, text, 100);
+    object.renderText = renderText;
+    object.textRenderDistance = textRenderDistance;
+    object.relativeTextOffset = relativeTextOffset;
     triDomMesh mesh;
     object.scale = scale;
     object.pEntity.location = location;
@@ -441,12 +445,14 @@ void initialise()
     // create3dObject(platforms1, "resources/levels/level1/level1.obj", "resources/levels/level1/colliders/level1collider.obj", true, w2sShader, 4.f, {0.f,0.f,0.f});
     // create3dObject(platforms2, "resources/levels/level2/level2.obj", "resources/levels/level2/colliders/level2collider.obj", true, w2sShader, 4.f, {0.f,0.f,0.f});
     // create3dObject(chair1, "resources/levels/level1/chair.obj", "resources/levels/level1/colliders/chaircollider.obj", true, w2sShader, 4.f, {0.f,0.f,0.f});
-    create3dObject(skysphere1, "resources/levels/skysphere.obj", "", false, w2sShader, 25.f, {0.f,0.f,0.f});
+    char empty[100] = "";
+    char cubeText[100] = "I am a cube";
+    create3dObject(skysphere1, "resources/levels/skysphere.obj", "", false, w2sShader, 25.f, {0.f,0.f,0.f}, empty, false, 100, {0,0,0});
     // create3dObject(evilroomba2, "resources/levels/level2/evilroomba.obj", "", true, w2sShader, 1.f, {0.f,0.f,0.f});
     // create3dObject(platforms3, "resources/levels/level3/level3.obj", "resources/levels/level3/colliders/level3collider.obj", true, w2sShader, 4.f, {0.f,0.f,0.f});
-    create3dObject(testingplatforms, "resources/levels/testing/testplatform.obj", "resources/levels/testing/colliders/testplatformcollider.obj", true, w2sShader, 1.f, {0.f,0.f,0.f});
-    create3dObject(cube, "resources/levels/testing/cube.obj", "", false, w2sShader, 1.f, {7.f,5.f,3.f});
-    create3dObject(testcar, "resources/levels/testing/testcar.obj", "resources/levels/testing/colliders/testcarcollider.obj", true, w2sShader, 4.f, {0.f,5.f,15.f});
+    create3dObject(testingplatforms, "resources/levels/testing/testplatform.obj", "resources/levels/testing/colliders/testplatformcollider.obj", true, w2sShader, 1.f, {0.f,0.f,0.f}, empty, false, 100, {0,0,0});
+    create3dObject(cube, "resources/levels/testing/cube.obj", "", false, w2sShader, 1.f, {7.f,5.f,3.f}, cubeText, true, 1.5f, {0,-1.5,0});
+    create3dObject(testcar, "resources/levels/testing/testcar.obj", "resources/levels/testing/colliders/testcarcollider.obj", true, w2sShader, 4.f, {0.f,5.f,15.f}, empty, false, 100, {0,0,0});
 
 
     /* planeMtx struct for reference:
