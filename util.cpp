@@ -124,7 +124,7 @@ float getHypot(float a, float b) {
 
 
 
-void objToQuads(const char* path, meshedObject& mesh, float scale) {
+void objToQuads(const char* path, meshedObject& mesh, float scale, player& player, bool playerObj) {
     int vertexCount = 0;
     int faceCount = 0;
     FILE *file_ptr;
@@ -147,51 +147,100 @@ void objToQuads(const char* path, meshedObject& mesh, float scale) {
     }
 
     float (*m)[4][3] = new float[vertexCount][4][3];
-    mesh.cPlaneCount = faceCount;
-    mesh.collider  = new planeMtx[faceCount];
-    mesh.colliderO = new planeMtx[faceCount];
 
-    fseek(file_ptr, 0, SEEK_SET);
+    if (playerObj) {
+        player.cPlaneCount = faceCount;
+        player.collider  = new planeMtx[faceCount];
+        player.colliderO = new planeMtx[faceCount];
 
-    int vertexIndex = 0;
-    int faceIndex = 0;
+        fseek(file_ptr, 0, SEEK_SET);
 
-    while (fgets(buffer, sizeof(buffer), file_ptr) != NULL) {
-        if (buffer[0] == 'v' && buffer[1] == ' ') {
-            char* word = strtok(buffer, " ");
-            int coord = 0;
+        int vertexIndex = 0;
+        int faceIndex = 0;
 
-            while ((word = strtok(NULL, " ")) != NULL && coord < 3) {
-                m[vertexIndex][0][coord] = atof(word) * scale;
-                coord++;
-            }
+        while (fgets(buffer, sizeof(buffer), file_ptr) != NULL) {
+            if (buffer[0] == 'v' && buffer[1] == ' ') {
+                char* word = strtok(buffer, " ");
+                int coord = 0;
 
-            vertexIndex++;
-        }
-        else if (buffer[0] == 'f' && buffer[1] == ' ') {
-            char* word = strtok(buffer, " ");
-            int vertInFace = 0;
-
-            while ((word = strtok(NULL, " \n")) != NULL && vertInFace < 4) {
-                int idx = atoi(word) - 1;
-
-                if (idx >= 0 && idx < vertexCount) {
-                    mesh.collider[faceIndex].m[vertInFace][0] = m[idx][0][0];
-                    mesh.collider[faceIndex].m[vertInFace][1] = m[idx][0][1];
-                    mesh.collider[faceIndex].m[vertInFace][2] = m[idx][0][2];
+                while ((word = strtok(NULL, " ")) != NULL && coord < 3) {
+                    m[vertexIndex][0][coord] = atof(word) * scale;
+                    coord++;
                 }
 
-                vertInFace++;
+                vertexIndex++;
             }
+            else if (buffer[0] == 'f' && buffer[1] == ' ') {
+                char* word = strtok(buffer, " ");
+                int vertInFace = 0;
 
-            faceIndex++;
+                while ((word = strtok(NULL, " \n")) != NULL && vertInFace < 4) {
+                    int idx = atoi(word) - 1;
+
+                    if (idx >= 0 && idx < vertexCount) {
+                        player.collider[faceIndex].m[vertInFace][0] = m[idx][0][0];
+                        player.collider[faceIndex].m[vertInFace][1] = m[idx][0][1];
+                        player.collider[faceIndex].m[vertInFace][2] = m[idx][0][2];
+                    }
+
+                    vertInFace++;
+                }
+
+                faceIndex++;
+            }
         }
+
+        memcpy(player.colliderO, player.collider, faceCount * sizeof(planeMtx));
+
+        delete[] m;
+        fclose(file_ptr);
+    } 
+    else {
+        mesh.cPlaneCount = faceCount;
+        mesh.collider  = new planeMtx[faceCount];
+        mesh.colliderO = new planeMtx[faceCount];
+        fseek(file_ptr, 0, SEEK_SET);
+
+        int vertexIndex = 0;
+        int faceIndex = 0;
+
+        while (fgets(buffer, sizeof(buffer), file_ptr) != NULL) {
+            if (buffer[0] == 'v' && buffer[1] == ' ') {
+                char* word = strtok(buffer, " ");
+                int coord = 0;
+
+                while ((word = strtok(NULL, " ")) != NULL && coord < 3) {
+                    m[vertexIndex][0][coord] = atof(word) * scale;
+                    coord++;
+                }
+
+                vertexIndex++;
+            }
+            else if (buffer[0] == 'f' && buffer[1] == ' ') {
+                char* word = strtok(buffer, " ");
+                int vertInFace = 0;
+
+                while ((word = strtok(NULL, " \n")) != NULL && vertInFace < 4) {
+                    int idx = atoi(word) - 1;
+
+                    if (idx >= 0 && idx < vertexCount) {
+                        mesh.collider[faceIndex].m[vertInFace][0] = m[idx][0][0];
+                        mesh.collider[faceIndex].m[vertInFace][1] = m[idx][0][1];
+                        mesh.collider[faceIndex].m[vertInFace][2] = m[idx][0][2];
+                    }
+
+                    vertInFace++;
+                }
+
+                faceIndex++;
+            }
+        }
+
+        memcpy(mesh.colliderO, mesh.collider, faceCount * sizeof(planeMtx));
+
+        delete[] m;
+        fclose(file_ptr);
     }
-
-    memcpy(mesh.colliderO, mesh.collider, faceCount * sizeof(planeMtx));
-
-    delete[] m;
-    fclose(file_ptr);
 }
 
 void moveUVs(triDomMesh& mesh, int* coords, int coordcount, float adjustment) {
@@ -205,4 +254,26 @@ void moveUVs(triDomMesh& mesh, int* coords, int coordcount, float adjustment) {
         mesh.tris[coords[i]].t[2].y += scroll;
 
     }
+}
+
+void applyRot(vector3& v, vector3 rot, float xMod, float yMod, float zMod) {
+    // rotate the local offset by the rotation, then add to world position
+    vector3 offset = { xMod, yMod, zMod };
+
+    // x
+    float y = offset.y * cos(rot.x) - offset.z * sin(rot.x);
+    float z = offset.z * cos(rot.x) + offset.y * sin(rot.x);
+    offset.y = y; offset.z = z;
+
+    // y
+    float x = offset.x * cos(rot.y) + offset.z * sin(rot.y);
+    z = offset.z * cos(rot.y) - offset.x * sin(rot.y);
+    offset.x = x; offset.z = z;
+
+    // z
+    x = offset.x * cos(rot.z) - offset.y * sin(rot.z);
+    y = offset.y * cos(rot.z) + offset.x * sin(rot.z);
+    offset.x = x; offset.y = y;
+
+    v = v + offset;
 }

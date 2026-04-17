@@ -5,11 +5,13 @@
 #include "raylib.h"
 #include "../physics/physics.h"
 #include "../system/keyboard/keyboard.h"
+#include "game.h"
 
 static bool canEnter = true;
 static bool canR = true;
 static bool canThrust = false;
 static bool canDebug = true;
+static bool canEnterCar = true;
 
 void haltPlayerLerp(player& player, bool swappedNormals, float deltaTime) {
         player.pEntity.magnitude.x = player.pEntity.magnitude.x * (1 - deltaTime * 10.f);
@@ -70,109 +72,143 @@ void moveCar() {
 
 }
 
-void changeCarState(player& player) {
-    if (player.pState.inCar == false) {
-        std::cout << "player has entered the car" << std::endl;
-    }
+void movePlayer(gameData& gData, player& player, meshedObject& car, bool swappedNormals, float deltaTime, float maxSpeed, Sound js) {
+    if (getAsyncKeyStateWrapper(KEY_E)) {
+        if (player.pState.canCar && canEnterCar) {
+            if (!player.pState.inCar) {
+                player.pState.inCar = !player.pState.inCar;
+                canEnterCar = false;
+            }
+            else {
+                player.pState.inCar = !player.pState.inCar;
+                canEnterCar = false;
+                vector3 playerLoc = player.pEntity.location;
+                applyRot(player.pEntity.location, car.pEntity.rot, -4.f, 0.001, -0.45f);
+                
+            }
+        }
+    } 
     else {
-        std::cout << "player has exited the car" << std::endl;
+        canEnterCar = true;
     }
-}
-
-void movePlayer(gameData& gData, player& player, bool swappedNormals, float deltaTime, float maxSpeed, Sound js) {
-    // always run ground reset regardless of canMove
-    if (player.pEntity.collidingY && player.pEntity.magnitude.y <= 0.f) {
-        player.pEntity.jumping = false;
-        player.pEntity.magnitude.y = 0.f;
-    }
-
-    if (player.canMove == false) {
-        haltPlayerLerp(player, swappedNormals, deltaTime);
-    }
-    else {
-        static float lastGroundY = 0.f;
-        if (player.pEntity.collidingY) lastGroundY = player.pEntity.location.y;
-        bool nearGround = player.pEntity.collidingY || fabsf(player.pEntity.location.y - lastGroundY) < 0.5f;
-
-        bool holdKeys = false;
+    if (player.pState.inCar) {
+        player.pEntity.location.z = car.pEntity.location.z;
+        player.pEntity.location.x = car.pEntity.location.x;
+        player.pEntity.location.y = car.pEntity.location.y;
+        vector3 camPos = player.pEntity.location;
         
-        float xR = cos(player.camera.camTarget.x);
-        float zR = sin(player.camera.camTarget.x);
-
-        float xS = -sin(player.camera.camTarget.x);
-        float zS =  cos(player.camera.camTarget.x);
-
-        float moveX = 0.0f;
-        float moveZ = 0.0f;
-
+        applyRot(camPos, car.pEntity.rot, -1.5f, 4.25, -0.45);
+        player.camera.camPos = camPos;
 
         if (getAsyncKeyStateWrapper(player.controls.x)) {
-            moveX += xR;
-            moveZ += zR;
+            player.pState.forward += 0.01f;
         }
         if (getAsyncKeyStateWrapper(player.controls.y)) {
-            moveX -= xS;
-            moveZ -= zS;
+            player.pState.leftTurn += 0.01f;
         }
         if (getAsyncKeyStateWrapper(player.controls.z)) {
-            moveX -= xR;
-            moveZ -= zR;
+            player.pState.brake += 0.01f;   
         }
         if (getAsyncKeyStateWrapper(player.controls.t)) {
-            moveX += xS;
-            moveZ += zS;
+            player.pState.rightTurn += 0.01f;
         }
-        if (getAsyncKeyStateWrapper(KEY_SPACE)) {
-            if (nearGround && !player.pEntity.jumping) {
-                player.pEntity.magnitude.y = 10.f;
-                player.pEntity.jumping = true;
-                PlaySound(js);
-            }
-        }
-        if (getAsyncKeyStateWrapper(KEY_P)) {
-            if (canDebug) {
-                debugMode = !debugMode;
-                canDebug = false;
-                std::cout << "debug mode: " << (debugMode ? "on" : "off") << std::endl;
-            }
-        } else {
-            canDebug = true;
+    } 
+    else {
+        if (player.pEntity.collidingY && player.pEntity.magnitude.y <= 0.f) {
+            player.pEntity.jumping = false;
+            player.pEntity.magnitude.y = 0.f;
         }
 
-        float len = std::sqrt(moveX * moveX + moveZ * moveZ);
-        if (len > 0.0f/* || player.pEntity.jumping == false*/) {
-            // std::cout << "he" << std::endl;
-            moveX /= len;
-            moveZ /= len;
-            player.pEntity.magnitude.x += 50.f * moveX * deltaTime;
-            player.pEntity.magnitude.z += 50.f * moveZ * deltaTime;
-            
-            // std::cout << "velocity: " << player.pEntity.velocity << std::endl;
-            holdKeys = true;
-        }
-
-        if (holdKeys == false) {
+        if (player.canMove == false) {
             haltPlayerLerp(player, swappedNormals, deltaTime);
         }
-        float speed = std::sqrt(player.pEntity.magnitude.x * player.pEntity.magnitude.x +
-                                player.pEntity.magnitude.z * player.pEntity.magnitude.z);
+        else {
+            static float lastGroundY = 0.f;
+            if (player.pEntity.collidingY) lastGroundY = player.pEntity.location.y;
+            bool nearGround = player.pEntity.collidingY || fabsf(player.pEntity.location.y - lastGroundY) < 0.5f;
 
-        player.pEntity.velocity = speed;
+            bool holdKeys = false;
+            
+            float xR = cos(player.camera.camTarget.x);
+            float zR = sin(player.camera.camTarget.x);
 
-        if (speed > maxSpeed) {
-            float scale = maxSpeed / speed;
-            player.pEntity.magnitude.x *= scale;
-            player.pEntity.magnitude.z *= scale;
+            float xS = -sin(player.camera.camTarget.x);
+            float zS =  cos(player.camera.camTarget.x);
+
+            float moveX = 0.0f;
+            float moveZ = 0.0f;
+            if (getAsyncKeyStateWrapper(player.controls.x)) {
+                moveX += xR;
+                moveZ += zR;
+            }
+            if (getAsyncKeyStateWrapper(player.controls.y)) {
+                moveX -= xS;
+                moveZ -= zS;
+            }
+            if (getAsyncKeyStateWrapper(player.controls.z)) {
+                moveX -= xR;
+                moveZ -= zR;
+            }
+            if (getAsyncKeyStateWrapper(player.controls.t)) {
+                moveX += xS;
+                moveZ += zS;
+            }
+            if (getAsyncKeyStateWrapper(KEY_LEFT_SHIFT)) {
+                moveX *= 2.f;
+                moveZ *= 2.f;
+            }
+            if (getAsyncKeyStateWrapper(KEY_SPACE)) {
+                if (nearGround && !player.pEntity.jumping) {
+                    player.pEntity.magnitude.y = 10.f;
+                    player.pEntity.jumping = true;
+                    PlaySound(js);
+                }
+            }
+            if (getAsyncKeyStateWrapper(KEY_P)) {
+                if (canDebug) {
+                    debugMode = !debugMode;
+                    canDebug = false;
+                    std::cout << "debug mode: " << (debugMode ? "on" : "off") << std::endl;
+                }
+            } else {
+                canDebug = true;
+            }
+
+            float len = std::sqrt(moveX * moveX + moveZ * moveZ);
+            if (len > 0.0f/* || player.pEntity.jumping == false*/) {
+                // std::cout << "he" << std::endl;
+                moveX /= len;
+                moveZ /= len;
+                player.pEntity.magnitude.x += 50.f * moveX * deltaTime;
+                player.pEntity.magnitude.z += 50.f * moveZ * deltaTime;
+                
+                // std::cout << "velocity: " << player.pEntity.velocity << std::endl;
+                holdKeys = true;
+            }
+
+            if (holdKeys == false) {
+                haltPlayerLerp(player, swappedNormals, deltaTime);
+            }
+            float speed = std::sqrt(player.pEntity.magnitude.x * player.pEntity.magnitude.x +
+                                    player.pEntity.magnitude.z * player.pEntity.magnitude.z);
+
+            player.pEntity.velocity = speed;
+
+            if (speed > maxSpeed) {
+                float scale = maxSpeed / speed;
+                player.pEntity.magnitude.x *= scale;
+                player.pEntity.magnitude.z *= scale;
+            }
+            
+        //    fmin(fmax(player.magnitude.x, -0.5), 0.5);
+        //    fmin(fmax(player.magnitude.y, -0.5), 0.5);
+        //    fmin(fmax(player.magnitude.z, -0.5), 0.5);
         }
-        
-    //    fmin(fmax(player.magnitude.x, -0.5), 0.5);
-    //    fmin(fmax(player.magnitude.y, -0.5), 0.5);
-    //    fmin(fmax(player.magnitude.z, -0.5), 0.5);
+            // snapping camera to players location
+            player.camera.camPos.z = player.pEntity.location.z;
+            player.camera.camPos.x = player.pEntity.location.x;
+            player.camera.camPos.y = player.pEntity.location.y+5; // head level (apparently 5 is to high)
     }
-        // snapping camera to players location
-        player.camera.camPos.z = player.pEntity.location.z;
-        player.camera.camPos.x = player.pEntity.location.x;
-        player.camera.camPos.y = player.pEntity.location.y+5; // head level (apparently 5 is to high)
 }
 
 void moveLook(player& player1, float deltaTime, vector2 md) {

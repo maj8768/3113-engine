@@ -10,10 +10,10 @@ void initializePhysicsEntity(physicsEntity& pEntity, float weight, physicsComple
 
 void updateEntityLocation(meshedObject& object);
 
-void updateColliderLocation(meshedObject& object);
+void updateColliderLocation(meshedObject& object, player& player, bool playerObj);
 
 void resetMeshedLocation(meshedObject& object);
 
-world buildWorld(meshedObject** objects, int objectCount);
+world buildWorld(meshedObject** objects, int objectCount, player& player);
 
 

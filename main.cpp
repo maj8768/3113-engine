@@ -11,6 +11,8 @@
 #include "util.h"
 
 #include "physics/physics.h"
+#include "physics/car.h"
+#include "physics/sounds.h"
 
 #include "game/player.h"
 #include "game/game.h"
@@ -111,7 +113,7 @@ static Shader depthShader;
 static int depthLightSpaceLoc = -1;
 
 static RenderTexture2D shadowMapRT = { 0 };
-static constexpr int SHADOW_MAP_SIZE = 4096;
+static constexpr int SHADOW_MAP_SIZE = 1024;
 static constexpr float SHADOW_RANGE = 60.0f;
 static constexpr float SHADOW_NEAR = 1.0f;
 static constexpr float SHADOW_FAR = 180.0f;
@@ -123,12 +125,14 @@ static constexpr float LIGHT_ORBIT_X_OFFSET = 55.0f;
 static Vector3 lightPos = { 250.f, 1000.f, 0.f };
 static Vector3 lightDir = { -0.10f, -0.99f, -0.05f };
 static Vector4 lightColor = { 0.447, 0.816, 0.922, 1.0f };
-static float ambient  = 0.05f;
+static float ambient  = 1.0f; // 0.05
 
 static meshedObject skysphere1;
 static meshedObject cube;
 static meshedObject testingplatforms;
 static meshedObject testcar;
+
+static meshedObject fakeMesh; // fake and isnt real
 
 static bool iamreal = false;
 static int iamalsoreal = 1;
@@ -158,6 +162,8 @@ static Sound jump4;
 static Sound jump5;
 static Sound jump6;
 static Sound jump7;
+
+static Music carEngine;
 
 AppStatus gAppStatus = RUNNING;
 
@@ -192,7 +198,7 @@ static RenderTexture2D LoadShadowMapRenderTexture(int width, int height) {
     target.depth.width = width;
     target.depth.height = height;
     target.depth.format = PIXELFORMAT_UNCOMPRESSED_R32;
-    target.depth.mipmaps = 1;
+    target.depth.mipmaps = 4;
 
     rlFramebufferAttach(target.id, target.texture.id, RL_ATTACHMENT_COLOR_CHANNEL0, RL_ATTACHMENT_TEXTURE2D, 0);
     rlFramebufferAttach(target.id, target.depth.id, RL_ATTACHMENT_DEPTH, RL_ATTACHMENT_TEXTURE2D, 0);
@@ -267,7 +273,10 @@ static void DrawSceneWithShadows(const mtx44& frameVP, const mtx44& lightSpace) 
             Draw3DGPU(testingplatforms, player1.camera, w2sShader, {255, 0, 0, 255}, &frameVP, shadowTex, hasShadowMap);
             Draw3DGPU(testcar, player1.camera, w2sShader, {255, 0, 0, 255}, &frameVP, shadowTex, hasShadowMap);
             Draw3DGPU(cube, player1.camera, w2sShader, {255, 0, 0, 255}, &frameVP, shadowTex, hasShadowMap);
-            DrawColliderGPU(testcar, player1.camera, w2sShader, {0, 255, 0, 255}, &frameVP);
+            DrawColliderGPU(testcar.cPlaneCount, testcar.collider, player1.camera, w2sShader, {0, 255, 0, 255}, &frameVP);
+            DrawColliderGPU(player1.cPlaneCount, player1.collider, player1.camera, w2sShader, {0, 255, 0, 255}, &frameVP);
+            DrawPlaneNormalsGPU(testcar.cPlaneCount, testcar.collider, player1.camera, w2sShader, {255, 0, 0, 255}, 1.0f, &frameVP);
+
             break;
         case gameData::LEVEL1:
         case gameData::LEVEL2:
@@ -293,7 +302,9 @@ void initializePlayer(player& player1) {
     player1.camera.fov = 90.0f * M_PI / 180.0f;
     player1.controls = { 'W', 'A', 'S', 'D' };
     player1.canMove = true;
-    player1.pState = { false, 0.f, 0.f, 100.f };
+    player1.pState = { false, false, 0.f, 0.f, 100.f };
+
+    objToQuads("resources/player/collider/playercollider.obj", fakeMesh, 1.0f, player1, true);
 }
 
 void createPlane(planeMtx& plane, int id, vector3 location, float dimensions[4][3], Texture2D texture, void (*action)(int)) {
@@ -315,7 +326,7 @@ void create3dObject(meshedObject& object, const char* path, const char* collider
     triDomMesh mesh;
     object.scale = scale;
     object.pEntity.location = location;
-    if (collider) objToQuads(colliderPath, object, scale);
+    if (collider) objToQuads(colliderPath, object, scale, player1, false);
     Model model = LoadModel(path);
     int totalTriangles = 0;
     for (int i = 0; i < model.meshCount; i++) {
@@ -381,6 +392,8 @@ void initialise()
     jump5 = LoadSound("resources/sounds/jumps/j5.mp3");
     jump6 = LoadSound("resources/sounds/jumps/j6.mp3");
     jump7 = LoadSound("resources/sounds/jumps/j7.mp3");
+    carEngine = LoadMusicStream("resources/sounds/car/carEngine.ogg");
+    startCarEngineThread(carEngine);
 
     
     void* handle = GetWindowHandle();
@@ -462,9 +475,11 @@ void initialise()
             */
     
 //    initializePhysicsEntity(cheese.pEntity, 12500.f); // all enities that need physics have to be initialized :/
-    initializePhysicsEntity(player1.pEntity, 1.f, SIMPLE); // even players need to be initialized because they have physics and im lazy
+    initializePhysicsEntity(player1.pEntity, 1.f, COMPLEX); // even players need to be initialized because they have physics and im lazy
     initializePhysicsEntity(testcar.pEntity, 1000.f, COMPLEX);
-    updateColliderLocation(testcar);
+    testcar.pEntity.rot = {0.f, 180.f, 0.f};
+    updateColliderLocation(fakeMesh,player1,true);
+    updateColliderLocation(testcar,player1,false);
 
     // initializePhysicsEntity(chair1.pEntity, 100.f);
     // initializePhysicsEntity(evilroomba2.pEntity, 50.f);
@@ -506,7 +521,7 @@ void update() {
     auto ticks = static_cast<float>(GetTime());          // step 1
     float deltaTime = ticks - gPreviousTicks; // step 2
     gPreviousTicks = ticks;
-    
+
     // default player movement/look updating
     RawMouseGetDelta(md.x, md.y);
     moveLook(player1, deltaTime, md);
@@ -514,7 +529,7 @@ void update() {
     int r = rand() % 7 + 1;
     Sound jumpSound = r == 1 ? jump1 : r == 2 ? jump2 : r == 3 ? jump3 : r == 4 ? jump4 : r == 5 ? jump5 : r == 6 ? jump6 : jump7; 
     
-    movePlayer(gData, player1, false, deltaTime, 13, jumpSound);
+    movePlayer(gData, player1, testcar, false, deltaTime, 13, jumpSound);
     // lightPos.y = player1.pEntity.location.y + 10.f;
     // lightPos.x = player1.pEntity.location.x;
     // lightPos.z = player1.pEntity.location.z;
@@ -531,32 +546,44 @@ void update() {
             // break;
     switch (gData.currentLevel) {
         case gameData::TESTING_ENVIRONMENT: {
+            updateColliderLocation(fakeMesh,player1,true);
             meshedObject* worldObjects[] = { &testingplatforms, &testcar };
             meshedObject* secondaryObjects[] = { &testingplatforms };
-            world worldInstance = buildWorld(worldObjects, 2);
-            world secondaryInstance = buildWorld(secondaryObjects, 1);
-            processPhysics(deltaTime, 0, player1.pEntity, worldInstance, iamreal, iamalsoreal, false, true, nullptr, 0); // last bool is for collision
+            world worldInstance = buildWorld(worldObjects, 2, player1);
+            if (!player1.pState.inCar) {
+                processPhysics(deltaTime, 0, player1.pEntity, worldInstance, iamreal, iamalsoreal, false, true, player1.collider, player1.cPlaneCount); // last bool is for collision
+            }
+            world secondaryInstance = buildWorld(secondaryObjects, 1, player1);
             processPhysics(deltaTime, 0, testcar.pEntity, secondaryInstance, iamreal, iamalsoreal, false, true, testcar.collider, testcar.cPlaneCount); // last bool is for collision
             updateEntityLocation(testcar);
-            updateColliderLocation(testcar);
+            processCar(testcar, player1, deltaTime, carEngine);
+            // updateColliderLocation(testcar,player1,false);
+
+            // Re-sync camera to car's post-physics position so mesh and camera match
+            if (player1.pState.inCar) {
+                player1.pEntity.location = testcar.pEntity.location;
+                vector3 camPos = player1.pEntity.location;
+                applyRot(camPos, testcar.pEntity.rot, -1.5f, 4.25, -0.45);
+                player1.camera.camPos = camPos;
+            }
 
             break;
         }
         case gameData::LEVEL1: {
             meshedObject* worldObjects[] = {  };
-            world worldInstance = buildWorld(worldObjects, 0);
+            world worldInstance = buildWorld(worldObjects, 0, player1);
             processPhysics(deltaTime, 0, player1.pEntity, worldInstance, iamreal, iamalsoreal, false, true, nullptr, 0); // last bool is for collision
             break;
         }
         case gameData::LEVEL2: {
             meshedObject* worldObjects[] = {  };
-            world worldInstance = buildWorld(worldObjects, 0);
+            world worldInstance = buildWorld(worldObjects, 0, player1);
             processPhysics(deltaTime, 0, player1.pEntity, worldInstance, iamreal, iamalsoreal, false, true, nullptr, 0); // last bool is for collision
             break;
         }
         case gameData::LEVEL3: {
             meshedObject* worldObjects[] = {  };
-            world worldInstance = buildWorld(worldObjects, 0);
+            world worldInstance = buildWorld(worldObjects, 0, player1);
             processPhysics(deltaTime, 0, player1.pEntity, worldInstance, iamreal, iamalsoreal, false, true, nullptr, 0); // last bool is for collision
             break;
         }
@@ -576,7 +603,7 @@ void update() {
         std::cout << "FPS: " << GetFPS() << std::endl;
         lastPrintTime = now;
     }
-
+    levelLogic(player1, deltaTime, gData, testcar);
     // levelLogic(player1, deltaTime, gData, deathSound, level1win, level2win, level3win, bgMusicLevel1, bgMusicLevel2, bgMusicLevel3, chairSound, chairScared, roombaDialog, chair1, evilroomba2);
 }
 
@@ -649,6 +676,8 @@ void shutdown()
     UnloadSound(jump5);
     UnloadSound(jump6);
     UnloadSound(jump7);
+    stopCarEngineThread();
+    UnloadMusicStream(carEngine);
 
 
     UnloadShader(w2sShader.shader);

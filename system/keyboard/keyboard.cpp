@@ -4,27 +4,28 @@
 
 int rlToMacKey(int key) {
     switch (key) {
-        case 87: return 13;
-        case 65: return 0;
-        case 83: return 1;
-        case 68: return 2;
-        case 32: return 49;
-        case 82: return 15;
+        case 87: return 13;  // W
+        case 65: return 0;   // A
+        case 83: return 1;   // S
+        case 68: return 2;   // D
+        case 32: return 49;  // Space
+        case 82: return 15;  // R
+        case 69: return 14;  // E
 
         // 1, 2, 3
-        case 49: return 18;
-        case 50: return 19;
-        case 51: return 20;
+        case 49: return 18;  // 1
+        case 50: return 19;  // 2
+        case 51: return 20;  // 3
 
         // P
-        case 80: return 35;
+        case 80: return 35;  // P
 
-        case 37: return 123;
-        case 38: return 126;
-        case 39: return 124;
-        case 40: return 125;
+        case 37: return 123; // Left Arrow
+        case 38: return 126; // Up Arrow
+        case 39: return 124; // Right Arrow
+        case 40: return 125; // Down Arrow
 
-        case 257: return 36;
+        case 257: return 36; // Enter
 
         default: return key;
     }
@@ -37,19 +38,21 @@ int rlToWinKey(int key) {
         case 83: return 83;   // S
         case 68: return 68;   // D
         case 32: return 32;   // Space
+        case 82: return 82;   // R
+        case 69: return 69;   // E
 
         // 1, 2, 3
-        case 49: return 49;
-        case 50: return 50;
-        case 51: return 51;
+        case 49: return 49;   // 1
+        case 50: return 50;   // 2
+        case 51: return 51;   // 3
 
         // P
-        case 80: return 80;
+        case 80: return 80;   // P
 
-        case 37: return 37;   // Left arrow
-        case 38: return 38;   // Up arrow
-        case 39: return 39;   // Right arrow
-        case 40: return 40;   // Down arrow
+        case 37: return 37;   // Left Arrow
+        case 38: return 38;   // Up Arrow
+        case 39: return 39;   // Right Arrow
+        case 40: return 40;   // Down Arrow
 
         case 257: return 13;  // Enter
 

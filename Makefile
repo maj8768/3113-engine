@@ -59,4 +59,4 @@ rebuild-run: clean $(TARGET)
 	./$(TARGET)
 
 clean:
-	rm -f TheGame TheGame.exe
+	rm -f game game.exe

@@ -20,10 +20,15 @@ enum physicsComplexity {
 extern bool debugMode;
 
 struct playerState {
+    bool canCar;
     bool inCar;
     float drunkenness;
     float cigaretteTimer;
     float carFuel;
+    float leftTurn = 0.f;
+    float rightTurn = 0.f;
+    float brake = 0.f;
+    float forward = 0.f;
 };
 
 struct gameData {
@@ -214,12 +219,15 @@ struct physicsEntity {
     int groundPlane;
     float velocity;
     bool complexGeometry;
+    vector3 rot;
 };
 
 struct player {
     struct camera camera;
     planeMtx* model; // probably leave blank
-    planeMtx* bounding; // top and bottom
+    planeMtx* collider; // top and bottom
+    planeMtx* colliderO; // original collider for collision response
+    int cPlaneCount;
     vector4 controls;
     bool canMove;
     struct physicsEntity pEntity;
@@ -249,7 +257,6 @@ struct meshedObject {
     planeMtx* colliderO;
     int cPlaneCount;
     float scale;
-    float rotY;
     Texture2D texo;
     char text[100];
     float textRenderDistance;
@@ -260,7 +267,7 @@ struct meshedObject {
 
 
 
-void objToQuads(const char* path, meshedObject& mesh, float scale);
+void objToQuads(const char* path, meshedObject& mesh, float scale, player& player, bool playerObj);
 
 mtx44 mmult4(const mtx44&, const mtx44&);
 
@@ -291,3 +298,5 @@ vector3 transformToNDC(const mtx44& vp, float x, float y, float z);
 float getHypot(float a, float b);
 
 void moveUVs(triDomMesh& mesh, int* coords, int coordcount, float adjustment);
+
+void applyRot(vector3& v, vector3 rot, float xMod, float yMod, float zMod);

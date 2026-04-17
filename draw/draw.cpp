@@ -85,7 +85,7 @@ void Draw3DDepthGPU(const meshedObject& object) {
     rlEnd();
 }
 
-void DrawColliderGPU(const meshedObject& object, const camera& cam, shaderStore& shader, vector4 color, const mtx44* precomputedVP) {
+void DrawColliderGPU(int cPlaneCount, const planeMtx* colliders, const camera& cam, shaderStore& shader, vector4 color, const mtx44* precomputedVP) {
     if (debugMode == false) return;
     mtx44 vp;
     if (precomputedVP) {
@@ -101,12 +101,48 @@ void DrawColliderGPU(const meshedObject& object, const camera& cam, shaderStore&
 
     rlBegin(RL_LINES);
     rlColor4ub(color.x, color.y, color.z, color.t);
-    for (int i = 0; i < object.cPlaneCount; i++) {
+    for (int i = 0; i < cPlaneCount; i++) {
         for (int j = 0; j < 4; j++) {
             int next = (j + 1) % 4;
-            rlVertex3f(object.collider[i].m[j][0], object.collider[i].m[j][1], object.collider[i].m[j][2]);
-            rlVertex3f(object.collider[i].m[next][0], object.collider[i].m[next][1], object.collider[i].m[next][2]);
+            rlVertex3f(colliders[i].m[j][0], colliders[i].m[j][1], colliders[i].m[j][2]);
+            rlVertex3f(colliders[i].m[next][0], colliders[i].m[next][1], colliders[i].m[next][2]);
         }
+    }
+    rlEnd();
+}
+
+void DrawPlaneNormalsGPU(int planeCount, const planeMtx* planes, const camera& cam, shaderStore& shader, vector4 color, float length, const mtx44* precomputedVP) {
+    if (debugMode == false) return;
+    mtx44 vp;
+    if (precomputedVP) {
+        vp = *precomputedVP;
+    } else {
+        mtx44 view = viewMtx44(cam.camPos, cam.camTarget, cam.up);
+        mtx44 proj = projMtx44(cam.fov, cam.aspect, 0.1f, 1000000000000000000.0f);
+        vp = mmult4(proj, view);
+    }
+
+    rlDrawRenderBatchActive();
+    SetShaderValueMatrix(shader.shader, shader.vpLoc, ToRaylibMatrix(vp));
+
+    rlBegin(RL_LINES);
+    rlColor4ub(color.x, color.y, color.z, color.t);
+    for (int i = 0; i < planeCount; i++) {
+        vector3 p1 = {planes[i].m[0][0], planes[i].m[0][1], planes[i].m[0][2]};
+        vector3 p2 = {planes[i].m[1][0], planes[i].m[1][1], planes[i].m[1][2]};
+        vector3 p4 = {planes[i].m[3][0], planes[i].m[3][1], planes[i].m[3][2]};
+
+        vector3 center = {
+            (planes[i].m[0][0] + planes[i].m[1][0] + planes[i].m[2][0] + planes[i].m[3][0]) * 0.25f,
+            (planes[i].m[0][1] + planes[i].m[1][1] + planes[i].m[2][1] + planes[i].m[3][1]) * 0.25f,
+            (planes[i].m[0][2] + planes[i].m[1][2] + planes[i].m[2][2] + planes[i].m[3][2]) * 0.25f
+        };
+
+        vector3 normal = normalize3(cross3(p2 - p1, p4 - p1));
+        vector3 tip = center + normal.fmult(length);
+
+        rlVertex3f(center.x, center.y, center.z);
+        rlVertex3f(tip.x, tip.y, tip.z);
     }
     rlEnd();
 }
