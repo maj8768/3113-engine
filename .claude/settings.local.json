@@ -5,7 +5,32 @@
       "Bash(make clean:*)",
       "Bash(make)",
       "Bash(/c/msys64/usr/bin/make clean:*)",
-      "Bash(/c/msys64/usr/bin/make)"
+      "Bash(/c/msys64/usr/bin/make)",
+      "Read(//usr/**)",
+      "Read(//mingw64/**)",
+      "Read(//c/msys64/**)",
+      "WebSearch",
+      "Bash(ls /mingw64/bin/g++*)",
+      "Read(//ucrt64/**)",
+      "Bash(ls /c/msys64/mingw64/bin/g++*)",
+      "Bash(ls /c/msys64/ucrt64/bin/g++*)",
+      "Bash(/c/msys64/mingw64/bin/g++ physics/car.cpp -c -I. -o /tmp/test_car.o)",
+      "Bash(echo \"EXIT: $?\")",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:api.github.com)",
+      "Bash(curl -s \"https://api.github.com/repos/Engine-Simulator/engine-sim-community-edition\")",
+      "Bash(curl -s \"https://api.github.com/repos/Engine-Simulator/engine-sim-community-edition/contents/README.md\" -H \"Accept: application/vnd.github.v3.raw\")",
+      "Bash(curl -s \"https://api.github.com/repos/ange-yaghi/engine-sim\")",
+      "Bash(curl -s \"https://api.github.com/repos/ange-yaghi/engine-sim/git/trees/main?recursive=1\")",
+      "Bash(curl -s \"https://api.github.com/repos/ange-yaghi/engine-sim/contents\")",
+      "Bash(curl -s \"https://api.github.com/repos/ange-yaghi/engine-sim/contents/src\")",
+      "Bash(curl -s \"https://api.github.com/repos/ange-yaghi/engine-sim/contents/include\")",
+      "Bash(curl -s https://raw.githubusercontent.com/markeasting/engine-audio/master/src/AudioManager.ts)",
+      "Bash(curl -s https://raw.githubusercontent.com/markeasting/engine-audio/master/src/Engine.ts)",
+      "Bash(curl -s https://raw.githubusercontent.com/markeasting/engine-audio/master/src/configurations.ts)",
+      "Bash(curl -s https://raw.githubusercontent.com/markeasting/engine-audio/master/README.md)",
+      "WebFetch(domain:learnopengl.com)"
     ]
   }
 }

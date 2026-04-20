@@ -1,1 +1,1 @@
-void processCar(meshedObject& car, player& player, float deltaTime, Music& engineSound);
+void processCar(meshedObject& car, meshedObject& wheel, player& player, float deltaTime, Music& engineSound);

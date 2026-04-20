@@ -1,3 +1,4 @@
+#pragma once
 #include "raylib.h"
 #include <cmath>
 
@@ -29,6 +30,12 @@ struct playerState {
     float rightTurn = 0.f;
     float brake = 0.f;
     float forward = 0.f;
+    bool shiftUp = false;
+    bool shiftDown = false;
+    bool reverseDown  = false;
+    bool canGasPump = false;
+    bool hasGasPump = false;
+    bool pumpingUp = false;
 };
 
 struct gameData {
@@ -263,6 +270,7 @@ struct meshedObject {
     bool renderText;
     vector3 relativeTextOffset;
     struct physicsEntity pEntity;
+    vector3 offset;
 };
 
 
@@ -300,3 +308,8 @@ float getHypot(float a, float b);
 void moveUVs(triDomMesh& mesh, int* coords, int coordcount, float adjustment);
 
 void applyRot(vector3& v, vector3 rot, float xMod, float yMod, float zMod);
+void applyCamRot(vector3& v, vector3 camTarget, float xMod, float yMod, float zMod);
+
+bool isPointInCameraRadius(const camera& cam, const vector3& worldPoint, float screenW, float screenH, float radiusPixels);
+
+bool canInteract(const player& player, const vector3& worldPoint, float maxDist, float screenW, float screenH, float radiusPixels, vector3 offset);

@@ -33,7 +33,9 @@ float ShadowCalculation(float ndotl)
     
     // https://developer.nvidia.com/gpugems/gpugems/part-ii-lighting-and-shadows/chapter-11-shadow-map-antialiasing
 
-    float bias = max(0.001, 0.0005 * (1.0 - ndotl));
+    // Slope-scale bias: grows as the surface grazes the light direction.
+    // min value (0.002) covers directly-lit surfaces; max (0.012) handles oblique ones.
+    float bias = max(0.005 * (1.0 - ndotl), 0.001);
     vec2 texelSize = 1.0 / vec2(textureSize(uShadowMap, 0));
 
     vec2 offset = vec2(0.0);

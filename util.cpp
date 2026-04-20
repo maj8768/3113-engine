@@ -256,8 +256,19 @@ void moveUVs(triDomMesh& mesh, int* coords, int coordcount, float adjustment) {
     }
 }
 
+
+void applyCamRot(vector3& v, vector3 camTarget, float xMod, float yMod, float zMod) {
+    float cy = cosf(camTarget.x), sy = sinf(camTarget.x);
+    float cp = cosf(camTarget.y), sp = sinf(camTarget.y);
+    vector3 right = { -sy, 0.f, cy };
+    vector3 up = { -cy * sp, cp, -sy * sp };
+    vector3 forward = {  cp * cy, sp, cp * sy };
+    v.x += xMod * right.x + yMod * up.x + zMod * forward.x;
+    v.y += xMod * right.y + yMod * up.y + zMod * forward.y;
+    v.z += xMod * right.z + yMod * up.z + zMod * forward.z;
+}
+
 void applyRot(vector3& v, vector3 rot, float xMod, float yMod, float zMod) {
-    // rotate the local offset by the rotation, then add to world position
     vector3 offset = { xMod, yMod, zMod };
 
     // x
@@ -276,4 +287,39 @@ void applyRot(vector3& v, vector3 rot, float xMod, float yMod, float zMod) {
     offset.x = x; offset.y = y;
 
     v = v + offset;
+}
+
+bool isPointInCameraRadius(const camera& cam, const vector3& worldPoint, float screenW, float screenH, float radiusPixels, vector3 offset)
+{
+    float cy = cosf(cam.camTarget.x), sy = sinf(cam.camTarget.x);
+    float cp = cosf(cam.camTarget.y), sp = sinf(cam.camTarget.y);
+    vector3 forward = normalize3({ cp * cy, sp, cp * sy });
+
+    vector3 toPoint = worldPoint + offset - cam.camPos;
+    float dist = toPoint.mag();
+    if (dist < 1e-5f) return true;
+    toPoint = normalize3(toPoint);
+
+    float cosAngle = dot3(forward, toPoint);
+    if (cosAngle <= 0.f) return false;
+    float tanHalfFOV  = tanf(cam.fov * 0.5f);
+    float tanR = (radiusPixels / (screenH * 0.5f)) * tanHalfFOV;
+    float cosThreshold = 1.0f / sqrtf(1.0f + tanR * tanR);
+    if (false) { // lookat debug info
+        std::cout << "playerpos: " << cam.camPos.x << ", " << cam.camPos.y << ", " << cam.camPos.z << std::endl;
+        std::cout << "worldPoint: " << worldPoint.x << ", " << worldPoint.y << ", " << worldPoint.z << std::endl;
+        std::cout << "camtarget " << cam.camTarget.x << ", " << cam.camTarget.y << std::endl;
+        std::cout << "cosAngle: " << cosAngle << " cosThreshold: " << cosThreshold << " dist: " << dist << std::endl;
+        std::cout << "toPoint: " << toPoint.x << ", " << toPoint.y << ", " << toPoint.z << std::endl;
+        bool f = cosAngle >= cosThreshold;
+        std::cout << f << std::endl;
+    }
+    return cosAngle >= cosThreshold;
+}
+
+bool canInteract(const player& player, const vector3& worldPoint, float maxDist, float screenW, float screenH, float radiusPixels, vector3 offset) {
+    bool c1 = isPointInCameraRadius(player.camera, worldPoint, screenW, screenH, radiusPixels, offset);
+    bool c2 = worldPoint.dist(player.pEntity.location) < maxDist;
+    // std::cout << "Can interact: " << c1 << " " << c2 << std::endl;
+    return (c1 && c2);
 }

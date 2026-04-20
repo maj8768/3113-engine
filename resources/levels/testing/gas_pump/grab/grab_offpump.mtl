@@ -1,0 +1,12 @@
+# Blender 4.0.2 MTL File: 'None'
+# www.blender.org
+
+newmtl Fuel_pump
+Ns 0.000000
+Ka 1.000000 1.000000 1.000000
+Ks 0.000000 0.000000 0.000000
+Ke 0.000000 0.000000 0.000000
+Ni 1.450000
+illum 1
+map_Kd C:/msys64/home/Max J/3113-engine/resources/levels/testing/gas_pump/pump/Fuel_pump.png
+map_d C:/Users/Max J/Downloads/gs/source/Gas_station_Props/Fuel_pump.png

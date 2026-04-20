@@ -73,24 +73,6 @@ void moveCar() {
 }
 
 void movePlayer(gameData& gData, player& player, meshedObject& car, bool swappedNormals, float deltaTime, float maxSpeed, Sound js) {
-    if (getAsyncKeyStateWrapper(KEY_E)) {
-        if (player.pState.canCar && canEnterCar) {
-            if (!player.pState.inCar) {
-                player.pState.inCar = !player.pState.inCar;
-                canEnterCar = false;
-            }
-            else {
-                player.pState.inCar = !player.pState.inCar;
-                canEnterCar = false;
-                vector3 playerLoc = player.pEntity.location;
-                applyRot(player.pEntity.location, car.pEntity.rot, -4.f, 0.001, -0.45f);
-                
-            }
-        }
-    } 
-    else {
-        canEnterCar = true;
-    }
     if (player.pState.inCar) {
         player.pEntity.location.z = car.pEntity.location.z;
         player.pEntity.location.x = car.pEntity.location.x;
@@ -107,11 +89,21 @@ void movePlayer(gameData& gData, player& player, meshedObject& car, bool swapped
             player.pState.leftTurn += 0.01f;
         }
         if (getAsyncKeyStateWrapper(player.controls.z)) {
-            player.pState.brake += 0.01f;   
+            player.pState.brake += 0.01f;
         }
         if (getAsyncKeyStateWrapper(player.controls.t)) {
             player.pState.rightTurn += 0.01f;
         }
+        static bool canShiftUp = true, canShiftDown = true, canReverse = true;
+        if (getAsyncKeyStateWrapper(KEY_E)) {
+            if (canShiftUp) { player.pState.shiftUp = true; canShiftUp = false; }
+        } else { canShiftUp = true; }
+        if (getAsyncKeyStateWrapper(KEY_Q)) {
+            if (canShiftDown) { player.pState.shiftDown = true; canShiftDown = false; }
+        } else { canShiftDown = true; }
+        if (getAsyncKeyStateWrapper(KEY_R)) {
+            if (canReverse) { player.pState.reverseDown = true; canReverse = false; }
+        } else { canReverse = true; }
     } 
     else {
         if (player.pEntity.collidingY && player.pEntity.magnitude.y <= 0.f) {

@@ -269,7 +269,9 @@ void processPhysics(float deltaTime, int frameRate, physicsEntity& pEntity, worl
             // std::cout << "delta: " << deltaTime << std::endl;
 //            std::cout << pEntity.applyAccel.y << std::endl;
     pEntity.magnitude = pEntity.magnitude + (pEntity.acceleration * pEntity.applyAccel).fmult(deltaTime);
-    if (pEntity.collidingY && pEntity.magnitude.y < 0.001f) pEntity.magnitude.y = 0.f;
+
+    // Clamp out downward velocity when grounded so objects don't sink through the floor.
+    if (pEntity.collidingY && pEntity.magnitude.y < 0.f) pEntity.magnitude.y = 0.f;
 //    std::cout << "player mag-y: " << pEntity.magnitude.y << std::endl;
 
 
@@ -406,9 +408,9 @@ void updateEntityLocation(meshedObject& object) {
             float oy = object.mesh.trisO[i].v[j].y;
             float oz = object.mesh.trisO[i].v[j].z;
 
-            object.mesh.tris[i].v[j].x = ox + object.pEntity.location.x;
-            object.mesh.tris[i].v[j].y = oy + object.pEntity.location.y;
-            object.mesh.tris[i].v[j].z = oz + object.pEntity.location.z;
+            object.mesh.tris[i].v[j].x = ox + object.pEntity.location.x + object.offset.x;
+            object.mesh.tris[i].v[j].y = oy + object.pEntity.location.y + object.offset.y;
+            object.mesh.tris[i].v[j].z = oz + object.pEntity.location.z + object.offset.z;
 
             float onx = object.mesh.trisO[i].n[j].x;
             float ony = object.mesh.trisO[i].n[j].y;

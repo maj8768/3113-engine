@@ -113,24 +113,31 @@ static Shader depthShader;
 static int depthLightSpaceLoc = -1;
 
 static RenderTexture2D shadowMapRT = { 0 };
-static constexpr int SHADOW_MAP_SIZE = 1024;
+static constexpr int SHADOW_MAP_SIZE = 2048;
 static constexpr float SHADOW_RANGE = 60.0f;
 static constexpr float SHADOW_NEAR = 1.0f;
 static constexpr float SHADOW_FAR = 180.0f;
 static constexpr float LIGHT_ORBIT_SPEED = 0.15f;
-static constexpr float LIGHT_ORBIT_RADIUS_Y = 70.0f;
-static constexpr float LIGHT_ORBIT_RADIUS_Z = 70.0f;
+static constexpr float LIGHT_ORBIT_RADIUS_Y = 150.0f;
+static constexpr float LIGHT_ORBIT_RADIUS_Z = 25.0f;
 static constexpr float LIGHT_ORBIT_X_OFFSET = 55.0f;
 
 static Vector3 lightPos = { 250.f, 1000.f, 0.f };
 static Vector3 lightDir = { -0.10f, -0.99f, -0.05f };
 static Vector4 lightColor = { 0.447, 0.816, 0.922, 1.0f };
-static float ambient  = 1.0f; // 0.05
+static float ambient  = 0.55f; // 0.05
 
+// other prep
 static meshedObject skysphere1;
 static meshedObject cube;
 static meshedObject testingplatforms;
 static meshedObject testcar;
+static meshedObject testcarwheel;
+
+// map prep
+static meshedObject gasPump;
+static meshedObject gasPumpNozzle;
+static meshedObject gasPumpNozzleOff;
 
 static meshedObject fakeMesh; // fake and isnt real
 
@@ -198,7 +205,7 @@ static RenderTexture2D LoadShadowMapRenderTexture(int width, int height) {
     target.depth.width = width;
     target.depth.height = height;
     target.depth.format = PIXELFORMAT_UNCOMPRESSED_R32;
-    target.depth.mipmaps = 4;
+    target.depth.mipmaps = 1;
 
     rlFramebufferAttach(target.id, target.texture.id, RL_ATTACHMENT_COLOR_CHANNEL0, RL_ATTACHMENT_TEXTURE2D, 0);
     rlFramebufferAttach(target.id, target.depth.id, RL_ATTACHMENT_DEPTH, RL_ATTACHMENT_TEXTURE2D, 0);
@@ -216,12 +223,12 @@ static RenderTexture2D LoadShadowMapRenderTexture(int width, int height) {
 }
 
 static mtx44 BuildLightSpaceMatrix() {
-    vector3 sceneCenter = testingplatforms.pEntity.location;
-    const float angle = static_cast<float>(GetTime()) * LIGHT_ORBIT_SPEED;
+    // Centre the shadow frustum on the player/car so shadows follow as it moves.
+    vector3 sceneCenter = player1.pEntity.location;
     vector3 lightPos3 = {
-        sceneCenter.x + LIGHT_ORBIT_X_OFFSET,
-        sceneCenter.y + cosf(angle) * LIGHT_ORBIT_RADIUS_Y,
-        sceneCenter.z + sinf(angle) * LIGHT_ORBIT_RADIUS_Z
+        sceneCenter.x + 15.f,
+        sceneCenter.y + 15.f,
+        sceneCenter.z + 15.f
     };
     lightPos = { lightPos3.x, lightPos3.y, lightPos3.z };
 
@@ -235,60 +242,6 @@ static mtx44 BuildLightSpaceMatrix() {
     return mmult4(lightProj, lightView);
 }
 
-static void RenderShadowMapPass(const mtx44& lightSpace) {
-    if (shadowMapRT.id == 0) return;
-
-    rlViewport(0, 0, SHADOW_MAP_SIZE, SHADOW_MAP_SIZE);
-    rlEnableFramebuffer(shadowMapRT.id);
-    rlClearScreenBuffers();
-
-    BeginShaderMode(depthShader);
-    SetShaderValueMatrix(depthShader, depthLightSpaceLoc, ToRaylibMatrix(lightSpace));
-
-    rlEnableBackfaceCulling();
-    rlSetCullFace(RL_CULL_FACE_BACK);
-    Draw3DDepthGPU(cube);
-    Draw3DDepthGPU(testcar);
-    Draw3DDepthGPU(testingplatforms);
-    rlSetCullFace(RL_CULL_FACE_BACK);
-    EndShaderMode();
-
-    rlDisableFramebuffer();
-    rlViewport(0, 0, GetRenderWidth(), GetRenderHeight());
-}
-
-static void DrawSceneWithShadows(const mtx44& frameVP, const mtx44& lightSpace) {
-    BeginShaderMode(w2sShader.shader);
-    SetShaderValue(w2sShader.shader, w2sShader.lightDirLoc, &lightDir, SHADER_UNIFORM_VEC3);
-    SetShaderValue(w2sShader.shader, w2sShader.lightColorLoc, &lightColor, SHADER_UNIFORM_VEC4);
-    SetShaderValue(w2sShader.shader, w2sShader.ambientLoc, &ambient, SHADER_UNIFORM_FLOAT);
-    SetShaderValue(w2sShader.shader, w2sShader.fadeToLoc, &gData.fadeTo, SHADER_UNIFORM_FLOAT);
-    SetShaderValueMatrix(w2sShader.shader, w2sShader.lightSpaceMatrixLoc, ToRaylibMatrix(lightSpace));
-    const bool hasShadowMap = shadowMapRT.depth.id != 0;
-    const Texture2D* shadowTex = hasShadowMap ? &shadowMapRT.depth : nullptr;
-
-    switch(gData.currentLevel) {
-        case gameData::TESTING_ENVIRONMENT:
-            Draw3DGPU(skysphere1, player1.camera, w2sShader, {255, 0, 0, 255}, &frameVP, shadowTex, false);
-            Draw3DGPU(testingplatforms, player1.camera, w2sShader, {255, 0, 0, 255}, &frameVP, shadowTex, hasShadowMap);
-            Draw3DGPU(testcar, player1.camera, w2sShader, {255, 0, 0, 255}, &frameVP, shadowTex, hasShadowMap);
-            Draw3DGPU(cube, player1.camera, w2sShader, {255, 0, 0, 255}, &frameVP, shadowTex, hasShadowMap);
-            DrawColliderGPU(testcar.cPlaneCount, testcar.collider, player1.camera, w2sShader, {0, 255, 0, 255}, &frameVP);
-            DrawColliderGPU(player1.cPlaneCount, player1.collider, player1.camera, w2sShader, {0, 255, 0, 255}, &frameVP);
-            DrawPlaneNormalsGPU(testcar.cPlaneCount, testcar.collider, player1.camera, w2sShader, {255, 0, 0, 255}, 1.0f, &frameVP);
-
-            break;
-        case gameData::LEVEL1:
-        case gameData::LEVEL2:
-        case gameData::LEVEL3:
-            Draw3DGPU(skysphere1, player1.camera, w2sShader, {255, 0, 0, 255}, &frameVP, shadowTex, false);
-            break;
-        default:
-            break;
-    }
-
-    EndShaderMode();
-}
 
 void initializePlayer(player& player1) {
     // set up pc environment for player here as well
@@ -466,8 +419,10 @@ void initialise()
     create3dObject(testingplatforms, "resources/levels/testing/testplatform.obj", "resources/levels/testing/colliders/testplatformcollider.obj", true, w2sShader, 1.f, {0.f,0.f,0.f}, empty, false, 100, {0,0,0});
     create3dObject(cube, "resources/levels/testing/cube.obj", "", false, w2sShader, 1.f, {7.f,5.f,3.f}, cubeText, true, 1.5f, {0,-1.5,0});
     create3dObject(testcar, "resources/levels/testing/testcar.obj", "resources/levels/testing/colliders/testcarcollider.obj", true, w2sShader, 4.f, {0.f,5.f,15.f}, empty, false, 100, {0,0,0});
-
-
+    create3dObject(testcarwheel, "resources/levels/testing/testcarwheel.obj", "", false, w2sShader, 4.f, {0.f,0.f,0.f}, empty, false, 100, {0,0,0});
+    create3dObject(gasPump, "resources/levels/testing/gas_pump/pump/gas_pump.obj", "resources/levels/testing/gas_pump/colliders/pumpcollider.obj", true, w2sShader, 1.f, {10.f,0.f,10.f}, empty, false, 100, {0,0,0});
+    create3dObject(gasPumpNozzle, "resources/levels/testing/gas_pump/grab/grab_onpump.obj", "", false, w2sShader, 1.f, {10.f,0.f,10.f}, empty, false, 100, {0,0,0});
+    create3dObject(gasPumpNozzleOff, "resources/levels/testing/gas_pump/grab/grab_offpump.obj", "", false, w2sShader, 1.f, {10.f,-20.f,10.f}, empty, false, 100, {0,0,0});
     /* planeMtx struct for reference:
      * struct planeMtx {
             float m[4][3];
@@ -477,7 +432,10 @@ void initialise()
 //    initializePhysicsEntity(cheese.pEntity, 12500.f); // all enities that need physics have to be initialized :/
     initializePhysicsEntity(player1.pEntity, 1.f, COMPLEX); // even players need to be initialized because they have physics and im lazy
     initializePhysicsEntity(testcar.pEntity, 1000.f, COMPLEX);
-    testcar.pEntity.rot = {0.f, 180.f, 0.f};
+
+    initializePhysicsEntity(testcarwheel.pEntity, 100.f, COMPLEX);
+
+    // testcar.pEntity.rot = {0.f, 180.f, 0.f};
     updateColliderLocation(fakeMesh,player1,true);
     updateColliderLocation(testcar,player1,false);
 
@@ -547,16 +505,23 @@ void update() {
     switch (gData.currentLevel) {
         case gameData::TESTING_ENVIRONMENT: {
             updateColliderLocation(fakeMesh,player1,true);
-            meshedObject* worldObjects[] = { &testingplatforms, &testcar };
-            meshedObject* secondaryObjects[] = { &testingplatforms };
-            world worldInstance = buildWorld(worldObjects, 2, player1);
+            meshedObject* worldObjects[] = { &testingplatforms, &testcar, &gasPump };
+            meshedObject* secondaryObjects[] = { &testingplatforms, &gasPump };
+            world worldInstance = buildWorld(worldObjects, 3, player1);
             if (!player1.pState.inCar) {
                 processPhysics(deltaTime, 0, player1.pEntity, worldInstance, iamreal, iamalsoreal, false, true, player1.collider, player1.cPlaneCount); // last bool is for collision
             }
-            world secondaryInstance = buildWorld(secondaryObjects, 1, player1);
+            world secondaryInstance = buildWorld(secondaryObjects, 2, player1);
             processPhysics(deltaTime, 0, testcar.pEntity, secondaryInstance, iamreal, iamalsoreal, false, true, testcar.collider, testcar.cPlaneCount); // last bool is for collision
             updateEntityLocation(testcar);
-            processCar(testcar, player1, deltaTime, carEngine);
+            testcarwheel.pEntity = testcar.pEntity;
+            // updateEntityLocation(testcarwheel);
+            processCar(testcar, testcarwheel, player1, deltaTime, carEngine);
+            // std::cout << "car rot: " << testcar.pEntity.rot.y << std::endl;
+            applyRot(testcarwheel.pEntity.location, testcar.pEntity.rot, 0.f,0.f,0.f);
+            updateEntityLocation(testcarwheel);
+            updateEntityLocation(gasPumpNozzle);
+            updateEntityLocation(gasPumpNozzleOff);
             // updateColliderLocation(testcar,player1,false);
 
             // Re-sync camera to car's post-physics position so mesh and camera match
@@ -603,8 +568,81 @@ void update() {
         std::cout << "FPS: " << GetFPS() << std::endl;
         lastPrintTime = now;
     }
-    levelLogic(player1, deltaTime, gData, testcar);
+    levelLogic(player1, deltaTime, gData, testcar, gasPump, gasPumpNozzle, gasPumpNozzleOff);
     // levelLogic(player1, deltaTime, gData, deathSound, level1win, level2win, level3win, bgMusicLevel1, bgMusicLevel2, bgMusicLevel3, chairSound, chairScared, roombaDialog, chair1, evilroomba2);
+}
+
+// this bs (MAKE SURE TO DUAL RENDER, SHADOWS AND SCENE BOTH HAVE TO BE RENDERED) Load into shadow map then draw the map and shadows.
+
+static void RenderShadowMapPass(const mtx44& lightSpace) {
+    if (shadowMapRT.id == 0) return;
+
+    rlViewport(0, 0, SHADOW_MAP_SIZE, SHADOW_MAP_SIZE);
+    rlEnableFramebuffer(shadowMapRT.id);
+    rlClearScreenBuffers();
+
+    BeginShaderMode(depthShader);
+    SetShaderValueMatrix(depthShader, depthLightSpaceLoc, ToRaylibMatrix(lightSpace));
+
+    // Solid closed objects: front-face cull so back-face depth is stored.
+    // Back-face depth > front-face depth so the comparison passes without bias,
+    // eliminating peter panning on these objects entirely.
+    rlEnableBackfaceCulling();
+    // rlSetCullFace(RL_CULL_FACE_FRONT);
+    Draw3DDepthGPU(cube);
+    Draw3DDepthGPU(testcar);
+    Draw3DDepthGPU(testcarwheel);
+    Draw3DDepthGPU(gasPump);
+    Draw3DDepthGPU(gasPumpNozzle);
+    Draw3DDepthGPU(gasPumpNozzleOff);
+
+    // Flat/open geometry: use normal back-face culling so the only face is rendered.
+    // rlSetCullFace(RL_CULL_FACE_BACK);
+    Draw3DDepthGPU(testingplatforms);
+    EndShaderMode();
+
+    rlDisableFramebuffer();
+    rlViewport(0, 0, GetRenderWidth(), GetRenderHeight());
+}
+
+static void DrawSceneWithShadows(const mtx44& frameVP, const mtx44& lightSpace) {
+    BeginShaderMode(w2sShader.shader);
+    SetShaderValue(w2sShader.shader, w2sShader.lightDirLoc, &lightDir, SHADER_UNIFORM_VEC3);
+    SetShaderValue(w2sShader.shader, w2sShader.lightColorLoc, &lightColor, SHADER_UNIFORM_VEC4);
+    SetShaderValue(w2sShader.shader, w2sShader.ambientLoc, &ambient, SHADER_UNIFORM_FLOAT);
+    SetShaderValue(w2sShader.shader, w2sShader.fadeToLoc, &gData.fadeTo, SHADER_UNIFORM_FLOAT);
+    SetShaderValueMatrix(w2sShader.shader, w2sShader.lightSpaceMatrixLoc, ToRaylibMatrix(lightSpace));
+    const bool hasShadowMap = shadowMapRT.depth.id != 0;
+    const Texture2D* shadowTex = hasShadowMap ? &shadowMapRT.depth : nullptr;
+
+    switch(gData.currentLevel) {
+        case gameData::TESTING_ENVIRONMENT:
+            Draw3DGPU(skysphere1, player1.camera, w2sShader, {255, 0, 0, 255}, &frameVP, shadowTex, false);
+            Draw3DGPU(testingplatforms, player1.camera, w2sShader, {255, 0, 0, 255}, &frameVP, shadowTex, hasShadowMap);
+            Draw3DGPU(testcar, player1.camera, w2sShader, {255, 0, 0, 255}, &frameVP, shadowTex, hasShadowMap);
+            Draw3DGPU(testcarwheel, player1.camera, w2sShader, {255, 0, 0, 255}, &frameVP, shadowTex, hasShadowMap);
+            Draw3DGPU(cube, player1.camera, w2sShader, {255, 0, 0, 255}, &frameVP, shadowTex, hasShadowMap);
+            Draw3DGPU(gasPump, player1.camera, w2sShader, {255, 0, 0, 255}, &frameVP, shadowTex, hasShadowMap);
+            Draw3DGPU(gasPumpNozzle, player1.camera, w2sShader, {255, 0, 0, 255}, &frameVP, shadowTex, hasShadowMap);
+            Draw3DGPU(gasPumpNozzleOff, player1.camera, w2sShader, {255, 0, 0, 255}, &frameVP, shadowTex, hasShadowMap);
+
+            DrawColliderGPU(testcar.cPlaneCount, testcar.collider, player1.camera, w2sShader, {0, 255, 0, 255}, &frameVP);
+            DrawColliderGPU(player1.cPlaneCount, player1.collider, player1.camera, w2sShader, {0, 255, 0, 255}, &frameVP);
+            DrawColliderGPU(gasPump.cPlaneCount, gasPump.collider, player1.camera, w2sShader, {0, 255, 0, 255}, &frameVP);
+            
+            DrawPlaneNormalsGPU(testcar.cPlaneCount, testcar.collider, player1.camera, w2sShader, {255, 0, 0, 255}, 1.0f, &frameVP);
+
+            break;
+        case gameData::LEVEL1:
+        case gameData::LEVEL2:
+        case gameData::LEVEL3:
+            Draw3DGPU(skysphere1, player1.camera, w2sShader, {255, 0, 0, 255}, &frameVP, shadowTex, false);
+            break;
+        default:
+            break;
+    }
+
+    EndShaderMode();
 }
 
 void render()
@@ -697,6 +735,9 @@ void shutdown()
     free(cube.mesh.trisO);
     free(testcar.mesh.tris);
     free(testcar.mesh.trisO);
+    free(testcarwheel.mesh.tris);
+    free(testcarwheel.mesh.trisO);
+
 
     CloseAudioDevice();
     CloseWindow(); // Close window and OpenGL context
