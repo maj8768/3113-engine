@@ -138,6 +138,9 @@ static meshedObject testcarwheel;
 static meshedObject gasPump;
 static meshedObject gasPumpNozzle;
 static meshedObject gasPumpNozzleOff;
+static meshedObject cashRegister;
+static meshedObject drank;
+static meshedObject buyBox;
 
 static meshedObject fakeMesh; // fake and isnt real
 
@@ -423,6 +426,10 @@ void initialise()
     create3dObject(gasPump, "resources/levels/testing/gas_pump/pump/gas_pump.obj", "resources/levels/testing/gas_pump/colliders/pumpcollider.obj", true, w2sShader, 1.f, {10.f,0.f,10.f}, empty, false, 100, {0,0,0});
     create3dObject(gasPumpNozzle, "resources/levels/testing/gas_pump/grab/grab_onpump.obj", "", false, w2sShader, 1.f, {10.f,0.f,10.f}, empty, false, 100, {0,0,0});
     create3dObject(gasPumpNozzleOff, "resources/levels/testing/gas_pump/grab/grab_offpump.obj", "", false, w2sShader, 1.f, {10.f,-20.f,10.f}, empty, false, 100, {0,0,0});
+    create3dObject(cashRegister, "resources/levels/testing/register/cashregister.obj", "resources/levels/testing/register/colliders/cashregistercollider.obj", true, w2sShader, 1.f, {15.f,0.f,10.f}, empty, false, 100, {0,0,0});
+    create3dObject(drank, "resources/levels/testing/items/drank/drank.obj", "resources/levels/testing/items/drank/colliders/drankcollider.obj", true, w2sShader, 1.f, {15.f,3.f,15.f}, empty, false, 100, {0,0,0});
+    create3dObject(buyBox, "resources/levels/testing/register/buybox.obj", "resources/levels/testing/register/colliders/buyboxcolliders.obj", true, w2sShader, 1.f, {17.f,0.f,10.f}, empty, false, 100, {0,0,0});
+    
     /* planeMtx struct for reference:
      * struct planeMtx {
             float m[4][3];
@@ -432,18 +439,22 @@ void initialise()
 //    initializePhysicsEntity(cheese.pEntity, 12500.f); // all enities that need physics have to be initialized :/
     initializePhysicsEntity(player1.pEntity, 1.f, COMPLEX); // even players need to be initialized because they have physics and im lazy
     initializePhysicsEntity(testcar.pEntity, 1000.f, COMPLEX);
+    initializePhysicsEntity(drank.pEntity, 1.f, COMPLEX);
 
     initializePhysicsEntity(testcarwheel.pEntity, 100.f, COMPLEX);
 
     // testcar.pEntity.rot = {0.f, 180.f, 0.f};
     updateColliderLocation(fakeMesh,player1,true);
     updateColliderLocation(testcar,player1,false);
+    updateColliderLocation(drank,player1,false);
+    updateColliderLocation(buyBox,player1,false);
 
     // initializePhysicsEntity(chair1.pEntity, 100.f);
     // initializePhysicsEntity(evilroomba2.pEntity, 50.f);
     applyAcceleration({0.f,-20.5f,0.f}, player1.pEntity);
 
     applyAcceleration({0.f,-20.5f,0.f},testcar.pEntity);
+    applyAcceleration({0.f,-20.5f,0.f},drank.pEntity);
 //    applyForce({0.f,150.f,0.f},cheese.pEntity);
 
     // std::cout << ship.collider[0].m[0][0];
@@ -479,6 +490,7 @@ void update() {
     auto ticks = static_cast<float>(GetTime());          // step 1
     float deltaTime = ticks - gPreviousTicks; // step 2
     gPreviousTicks = ticks;
+    if (deltaTime > 0.05f) deltaTime = 0.05f; // cap at ~20fps to prevent tunneling on alt-tab/freeze
 
     // default player movement/look updating
     RawMouseGetDelta(md.x, md.y);
@@ -504,25 +516,35 @@ void update() {
             // break;
     switch (gData.currentLevel) {
         case gameData::TESTING_ENVIRONMENT: {
+
+            updateEntityLocation(gasPumpNozzle);
+            updateEntityLocation(gasPumpNozzleOff);
+            levelLogic(player1, deltaTime, gData, testcar, gasPump, gasPumpNozzle, gasPumpNozzleOff, drank, buyBox);
+
             updateColliderLocation(fakeMesh,player1,true);
-            meshedObject* worldObjects[] = { &testingplatforms, &testcar, &gasPump };
-            meshedObject* secondaryObjects[] = { &testingplatforms, &gasPump };
-            world worldInstance = buildWorld(worldObjects, 3, player1);
+            meshedObject* worldObjects[] = { &testingplatforms, &testcar, &gasPump, &cashRegister };
+            meshedObject* secondaryObjects[] = { &testingplatforms, &gasPump, &cashRegister };
+            world worldInstance = buildWorld(worldObjects, 4, player1);
             if (!player1.pState.inCar) {
                 processPhysics(deltaTime, 0, player1.pEntity, worldInstance, iamreal, iamalsoreal, false, true, player1.collider, player1.cPlaneCount); // last bool is for collision
             }
-            world secondaryInstance = buildWorld(secondaryObjects, 2, player1);
+            world secondaryInstance = buildWorld(secondaryObjects, 3, player1);
             processPhysics(deltaTime, 0, testcar.pEntity, secondaryInstance, iamreal, iamalsoreal, false, true, testcar.collider, testcar.cPlaneCount); // last bool is for collision
             updateEntityLocation(testcar);
             testcarwheel.pEntity = testcar.pEntity;
-            // updateEntityLocation(testcarwheel);
             processCar(testcar, testcarwheel, player1, deltaTime, carEngine);
-            // std::cout << "car rot: " << testcar.pEntity.rot.y << std::endl;
             applyRot(testcarwheel.pEntity.location, testcar.pEntity.rot, 0.f,0.f,0.f);
             updateEntityLocation(testcarwheel);
-            updateEntityLocation(gasPumpNozzle);
-            updateEntityLocation(gasPumpNozzleOff);
-            // updateColliderLocation(testcar,player1,false);
+            if (!player1.pState.hasDrank) {
+                std::cout << "processing drank physics" << std::endl;
+                processPhysics(deltaTime, 0, drank.pEntity, worldInstance, iamreal, iamalsoreal, false, true, drank.collider, drank.cPlaneCount); // last bool is for collision
+            }
+
+            updateColliderLocation(drank, player1, false);
+            updateEntityLocation(drank);
+            updateColliderLocation(buyBox, player1, false);
+
+
 
             // Re-sync camera to car's post-physics position so mesh and camera match
             if (player1.pState.inCar) {
@@ -531,7 +553,6 @@ void update() {
                 applyRot(camPos, testcar.pEntity.rot, -1.5f, 4.25, -0.45);
                 player1.camera.camPos = camPos;
             }
-
             break;
         }
         case gameData::LEVEL1: {
@@ -568,7 +589,6 @@ void update() {
         std::cout << "FPS: " << GetFPS() << std::endl;
         lastPrintTime = now;
     }
-    levelLogic(player1, deltaTime, gData, testcar, gasPump, gasPumpNozzle, gasPumpNozzleOff);
     // levelLogic(player1, deltaTime, gData, deathSound, level1win, level2win, level3win, bgMusicLevel1, bgMusicLevel2, bgMusicLevel3, chairSound, chairScared, roombaDialog, chair1, evilroomba2);
 }
 
@@ -595,6 +615,9 @@ static void RenderShadowMapPass(const mtx44& lightSpace) {
     Draw3DDepthGPU(gasPump);
     Draw3DDepthGPU(gasPumpNozzle);
     Draw3DDepthGPU(gasPumpNozzleOff);
+    Draw3DDepthGPU(cashRegister);
+    Draw3DDepthGPU(drank); // skysphere is solid and closed, so culling works fine and it benefits from no peter panning
+    // Draw3DDepthGPU(buyBox);
 
     // Flat/open geometry: use normal back-face culling so the only face is rendered.
     // rlSetCullFace(RL_CULL_FACE_BACK);
@@ -625,11 +648,17 @@ static void DrawSceneWithShadows(const mtx44& frameVP, const mtx44& lightSpace) 
             Draw3DGPU(gasPump, player1.camera, w2sShader, {255, 0, 0, 255}, &frameVP, shadowTex, hasShadowMap);
             Draw3DGPU(gasPumpNozzle, player1.camera, w2sShader, {255, 0, 0, 255}, &frameVP, shadowTex, hasShadowMap);
             Draw3DGPU(gasPumpNozzleOff, player1.camera, w2sShader, {255, 0, 0, 255}, &frameVP, shadowTex, hasShadowMap);
+            Draw3DGPU(cashRegister, player1.camera, w2sShader, {255, 0, 0, 255}, &frameVP, shadowTex, hasShadowMap);
+            Draw3DGPU(drank, player1.camera, w2sShader, {255, 0, 0, 255}, &frameVP, shadowTex, hasShadowMap);
+            // Draw3DGPU(buyBox, player1.camera, w2sShader, {255, 0, 0, 255}, &frameVP, shadowTex, hasShadowMap);
 
             DrawColliderGPU(testcar.cPlaneCount, testcar.collider, player1.camera, w2sShader, {0, 255, 0, 255}, &frameVP);
             DrawColliderGPU(player1.cPlaneCount, player1.collider, player1.camera, w2sShader, {0, 255, 0, 255}, &frameVP);
             DrawColliderGPU(gasPump.cPlaneCount, gasPump.collider, player1.camera, w2sShader, {0, 255, 0, 255}, &frameVP);
-            
+            DrawColliderGPU(cashRegister.cPlaneCount, cashRegister.collider, player1.camera, w2sShader, {0, 255, 0, 255}, &frameVP);
+            DrawColliderGPU(drank.cPlaneCount, drank.collider, player1.camera, w2sShader, {0, 255, 0, 255}, &frameVP);
+            // DrawColliderGPU(buyBox.cPlaneCount, buyBox.collider, player1.camera, w2sShader, {0, 255, 0, 255}, &frameVP);
+
             DrawPlaneNormalsGPU(testcar.cPlaneCount, testcar.collider, player1.camera, w2sShader, {255, 0, 0, 255}, 1.0f, &frameVP);
 
             break;

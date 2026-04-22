@@ -73,6 +73,15 @@ void moveCar() {
 }
 
 void movePlayer(gameData& gData, player& player, meshedObject& car, bool swappedNormals, float deltaTime, float maxSpeed, Sound js) {
+    if (getAsyncKeyStateWrapper(KEY_P)) {
+        if (canDebug) {
+            debugMode = !debugMode;
+            canDebug = false;
+            std::cout << "debug mode: " << (debugMode ? "on" : "off") << std::endl;
+        }
+    } else {
+        canDebug = true;
+    }
     if (player.pState.inCar) {
         player.pEntity.location.z = car.pEntity.location.z;
         player.pEntity.location.x = car.pEntity.location.x;
@@ -156,15 +165,7 @@ void movePlayer(gameData& gData, player& player, meshedObject& car, bool swapped
                     PlaySound(js);
                 }
             }
-            if (getAsyncKeyStateWrapper(KEY_P)) {
-                if (canDebug) {
-                    debugMode = !debugMode;
-                    canDebug = false;
-                    std::cout << "debug mode: " << (debugMode ? "on" : "off") << std::endl;
-                }
-            } else {
-                canDebug = true;
-            }
+
 
             float len = std::sqrt(moveX * moveX + moveZ * moveZ);
             if (len > 0.0f/* || player.pEntity.jumping == false*/) {

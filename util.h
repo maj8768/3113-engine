@@ -36,6 +36,11 @@ struct playerState {
     bool canGasPump = false;
     bool hasGasPump = false;
     bool pumpingUp = false;
+    bool canPickDrank = false;
+    bool hasDrank = false;
+    bool canBuy = false;
+    bool canDrinkDrank = false;
+
 };
 
 struct gameData {
