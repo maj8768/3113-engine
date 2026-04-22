@@ -13,7 +13,7 @@
 
 #define MA_API static
 #define MINIAUDIO_IMPLEMENTATION
-#include "../../raylib/src/external/miniaudio.h"
+#include <miniaudio/miniaudio.h>
 
 #include <atomic>
 #include <cmath>

@@ -706,7 +706,7 @@ void render()
         rlLoadIdentity();
 
         rlDisableDepthTest();
-
+        if (player1.pState.buying) guiBuyMenu(SCREEN_WIDTH, SCREEN_HEIGHT, player1, 1);
         switch(gData.currentLevel) {
             case gameData::GAMEEND:
                 guiDrawFailure(SCREEN_WIDTH/2.f-175.f,  SCREEN_HEIGHT/2.f-100.f,  350,  200, WHITE);

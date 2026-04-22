@@ -20,6 +20,20 @@ enum physicsComplexity {
 
 extern bool debugMode;
 
+enum buyState {
+    START,
+    GOODBYE,
+    DRANK_SELECT,
+    CIG_SELECT,
+    GOODBYE_SELECT,
+    BACK_SELECT,
+    DRANK,
+    CIG,
+    BUY_DRANK,
+    BUY_CIG,
+    THANKS
+};
+
 struct playerState {
     bool canCar;
     bool inCar;
@@ -30,6 +44,7 @@ struct playerState {
     float rightTurn = 0.f;
     float brake = 0.f;
     float forward = 0.f;
+    float money = 100.f;
     bool shiftUp = false;
     bool shiftDown = false;
     bool reverseDown  = false;
@@ -38,8 +53,11 @@ struct playerState {
     bool pumpingUp = false;
     bool canPickDrank = false;
     bool hasDrank = false;
+    bool hasCig = false;
     bool canBuy = false;
+    bool buying = false;
     bool canDrinkDrank = false;
+    bool canSmokeCig = false;
 
 };
 

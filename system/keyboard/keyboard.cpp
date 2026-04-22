@@ -13,6 +13,7 @@ int rlToMacKey(int key) {
         case 69: return 14;  // E
         case 81: return 12;  // Q
         case 70: return 3;   // F
+        case 71: return 5;
 
         // 1, 2, 3
         case 49: return 18;  // 1
@@ -44,6 +45,7 @@ int rlToWinKey(int key) {
         case 69: return 69;   // E
         case 81: return 81;   // Q
         case 70: return 70;   // F
+        case 71: return 71;
 
         // 1, 2, 3
         case 49: return 49;   // 1

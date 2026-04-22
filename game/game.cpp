@@ -2,6 +2,7 @@
 #include "raylib.h"
 #include "../physics/physics.h"
 #include "../system/keyboard/keyboard.h"
+#include "../draw/gui.h"
 #include <iostream>
 #include <thread>
 #include <chrono>
@@ -16,6 +17,11 @@ void holdItem(player& player, meshedObject& item) {
     item.pEntity.location = player.camera.camPos;
     applyCamRot(item.pEntity.location, vector3{player.camera.camTarget.x, 0.f, 0.f}, 0.f, 0.f, 1.5f);
     // item.pEntity.rot.y = -player.camera.camTarget.x;
+}
+
+void buy(player& player, int buy_guy) {
+    std::cout << "Buy menu open" << std::endl;
+    guiBuyMenu(SCREEN_WIDTH, SCREEN_HEIGHT, player, buy_guy);
 }
 
 void checkBuyBox(player& player, float deltaTime, gameData& gData, meshedObject& buyBox) {
@@ -119,8 +125,8 @@ void interact(player& player, float deltaTime, gameData& gData, meshedObject& ca
             }
         }
         else if (interacting && player.pState.hasDrank) {
-            if (player.pState.canBuy) {
-                
+            if (player.pState.canBuy || player.pState.buying) {
+                player.pState.buying = !player.pState.buying;
                 interacting = false;
             }
             else if (player.pState.canDrinkDrank) {
@@ -199,6 +205,7 @@ void levelLogic(player& player, float deltaTime,gameData& gData, meshedObject& t
     checkDrank(player, deltaTime, gData, drank);
     checkBuyBox(player, deltaTime, gData, buyBox);
     if (player.pState.hasDrank) holdItem(player, drank);
+    if (player.pState.buying) buy(player,1);
     interact(player, deltaTime, gData, testcar, gasPump, gasPumpNozzle, gasPumpNozzleOff, drank);
     // std::cout << "drank: " << player.pState.canPickDrank << ", hasDrank: " << player.pState.hasDrank << std::endl;
     std::cout << "\033[2J\033[H"; 

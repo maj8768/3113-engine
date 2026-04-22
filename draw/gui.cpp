@@ -4,7 +4,7 @@
 #include "../util.h"
 #include "gui.h"
 
-
+buyState bs = START;
 
 void guiDrawStartMenu(float p1X, float p1Y, float width, float height, Color color, int ballsSelected) {
     DrawRectangle(p1X, p1Y, width, height+ 20, color);
@@ -50,4 +50,27 @@ void guiDrawSuccess(float p1X, float p1Y, float width, float height, Color color
 
 void guiDrawText(float p1X, float p1Y, const char* text, int fontSize, Color color) {
     DrawText(text, p1X, p1Y, fontSize, color);
+}
+
+void guiBuyMenu(float screen_width, float screen_height, player& player, int buy_guy) {
+    float tleftx = screen_width/2-200;
+    float tlefty = screen_height/2-200;
+    DrawRectangle(tleftx-1, tlefty-1, 402, 402, WHITE);
+    DrawRectangle(tleftx, tlefty, 400, 400, BLACK);
+    DrawText("Buy Menu", tleftx + 15, tlefty + 15, 32, WHITE);
+    
+    switch(bs) {
+        case(START):
+            if(player.pState.hasDrank) {
+                DrawText("Buy Drank $12.00", tleftx + 50, tlefty + 150, 24, WHITE);
+            }
+            else if (player.pState.hasCig) {
+                DrawText("Buy Cigs $14.00", tleftx + 50, tlefty + 150, 24, WHITE);
+            }
+            DrawText("Goodbye $0.00 :)", tleftx + 50, tlefty + 175, 24, WHITE);
+            break;
+        default:
+            DrawText("Goodbye $0.00 :)", tleftx + 50, tlefty + 175, 24, WHITE);
+            break;
+    }
 }
