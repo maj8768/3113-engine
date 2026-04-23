@@ -1,7 +1,7 @@
 
 // current
 void DrawPlaneGPU(planeMtx plane, camera cam, shaderStore shader, vector4 color, float scale);
-void Draw3DGPU(const meshedObject& object, const camera& cam, shaderStore& shader, vector4 color, const mtx44* precomputedVP = nullptr, const Texture2D* shadowTex = nullptr, bool receiveShadows = false);
+void Draw3DGPU(const meshedObject& object, const camera& cam, shaderStore& shader, vector4 color, const mtx44* precomputedVP = nullptr, const Texture2D* shadowTex = nullptr, bool receiveShadows = false, const Texture2D* shadowTexFar = nullptr);
 void DrawColliderGPU(int cPlaneCount, const planeMtx* colliders, const camera& cam, shaderStore& shader, vector4 color, const mtx44* precomputedVP = nullptr);
 void DrawPlaneNormalsGPU(int planeCount, const planeMtx* planes, const camera& cam, shaderStore& shader, vector4 color, float length, const mtx44* precomputedVP = nullptr);
 void Draw3DDepthGPU(const meshedObject& object);

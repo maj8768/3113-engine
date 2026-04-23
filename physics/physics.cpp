@@ -103,9 +103,18 @@ int analyticalEdgeCollision(physicsEntity& player, planeMtx plane, vector3& appl
         }
         player.collidingY = true;
     } else {
-        player.location = player.location + mtv.fmult(minOv + eps);
-        float vn = dot3(player.magnitude, mtv);
-        if (vn < 0.f) player.magnitude = player.magnitude - mtv.fmult(vn);
+        float topY  = fmaxf(fmaxf(qv[0].y, qv[1].y), fmaxf(qv[2].y, qv[3].y));
+        float feetY = 1e9f;
+        for (int k = 0; k < ovc; k++) feetY = fminf(feetY, obbV[k].y);
+        float stepH = topY - feetY;
+        bool canStep = stepH > 0.f && stepH < 0.5f && player.magnitude.y >= -1.0f;
+        if (canStep) {
+            player.location.y += stepH;  // step up only, no horizontal push
+        } else {
+            player.location = player.location + mtv.fmult(minOv + eps);
+            float vn = dot3(player.magnitude, mtv);
+            if (vn < 0.f) player.magnitude = player.magnitude - mtv.fmult(vn);
+        }
         hasCollidedWall = true;
     }
 
@@ -189,8 +198,16 @@ bool spherePlaneCollide(physicsEntity& player, planeMtx plane, vector3& applyAcc
         } else {
             if (!hasCollidedWall) {
                 vector3 repos = close_point + normal.fmult(-0.2001f / normal.mag());
-                player.location.x = repos.x;
-                player.location.z = repos.z;
+                float topY  = fmaxf(fmaxf(p1.y, p2.y), fmaxf(p3.y, p4.y));
+                float feetY = player.location.y - 0.2001f;
+                float stepH = topY - feetY;
+                bool canStep = stepH > 0.f && stepH < 0.5f && player.magnitude.y >= -1.0f;
+                if (canStep) {
+                    player.location.y = topY + 0.2001f;  // step up only
+                } else {
+                    player.location.x = repos.x;
+                    player.location.z = repos.z;
+                }
                 hasCollidedWall = true;
             }
             player.magnitude.x -= post_impact_vel.x * (1) * conservationPercent;
@@ -242,10 +259,19 @@ void processPhysics(float deltaTime, int frameRate, physicsEntity& pEntity, worl
             float cx = (pl.m[0][0] + pl.m[1][0] + pl.m[2][0] + pl.m[3][0]) * 0.25f;
             float cy = (pl.m[0][1] + pl.m[1][1] + pl.m[2][1] + pl.m[3][1]) * 0.25f;
             float cz = (pl.m[0][2] + pl.m[1][2] + pl.m[2][2] + pl.m[3][2]) * 0.25f;
+            // Face bounding radius: farthest corner from center
+            float faceR = 0.f;
+            for (int vi = 0; vi < 4; vi++) {
+                float rx = pl.m[vi][0] - cx, ry = pl.m[vi][1] - cy, rz = pl.m[vi][2] - cz;
+                float r = rx*rx + ry*ry + rz*rz;
+                if (r > faceR) faceR = r;
+            }
+            faceR = sqrtf(faceR);
             float dx = cx - pEntity.location.x;
             float dy = cy - pEntity.location.y;
             float dz = cz - pEntity.location.z;
-            if (dx*dx + dy*dy + dz*dz > CULL_DIST * CULL_DIST) continue;
+            float cullDist = CULL_DIST + faceR;
+            if (dx*dx + dy*dy + dz*dz > cullDist * cullDist) continue;
 
             if (pEntity.complexGeometry) {
                 analyticalEdgeCollision(pEntity, world.planes[wtc], pEntity.applyAccel, collider, collider_depth, 1, deltaTime, target, invertedNormals, hasCollidedGround, hasCollidedWall, wtc, edgeUsed);

@@ -4,7 +4,6 @@
 #include "../util.h"
 #include "gui.h"
 
-buyState bs = START;
 
 void guiDrawStartMenu(float p1X, float p1Y, float width, float height, Color color, int ballsSelected) {
     DrawRectangle(p1X, p1Y, width, height+ 20, color);
@@ -53,24 +52,94 @@ void guiDrawText(float p1X, float p1Y, const char* text, int fontSize, Color col
 }
 
 void guiBuyMenu(float screen_width, float screen_height, player& player, int buy_guy) {
-    float tleftx = screen_width/2-200;
-    float tlefty = screen_height/2-200;
-    DrawRectangle(tleftx-1, tlefty-1, 402, 402, WHITE);
-    DrawRectangle(tleftx, tlefty, 400, 400, BLACK);
+    // std::cout << (bs.selection == buySelection::ONE) << std::endl;
+    // std::cout << (bs.selection == buySelection::TWO) << std::endl;
+    // std::cout << (bs.selection == buySelection::THREE) << std::endl;
+
+    static Texture2D shopGuy = { 0 };
+    if (shopGuy.id == 0)
+        shopGuy = LoadTexture("resources/levels/testing/shopguy.PNG");
+
+    // Menu is 600px wide: 400px left panel + 200px right panel
+    float tleftx = screen_width/2 - 300;
+    float tlefty = screen_height/2 - 200;
+    DrawRectangle(tleftx-1, tlefty-1, 602, 402, WHITE);
+    DrawRectangle(tleftx, tlefty, 600, 400, BLACK);
+
+    // Divider
+    DrawRectangle(tleftx + 400, tlefty, 1, 400, WHITE);
+
+    // Right panel — shopguy image (150x150) centered in the 200px column
+    float imgX = tleftx + 400 + 25;   // 25px left padding
+    float imgY = tlefty + 30;
+    if (shopGuy.id != 0) {
+        Rectangle src = { 0, 0, (float)shopGuy.width, (float)shopGuy.height };
+        Rectangle dst = { imgX, imgY, 150, 150 };
+        DrawTexturePro(shopGuy, src, dst, { 0, 0 }, 0, WHITE);
+    }
+    const char* shopName = "Dragan Nikolic";
+    int nameW = MeasureText(shopName, 16);
+    DrawText(shopName, imgX + (150 - nameW) / 2, imgY + 158, 16, WHITE);
     DrawText("Buy Menu", tleftx + 15, tlefty + 15, 32, WHITE);
-    
-    switch(bs) {
-        case(START):
+    switch(bs.selection) {
+        case buySelection::ONE:
+            DrawText(">", tleftx + 15, tlefty + 150, 24, WHITE);
+            break;
+        case buySelection::TWO:
+            DrawText(">", tleftx + 15, tlefty + 190, 24, WHITE);
+            break;
+        case buySelection::THREE:
+            DrawText(">", tleftx + 15, tlefty + 230, 24, WHITE);
+            break;
+    }
+    switch(bs.state) {
+        case(buyState::START):
             if(player.pState.hasDrank) {
-                DrawText("Buy Drank $12.00", tleftx + 50, tlefty + 150, 24, WHITE);
+                if (player.pState.canDrinkDrank) {
+                    DrawText("\"You already bought drank.\"", tleftx + 15, tlefty + 75, 24, WHITE);
+                    DrawText("Goodbye", tleftx + 50, tlefty + 190, 24, WHITE);
+                }
+                else {
+                    DrawText("\"You tryna buy drank?\"", tleftx + 15, tlefty + 75, 24, WHITE);
+                    DrawText("Buy Drank $12.00", tleftx + 50, tlefty + 150, 24, WHITE);
+                }
             }
             else if (player.pState.hasCig) {
-                DrawText("Buy Cigs $14.00", tleftx + 50, tlefty + 150, 24, WHITE);
+                if (player.pState.canSmokeCig) {
+                    DrawText("\"You already bought cigs.\"", tleftx + 15, tlefty + 75, 24, WHITE);
+                    DrawText("Goodbye", tleftx + 50, tlefty + 190, 24, WHITE);
+                }
+                else {
+                    DrawText("\"You tryna buy cigs?\"", tleftx + 15, tlefty + 75, 24, WHITE);
+                    DrawText("Buy Cigs $14.00", tleftx + 50, tlefty + 150, 24, WHITE);
+                }
             }
-            DrawText("Goodbye $0.00 :)", tleftx + 50, tlefty + 175, 24, WHITE);
+            DrawText("Goodbye", tleftx + 50, tlefty + 190, 24, WHITE);
+            break;
+        case(buyState::DRANK_SELECT):
+            DrawText("\"Are you sure?\"", tleftx + 15, tlefty + 75, 24, WHITE);
+            DrawText("Yes", tleftx + 50, tlefty + 150, 24, WHITE);
+            DrawText("No", tleftx + 50, tlefty + 190, 24, WHITE);
+            break;
+        case(buyState::CIG_SELECT):
+            DrawText("\"Are you sure?\"", tleftx + 15, tlefty + 75, 24, WHITE);
+            DrawText("Yes", tleftx + 50, tlefty + 150, 24, WHITE);
+            DrawText("No", tleftx + 50, tlefty + 190, 24, WHITE);
+            break;
+        case(buyState::POOR):
+            DrawText("\"You don't have enough\nmoney.\"", tleftx + 15, tlefty + 75, 24, WHITE);
+            DrawText("Goodbye", tleftx + 50, tlefty + 190, 24, WHITE);
+            break;
+        case(buyState::GOODBYE):
+            DrawText("\"Go away now\"", tleftx + 50, tlefty + 75, 24, WHITE);
+            DrawText("Goodbye", tleftx + 50, tlefty + 190, 24, WHITE);
+            break;
+        case(buyState::THANKS):
+            DrawText("\"You're loyalty will not \ngo unrewarded.\"", tleftx + 15, tlefty + 75, 24, WHITE);
+            DrawText("Goodbye", tleftx + 50, tlefty + 190, 24, WHITE);
             break;
         default:
-            DrawText("Goodbye $0.00 :)", tleftx + 50, tlefty + 175, 24, WHITE);
+            DrawText("you shouldnt be here", tleftx + 50, tlefty + 190, 24, WHITE);
             break;
     }
 }

@@ -9,6 +9,7 @@ out vec4 vColor;
 out vec3 vNormal;
 out vec2 TexCoord;
 out vec4 fragPosLightSpace;
+out vec3 vWorldPos;
 
 uniform mat4 uVP;
 uniform mat4 uLightSpaceMatrix;
@@ -17,6 +18,7 @@ void main() {
     vColor = vertexColor;
     vNormal = normalize(vertexNormal);
     TexCoord = vertexTexCoord;
+    vWorldPos = vertexPosition;
     fragPosLightSpace = uLightSpaceMatrix * vec4(vertexPosition, 1.0);
     gl_Position = uVP * vec4(vertexPosition, 1.0);
 }

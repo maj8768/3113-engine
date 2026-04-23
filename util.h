@@ -7,8 +7,8 @@
 #endif
 
 // Global Constants
-constexpr int SCREEN_WIDTH        = 1000,
-              SCREEN_HEIGHT       = 600,
+constexpr int SCREEN_WIDTH        = 1280,
+              SCREEN_HEIGHT       = 720,
                 FPS               = 0;
                 
 constexpr float eps = 1e-6;
@@ -31,8 +31,23 @@ enum buyState {
     CIG,
     BUY_DRANK,
     BUY_CIG,
-    THANKS
+    THANKS,
+    POOR,
 };
+
+enum buySelection {
+        ONE,
+        TWO,
+        THREE
+};
+
+struct buyMenu {
+    buyState state;
+    buySelection selection;
+    int optionCount = 2;
+};
+
+extern buyMenu bs;
 
 struct playerState {
     bool canCar;
@@ -58,6 +73,7 @@ struct playerState {
     bool buying = false;
     bool canDrinkDrank = false;
     bool canSmokeCig = false;
+    bool noClip = false;
 
 };
 
@@ -117,6 +133,12 @@ struct shaderStore {
     int lightSpaceMatrixLoc;
     int shadowMapLoc;
     int shadowsEnabledLoc;
+    int timeLoc;
+    int drunkennessLoc;
+    int camPosLoc;
+    int shadowMapFarLoc;
+    int lightSpaceMatrixFarLoc;
+    int cascadeSplitLoc;
 };
 
 struct pyramidMtx {
@@ -288,12 +310,14 @@ struct meshedObject {
     int cPlaneCount;
     float scale;
     Texture2D texo;
+    bool noCull = false;
     char text[100];
     float textRenderDistance;
     bool renderText;
     vector3 relativeTextOffset;
     struct physicsEntity pEntity;
     vector3 offset;
+
 };
 
 

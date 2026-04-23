@@ -10,27 +10,28 @@
 
 // current (GPU)
 
-void Draw3DGPU(const meshedObject& object, const camera& cam, shaderStore& shader, vector4 color, const mtx44* precomputedVP, const Texture2D* shadowTex, bool receiveShadows) {
+void Draw3DGPU(const meshedObject& object, const camera& cam, shaderStore& shader, vector4 color, const mtx44* precomputedVP, const Texture2D* shadowTex, bool receiveShadows, const Texture2D* shadowTexFar) {
     triDomMesh mesh = object.mesh;
     mtx44 vp;
     if (precomputedVP) {
         vp = *precomputedVP;
     } else {
         mtx44 view = viewMtx44(cam.camPos, cam.camTarget, cam.up);
-        mtx44 proj = projMtx44(cam.fov, cam.aspect, 0.1f, 1000000000000000000.0f);
+        mtx44 proj = projMtx44(cam.fov, cam.aspect, 0.1f, 100000000.0f);
         vp = mmult4(proj, view);
     }
 
-    
+
     rlDrawRenderBatchActive();
 
     if (shader.shadowsEnabledLoc >= 0) {
         const int shadowFlag = receiveShadows ? 1 : 0;
         SetShaderValue(shader.shader, shader.shadowsEnabledLoc, &shadowFlag, SHADER_UNIFORM_INT);
     }
-    if (shadowTex != nullptr && shadowTex->id != 0 && shader.shadowMapLoc >= 0) {
+    if (shadowTex != nullptr && shadowTex->id != 0 && shader.shadowMapLoc >= 0)
         SetShaderValueTexture(shader.shader, shader.shadowMapLoc, *shadowTex);
-    }
+    if (shadowTexFar != nullptr && shadowTexFar->id != 0 && shader.shadowMapFarLoc >= 0)
+        SetShaderValueTexture(shader.shader, shader.shadowMapFarLoc, *shadowTexFar);
     SetShaderValueTexture(shader.shader, shader.texoLoc, object.texo);
     SetShaderValueMatrix(shader.shader, shader.vpLoc, ToRaylibMatrix(vp));
 
@@ -39,29 +40,17 @@ void Draw3DGPU(const meshedObject& object, const camera& cam, shaderStore& shade
     rlBegin(RL_TRIANGLES);
     rlColor4ub(color.x, color.y, color.z, color.t);
     for (int i = 0; i < mesh.count; i++) {
-        // rlBegin(RL_TRIANGLES);
-        // rlColor4ub(color.x, color.y, color.z, color.t);
-        vector3 p0 = { mesh.tris[i].v[0].x, mesh.tris[i].v[0].y, mesh.tris[i].v[0].z };
-        vector3 p1 = { mesh.tris[i].v[1].x, mesh.tris[i].v[1].y, mesh.tris[i].v[1].z };
-        vector3 p2 = { mesh.tris[i].v[2].x, mesh.tris[i].v[2].y, mesh.tris[i].v[2].z };
-
-        // SetShaderValue(shader.shader, shader.normalLoc, mesh.tris[i].n, SHADER_UNIFORM_VEC3);
-        // SetShaderValue(shader.shader, shader.texoLoc, &shader.texo, SHADER_UNIFORM_SAMPLER2D);
-            
         rlNormal3f(mesh.tris[i].n[0].x, mesh.tris[i].n[0].y, mesh.tris[i].n[0].z);
         rlTexCoord2f(mesh.tris[i].t[0].x, mesh.tris[i].t[0].y);
-        rlVertex3f(p0.x, p0.y, p0.z);
+        rlVertex3f(mesh.tris[i].v[0].x, mesh.tris[i].v[0].y, mesh.tris[i].v[0].z);
 
         rlNormal3f(mesh.tris[i].n[1].x, mesh.tris[i].n[1].y, mesh.tris[i].n[1].z);
         rlTexCoord2f(mesh.tris[i].t[1].x, mesh.tris[i].t[1].y);
-        rlVertex3f(p1.x, p1.y, p1.z);
-        
+        rlVertex3f(mesh.tris[i].v[1].x, mesh.tris[i].v[1].y, mesh.tris[i].v[1].z);
+
         rlNormal3f(mesh.tris[i].n[2].x, mesh.tris[i].n[2].y, mesh.tris[i].n[2].z);
         rlTexCoord2f(mesh.tris[i].t[2].x, mesh.tris[i].t[2].y);
-        rlVertex3f(p2.x, p2.y, p2.z);
-        
-
-        // rlEnd();
+        rlVertex3f(mesh.tris[i].v[2].x, mesh.tris[i].v[2].y, mesh.tris[i].v[2].z);
     }
     rlEnd();
     // rlSetTexture(0);
@@ -71,18 +60,18 @@ void Draw3DGPU(const meshedObject& object, const camera& cam, shaderStore& shade
 void Draw3DDepthGPU(const meshedObject& object) {
     triDomMesh mesh = object.mesh;
 
-    rlDrawRenderBatchActive();
+    rlSetTexture(object.texo.id);
     rlBegin(RL_TRIANGLES);
     for (int i = 0; i < mesh.count; i++) {
-        const vector3 p0 = { mesh.tris[i].v[0].x, mesh.tris[i].v[0].y, mesh.tris[i].v[0].z };
-        const vector3 p1 = { mesh.tris[i].v[1].x, mesh.tris[i].v[1].y, mesh.tris[i].v[1].z };
-        const vector3 p2 = { mesh.tris[i].v[2].x, mesh.tris[i].v[2].y, mesh.tris[i].v[2].z };
-
-        rlVertex3f(p0.x, p0.y, p0.z);
-        rlVertex3f(p1.x, p1.y, p1.z);
-        rlVertex3f(p2.x, p2.y, p2.z);
+        rlTexCoord2f(mesh.tris[i].t[0].x, mesh.tris[i].t[0].y);
+        rlVertex3f(mesh.tris[i].v[0].x, mesh.tris[i].v[0].y, mesh.tris[i].v[0].z);
+        rlTexCoord2f(mesh.tris[i].t[1].x, mesh.tris[i].t[1].y);
+        rlVertex3f(mesh.tris[i].v[1].x, mesh.tris[i].v[1].y, mesh.tris[i].v[1].z);
+        rlTexCoord2f(mesh.tris[i].t[2].x, mesh.tris[i].t[2].y);
+        rlVertex3f(mesh.tris[i].v[2].x, mesh.tris[i].v[2].y, mesh.tris[i].v[2].z);
     }
     rlEnd();
+    rlSetTexture(0);
 }
 
 void DrawColliderGPU(int cPlaneCount, const planeMtx* colliders, const camera& cam, shaderStore& shader, vector4 color, const mtx44* precomputedVP) {

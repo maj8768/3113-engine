@@ -25,13 +25,13 @@ void buy(player& player, int buy_guy) {
 }
 
 void checkBuyBox(player& player, float deltaTime, gameData& gData, meshedObject& buyBox) {
-    std::cout << "buybox loc: " << buyBox.pEntity.location.x << ", " << buyBox.pEntity.location.y << ", " << buyBox.pEntity.location.z << std::endl;
+    // std::cout << "buybox loc: " << buyBox.pEntity.location.x << ", " << buyBox.pEntity.location.y << ", " << buyBox.pEntity.location.z << std::endl;
      if (canInteract(player, buyBox.pEntity.location, 6.0f, GetScreenWidth(), GetScreenHeight(), 300.f, {0.f, 2.75f, 0.f})) {
         player.pState.canBuy = true;
-        std::cout << "can buy" << std::endl;
+        // std::cout << "can buy" << std::endl;
     }
     else {
-        std::cout << "cant buy" << std::endl;
+        // std::cout << "cant buy" << std::endl;
         player.pState.canBuy = false;
     }
 }
@@ -66,7 +66,7 @@ void checkGasPump(player& player, float deltaTime, gameData& gData, meshedObject
 }
 
 // player, then all things you want to check interact with
-void interact(player& player, float deltaTime, gameData& gData, meshedObject& car, meshedObject& gasPump, meshedObject& gasPumpNozzle, meshedObject& gasPumpNozzleOff, meshedObject& drank) {
+void interact(player& player, float deltaTime, gameData& gData, meshedObject& car, meshedObject& gasPump, meshedObject& gasPumpNozzle, meshedObject& gasPumpNozzleOff, meshedObject& drank, Sound swallow) {
     // std::cout << "Car: " << player.pState.canCar << " GasPump: " << player.pState.canGasPump << "Has Gas Pump: " << player.pState.hasGasPump << std::endl;
     if (getAsyncKeyStateWrapper(KEY_G)) {
         if (player.pState.hasDrank && interactingG) {
@@ -108,6 +108,25 @@ void interact(player& player, float deltaTime, gameData& gData, meshedObject& ca
                 interacting = false;
             }
         } 
+        else if (interacting && player.pState.canPickDrank && !player.pState.hasDrank) {
+            player.pState.hasDrank = true;
+            interacting = false;
+        }
+        else if (interacting && player.pState.hasDrank) {
+            if (player.pState.canBuy || player.pState.buying) {
+                player.canMove = !player.canMove;
+                player.pState.buying = !player.pState.buying;
+                interacting = false;
+            }
+            else if (player.pState.canDrinkDrank) {
+                player.pState.canDrinkDrank = false;
+                player.pState.drunkenness += 0.2f;
+                PlaySound(swallow);
+                player.pState.hasDrank = false;
+                drank.pEntity.location = {15.f, 3.f, 15.f};
+                interacting = false;
+            }
+        }
         else if (interacting && player.pState.pumpingUp) {
             if (player.pState.canCar) {
                 resetMeshedLocation(gasPumpNozzleOff);
@@ -116,22 +135,6 @@ void interact(player& player, float deltaTime, gameData& gData, meshedObject& ca
                 player.pState.pumpingUp = false;
                 interacting = false;
                 locked = false;
-            }
-        }
-        else if (interacting && player.pState.canPickDrank) {
-            if (player.pState.hasDrank == false) {
-                player.pState.hasDrank = true;
-                interacting = false;
-            }
-        }
-        else if (interacting && player.pState.hasDrank) {
-            if (player.pState.canBuy || player.pState.buying) {
-                player.pState.buying = !player.pState.buying;
-                interacting = false;
-            }
-            else if (player.pState.canDrinkDrank) {
-
-                interacting = false;
             }
         }
         else if (interacting && !player.pState.hasGasPump) {
@@ -154,8 +157,8 @@ void interact(player& player, float deltaTime, gameData& gData, meshedObject& ca
 }
 
 // bruh idc
-static constexpr int kNozzleAnchorTriA = 44;
-static constexpr int kNozzleAnchorTriB = 45;
+static constexpr int kNozzleAnchorTriA = 22;
+static constexpr int kNozzleAnchorTriB = 120;
 
 void deformGasPump(meshedObject& gasPump, meshedObject& gasPumpNozzleOff) {
     if (kNozzleAnchorTriA < gasPumpNozzleOff.mesh.count && kNozzleAnchorTriB < gasPumpNozzleOff.mesh.count) {
@@ -197,7 +200,7 @@ void gasPumpLogic(player& player, float deltaTime, gameData& gData, meshedObject
     }
 }
 
-void levelLogic(player& player, float deltaTime,gameData& gData, meshedObject& testcar, meshedObject& gasPump, meshedObject& gasPumpNozzle, meshedObject& gasPumpNozzleOff, meshedObject& drank, meshedObject& buyBox) {
+void levelLogic(player& player, float deltaTime,gameData& gData, meshedObject& testcar, meshedObject& gasPump, meshedObject& gasPumpNozzle, meshedObject& gasPumpNozzleOff, meshedObject& drank, meshedObject& buyBox, Sound swallow) {
     // std::cout << "current plane: " << player.pEntity.groundPlane << std::endl;
     gasPumpLogic(player, deltaTime, gData, gasPump, testcar, gasPumpNozzleOff);
     checkCar(player, deltaTime, gData, testcar);
@@ -206,7 +209,8 @@ void levelLogic(player& player, float deltaTime,gameData& gData, meshedObject& t
     checkBuyBox(player, deltaTime, gData, buyBox);
     if (player.pState.hasDrank) holdItem(player, drank);
     if (player.pState.buying) buy(player,1);
-    interact(player, deltaTime, gData, testcar, gasPump, gasPumpNozzle, gasPumpNozzleOff, drank);
+    interact(player, deltaTime, gData, testcar, gasPump, gasPumpNozzle, gasPumpNozzleOff, drank, swallow);
     // std::cout << "drank: " << player.pState.canPickDrank << ", hasDrank: " << player.pState.hasDrank << std::endl;
-    std::cout << "\033[2J\033[H"; 
+    // std::cout << "drunkenness: " << player.pState.drunkenness << std::endl;
+    // std::cout << "\033[2J\033[H"; 
 }

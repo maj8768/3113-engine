@@ -7,6 +7,10 @@
 
 bool debugMode = false;
 
+buyMenu bs = {
+    .state = buyState::START,
+    .selection = buySelection::ONE
+};
 
 vector4 modmmult(const mtx44& mat, const vector4& vec) {
     vector4 out;

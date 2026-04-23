@@ -112,20 +112,25 @@ static Shader depthShader;
 
 static int depthLightSpaceLoc = -1;
 
-static RenderTexture2D shadowMapRT = { 0 };
-static constexpr int SHADOW_MAP_SIZE = 2048;
-static constexpr float SHADOW_RANGE = 60.0f;
-static constexpr float SHADOW_NEAR = 1.0f;
-static constexpr float SHADOW_FAR = 180.0f;
+static RenderTexture2D shadowMapRT    = { 0 };  // near cascade
+static RenderTexture2D shadowMapRTFar = { 0 };  // far cascade
+static constexpr int   SHADOW_MAP_NEAR  = 2048;
+static constexpr int   SHADOW_MAP_FAR   = 1024;
+static constexpr float SHADOW_RANGE_NEAR = 80.0f;   // world-unit radius for near cascade
+static constexpr float SHADOW_RANGE_FAR  = 300.0f;  // world-unit radius for far cascade
+static constexpr float CASCADE_SPLIT     = 65.0f;   // blend transition distance
+static constexpr float SHADOW_NEAR   = 1.0f;
+static constexpr float SUN_DIST      = 100.0f;
+static constexpr float SHADOW_FAR    = SUN_DIST * 2.2f;
 static constexpr float LIGHT_ORBIT_SPEED = 0.15f;
 static constexpr float LIGHT_ORBIT_RADIUS_Y = 150.0f;
 static constexpr float LIGHT_ORBIT_RADIUS_Z = 25.0f;
 static constexpr float LIGHT_ORBIT_X_OFFSET = 55.0f;
 
 static Vector3 lightPos = { 250.f, 1000.f, 0.f };
-static Vector3 lightDir = { -0.10f, -0.99f, -0.05f };
-static Vector4 lightColor = { 0.447, 0.816, 0.922, 1.0f };
-static float ambient  = 0.55f; // 0.05
+static Vector3 lightDir = { -0.75f, -0.22f, 0.10f };   // low horizon sun (dusk)
+static Vector4 lightColor = { 1.0f, 0.95f, 0.8f, 1.0f }; // warm orange-red dusk
+static float ambient  = 0.18f; // dim dusk ambient
 
 // other prep
 static meshedObject skysphere1;
@@ -141,6 +146,9 @@ static meshedObject gasPumpNozzleOff;
 static meshedObject cashRegister;
 static meshedObject drank;
 static meshedObject buyBox;
+static meshedObject dragan;
+static meshedObject tree;
+static meshedObject gasStation;
 
 static meshedObject fakeMesh; // fake and isnt real
 
@@ -172,6 +180,8 @@ static Sound jump4;
 static Sound jump5;
 static Sound jump6;
 static Sound jump7;
+
+static Sound swallow;
 
 static Music carEngine;
 
@@ -225,23 +235,18 @@ static RenderTexture2D LoadShadowMapRenderTexture(int width, int height) {
     return target;
 }
 
-static mtx44 BuildLightSpaceMatrix() {
-    // Centre the shadow frustum on the player/car so shadows follow as it moves.
+static mtx44 BuildLightSpaceMatrix(float range) {
     vector3 sceneCenter = player1.pEntity.location;
+    vector3 sunDir = normalize3({ lightDir.x, lightDir.y, lightDir.z });
+    if (len3(sunDir) <= eps) sunDir = { 0.f, -1.f, 0.f };
     vector3 lightPos3 = {
-        sceneCenter.x + 15.f,
-        sceneCenter.y + 15.f,
-        sceneCenter.z + 15.f
+        sceneCenter.x - sunDir.x * SUN_DIST,
+        sceneCenter.y - sunDir.y * SUN_DIST,
+        sceneCenter.z - sunDir.z * SUN_DIST
     };
     lightPos = { lightPos3.x, lightPos3.y, lightPos3.z };
-
-    vector3 lightDirVec = sceneCenter - lightPos3;
-    if (len3(lightDirVec) <= eps) lightDirVec = { 0.f, -1.f, 0.f };
-    lightDirVec = normalize3(lightDirVec);
-    lightDir = { lightDirVec.x, lightDirVec.y, lightDirVec.z };
-
     mtx44 lightView = lookAtMtx44(lightPos3, sceneCenter, {0.f, 1.f, 0.f});
-    mtx44 lightProj = orthoMtx44(-SHADOW_RANGE, SHADOW_RANGE, -SHADOW_RANGE, SHADOW_RANGE, SHADOW_NEAR, SHADOW_FAR);
+    mtx44 lightProj = orthoMtx44(-range, range, -range, range, SHADOW_NEAR, SHADOW_FAR);
     return mmult4(lightProj, lightView);
 }
 
@@ -283,53 +288,69 @@ void create3dObject(meshedObject& object, const char* path, const char* collider
     object.scale = scale;
     object.pEntity.location = location;
     if (collider) objToQuads(colliderPath, object, scale, player1, false);
+
+    std::cout << "loading: " << path << std::endl;
     Model model = LoadModel(path);
+    std::cout << "meshes: " << model.meshCount << std::endl;
+
     int totalTriangles = 0;
-    for (int i = 0; i < model.meshCount; i++) {
+    for (int i = 0; i < model.meshCount; i++)
         totalTriangles += model.meshes[i].triangleCount;
-    }
+    std::cout << "triangles: " << totalTriangles << std::endl;
 
     mesh.tris  = (tri*)malloc(totalTriangles * sizeof(tri));
     mesh.trisO = (tri*)malloc(totalTriangles * sizeof(tri));
     mesh.count = 0;
-    for (int j = 0; j < 5; j++) {  // just first 5 tris
-    int uv = j * 6;
-}
+
     for (int i = 0; i < model.meshCount; i++) {
         Mesh* m = &model.meshes[i];
-        Texture2D tex = model.materials[model.meshMaterial[i]].maps[MATERIAL_MAP_DIFFUSE].texture;
-        // Texture2D tex = model.materials[model.meshMaterialId[i]].maps[MAP_DIFFUSE].texture;
-        object.texo = tex;
+        if (!m->vertices || m->triangleCount <= 0) continue;
+        if (model.materials && model.meshMaterial && model.materialCount > 0) {
+            int matIdx = model.meshMaterial[i];
+            if (matIdx >= 0 && matIdx < model.materialCount)
+                object.texo = model.materials[matIdx].maps[MATERIAL_MAP_DIFFUSE].texture;
+        }
+        bool indexed = (m->indices != nullptr);
         for (int j = 0; j < m->triangleCount; j++) {
             tri t;
             tri ot;
-            int vi = j * 9; // splits by 3 verts and then by 3 coords
-            int uv = j * 6; // split by 3verts and then by 2uv coords
-            t.v[0] = { m->vertices[vi+0] * scale + object.pEntity.location.x, m->vertices[vi+1] * scale + object.pEntity.location.y, m->vertices[vi+2] * scale + object.pEntity.location.z };
-            t.v[1] = { m->vertices[vi+3] * scale + object.pEntity.location.x, m->vertices[vi+4] * scale + object.pEntity.location.y, m->vertices[vi+5] * scale + object.pEntity.location.z };
-            t.v[2] = { m->vertices[vi+6] * scale + object.pEntity.location.x, m->vertices[vi+7] * scale + object.pEntity.location.y, m->vertices[vi+8] * scale + object.pEntity.location.z };
-            t.n[0] = { m->normals[vi+0],  m->normals[vi+1],  m->normals[vi+2]  };
-            t.n[1] = { m->normals[vi+3],  m->normals[vi+4],  m->normals[vi+5]  };
-            t.n[2] = { m->normals[vi+6],  m->normals[vi+7],  m->normals[vi+8]  };
-            t.t[0] = { m->texcoords[uv+0],  m->texcoords[uv+1]  };
-            t.t[1] = { m->texcoords[uv+2],  m->texcoords[uv+3]  };
-            t.t[2] = { m->texcoords[uv+4],  m->texcoords[uv+5]  };
-
-            ot.v[0] = { m->vertices[vi+0] * scale, m->vertices[vi+1] * scale, m->vertices[vi+2] * scale };
-            ot.v[1] = { m->vertices[vi+3] * scale, m->vertices[vi+4] * scale, m->vertices[vi+5] * scale };
-            ot.v[2] = { m->vertices[vi+6] * scale, m->vertices[vi+7] * scale, m->vertices[vi+8] * scale };
-            ot.n[0] = { m->normals[vi+0],  m->normals[vi+1],  m->normals[vi+2]  };
-            ot.n[1] = { m->normals[vi+3],  m->normals[vi+4],  m->normals[vi+5]  };
-            ot.n[2] = { m->normals[vi+6],  m->normals[vi+7],  m->normals[vi+8]  };
-            ot.t[0] = { m->texcoords[uv+0],  m->texcoords[uv+1]  };
-            ot.t[1] = { m->texcoords[uv+2],  m->texcoords[uv+3]  };
-            ot.t[2] = { m->texcoords[uv+4],  m->texcoords[uv+5]  };
-            mesh.tris[mesh.count] = t;
+            int a, b, c; // vertex indices into the vertex buffer
+            if (indexed) {
+                a = m->indices[j*3+0];
+                b = m->indices[j*3+1];
+                c = m->indices[j*3+2];
+            } else {
+                a = j*3+0; b = j*3+1; c = j*3+2;
+            }
+            if (a >= m->vertexCount || b >= m->vertexCount || c >= m->vertexCount) continue;
+            t.v[0] = { m->vertices[a*3+0]*scale+location.x, m->vertices[a*3+1]*scale+location.y, m->vertices[a*3+2]*scale+location.z };
+            t.v[1] = { m->vertices[b*3+0]*scale+location.x, m->vertices[b*3+1]*scale+location.y, m->vertices[b*3+2]*scale+location.z };
+            t.v[2] = { m->vertices[c*3+0]*scale+location.x, m->vertices[c*3+1]*scale+location.y, m->vertices[c*3+2]*scale+location.z };
+            if (m->normals) {
+                t.n[0] = { m->normals[a*3+0], m->normals[a*3+1], m->normals[a*3+2] };
+                t.n[1] = { m->normals[b*3+0], m->normals[b*3+1], m->normals[b*3+2] };
+                t.n[2] = { m->normals[c*3+0], m->normals[c*3+1], m->normals[c*3+2] };
+            } else {
+                t.n[0] = t.n[1] = t.n[2] = {0.f, 1.f, 0.f};
+            }
+            if (m->texcoords) {
+                t.t[0] = { m->texcoords[a*2+0], m->texcoords[a*2+1] };
+                t.t[1] = { m->texcoords[b*2+0], m->texcoords[b*2+1] };
+                t.t[2] = { m->texcoords[c*2+0], m->texcoords[c*2+1] };
+            } else {
+                t.t[0] = t.t[1] = t.t[2] = {0.f, 0.f};
+            }
+            ot.v[0] = { m->vertices[a*3+0]*scale, m->vertices[a*3+1]*scale, m->vertices[a*3+2]*scale };
+            ot.v[1] = { m->vertices[b*3+0]*scale, m->vertices[b*3+1]*scale, m->vertices[b*3+2]*scale };
+            ot.v[2] = { m->vertices[c*3+0]*scale, m->vertices[c*3+1]*scale, m->vertices[c*3+2]*scale };
+            ot.n[0] = t.n[0]; ot.n[1] = t.n[1]; ot.n[2] = t.n[2];
+            ot.t[0] = t.t[0]; ot.t[1] = t.t[1]; ot.t[2] = t.t[2];
+            mesh.tris[mesh.count]  = t;
             mesh.trisO[mesh.count] = ot;
             mesh.count++;
         }
     }
-    // std::cout << "v count: " << mesh.count << std::endl;
+    std::cout << "loaded: " << path << " (" << mesh.count << " tris)\n";
     object.mesh = mesh;
     UnloadModel(model);
 }
@@ -349,6 +370,7 @@ void initialise()
     jump6 = LoadSound("resources/sounds/jumps/j6.mp3");
     jump7 = LoadSound("resources/sounds/jumps/j7.mp3");
     carEngine = LoadMusicStream("resources/sounds/car/carEngine.ogg");
+    swallow = LoadSound("resources/sounds/player/swallow.mp3");
     startCarEngineThread(carEngine);
 
     
@@ -399,11 +421,20 @@ void initialise()
     w2sShader.lightSpaceMatrixLoc = GetShaderLocation(w2sShader.shader, "uLightSpaceMatrix");
     w2sShader.shadowMapLoc = GetShaderLocation(w2sShader.shader, "uShadowMap");
     w2sShader.shadowsEnabledLoc = GetShaderLocation(w2sShader.shader, "uShadowsEnabled");
+    w2sShader.timeLoc = GetShaderLocation(w2sShader.shader, "uTime");
+    w2sShader.drunkennessLoc = GetShaderLocation(w2sShader.shader, "uDrunkenness");
+    w2sShader.camPosLoc = GetShaderLocation(w2sShader.shader, "uCamPos");
+
+
+    w2sShader.shadowMapFarLoc        = GetShaderLocation(w2sShader.shader, "uShadowMapFar");
+    w2sShader.lightSpaceMatrixFarLoc = GetShaderLocation(w2sShader.shader, "uLightSpaceMatrixFar");
+    w2sShader.cascadeSplitLoc        = GetShaderLocation(w2sShader.shader, "uCascadeSplit");
 
     depthShader = LoadShader("resources/shaders/depth.vs", "resources/shaders/depth.fs");
     depthLightSpaceLoc = GetShaderLocation(depthShader, "uLightSpaceMatrix");
 
-    shadowMapRT = LoadShadowMapRenderTexture(SHADOW_MAP_SIZE, SHADOW_MAP_SIZE);
+    shadowMapRT    = LoadShadowMapRenderTexture(SHADOW_MAP_NEAR, SHADOW_MAP_NEAR);
+    shadowMapRTFar = LoadShadowMapRenderTexture(SHADOW_MAP_FAR,  SHADOW_MAP_FAR);
 
     // call creates before initializing the physics entity
     
@@ -417,19 +448,24 @@ void initialise()
     char empty[100] = "";
     char cubeText[100] = "I am a cube";
     create3dObject(skysphere1, "resources/levels/skysphere.obj", "", false, w2sShader, 25.f, {0.f,0.f,0.f}, empty, false, 100, {0,0,0});
+    skysphere1.noCull = true;
     // create3dObject(evilroomba2, "resources/levels/level2/evilroomba.obj", "", true, w2sShader, 1.f, {0.f,0.f,0.f});
     // create3dObject(platforms3, "resources/levels/level3/level3.obj", "resources/levels/level3/colliders/level3collider.obj", true, w2sShader, 4.f, {0.f,0.f,0.f});
     create3dObject(testingplatforms, "resources/levels/testing/testplatform.obj", "resources/levels/testing/colliders/testplatformcollider.obj", true, w2sShader, 1.f, {0.f,0.f,0.f}, empty, false, 100, {0,0,0});
+    testingplatforms.noCull = true;
     create3dObject(cube, "resources/levels/testing/cube.obj", "", false, w2sShader, 1.f, {7.f,5.f,3.f}, cubeText, true, 1.5f, {0,-1.5,0});
     create3dObject(testcar, "resources/levels/testing/testcar.obj", "resources/levels/testing/colliders/testcarcollider.obj", true, w2sShader, 4.f, {0.f,5.f,15.f}, empty, false, 100, {0,0,0});
     create3dObject(testcarwheel, "resources/levels/testing/testcarwheel.obj", "", false, w2sShader, 4.f, {0.f,0.f,0.f}, empty, false, 100, {0,0,0});
     create3dObject(gasPump, "resources/levels/testing/gas_pump/pump/gas_pump.obj", "resources/levels/testing/gas_pump/colliders/pumpcollider.obj", true, w2sShader, 1.f, {10.f,0.f,10.f}, empty, false, 100, {0,0,0});
     create3dObject(gasPumpNozzle, "resources/levels/testing/gas_pump/grab/grab_onpump.obj", "", false, w2sShader, 1.f, {10.f,0.f,10.f}, empty, false, 100, {0,0,0});
     create3dObject(gasPumpNozzleOff, "resources/levels/testing/gas_pump/grab/grab_offpump.obj", "", false, w2sShader, 1.f, {10.f,-20.f,10.f}, empty, false, 100, {0,0,0});
+    gasPumpNozzleOff.texo = LoadTexture("resources/levels/testing/gas_pump/Fuel_pump.png");
     create3dObject(cashRegister, "resources/levels/testing/register/cashregister.obj", "resources/levels/testing/register/colliders/cashregistercollider.obj", true, w2sShader, 1.f, {15.f,0.f,10.f}, empty, false, 100, {0,0,0});
     create3dObject(drank, "resources/levels/testing/items/drank/drank.obj", "resources/levels/testing/items/drank/colliders/drankcollider.obj", true, w2sShader, 1.f, {15.f,3.f,15.f}, empty, false, 100, {0,0,0});
     create3dObject(buyBox, "resources/levels/testing/register/buybox.obj", "resources/levels/testing/register/colliders/buyboxcolliders.obj", true, w2sShader, 1.f, {17.f,0.f,10.f}, empty, false, 100, {0,0,0});
-    
+    create3dObject(dragan, "resources/levels/testing/register/dragan.obj", "resources/levels/testing/register/colliders/dragancollider.obj", true, w2sShader, 1.f, {15.f,0.f,10.f}, empty, false, 100, {0,0,0});
+    create3dObject(tree, "resources/levels/testing/tree.glb", "", false, w2sShader, 1.f, {0.f,0.f,0.f}, empty, false, 100, {0,0,0});
+    // create3dObject(gasStation, "resources/levels/testing/gasstation.glb", "", false, w2sShader, 1.f, {0.f,0.f,0.f}, empty, false, 100, {0,0,0});
     /* planeMtx struct for reference:
      * struct planeMtx {
             float m[4][3];
@@ -448,6 +484,7 @@ void initialise()
     updateColliderLocation(testcar,player1,false);
     updateColliderLocation(drank,player1,false);
     updateColliderLocation(buyBox,player1,false);
+    updateColliderLocation(dragan,player1,false);
 
     // initializePhysicsEntity(chair1.pEntity, 100.f);
     // initializePhysicsEntity(evilroomba2.pEntity, 50.f);
@@ -514,21 +551,22 @@ void update() {
 //             world worldInstance = buildWorld(worldObjects, 1);
 //             processPhysics(deltaTime, 0, player1.pEntity, worldInstance, iamreal, iamalsoreal, false, true); // last bool is for collision
             // break;
+    // std::cout << "player location: " << player1.pEntity.location.x << ", " << player1.pEntity.location.y << ", " << player1.pEntity.location.z << std::endl;
     switch (gData.currentLevel) {
         case gameData::TESTING_ENVIRONMENT: {
 
             updateEntityLocation(gasPumpNozzle);
             updateEntityLocation(gasPumpNozzleOff);
-            levelLogic(player1, deltaTime, gData, testcar, gasPump, gasPumpNozzle, gasPumpNozzleOff, drank, buyBox);
+            levelLogic(player1, deltaTime, gData, testcar, gasPump, gasPumpNozzle, gasPumpNozzleOff, drank, buyBox, swallow);
 
             updateColliderLocation(fakeMesh,player1,true);
-            meshedObject* worldObjects[] = { &testingplatforms, &testcar, &gasPump, &cashRegister };
-            meshedObject* secondaryObjects[] = { &testingplatforms, &gasPump, &cashRegister };
-            world worldInstance = buildWorld(worldObjects, 4, player1);
-            if (!player1.pState.inCar) {
+            meshedObject* worldObjects[] = { &testingplatforms, &testcar, &gasPump, &cashRegister, &dragan };
+            meshedObject* secondaryObjects[] = { &testingplatforms, &gasPump, &cashRegister, &dragan };
+            world worldInstance = buildWorld(worldObjects, 5, player1);
+            if (!player1.pState.inCar && !player1.pState.noClip) {
                 processPhysics(deltaTime, 0, player1.pEntity, worldInstance, iamreal, iamalsoreal, false, true, player1.collider, player1.cPlaneCount); // last bool is for collision
             }
-            world secondaryInstance = buildWorld(secondaryObjects, 3, player1);
+            world secondaryInstance = buildWorld(secondaryObjects, 4, player1);
             processPhysics(deltaTime, 0, testcar.pEntity, secondaryInstance, iamreal, iamalsoreal, false, true, testcar.collider, testcar.cPlaneCount); // last bool is for collision
             updateEntityLocation(testcar);
             testcarwheel.pEntity = testcar.pEntity;
@@ -536,7 +574,7 @@ void update() {
             applyRot(testcarwheel.pEntity.location, testcar.pEntity.rot, 0.f,0.f,0.f);
             updateEntityLocation(testcarwheel);
             if (!player1.pState.hasDrank) {
-                std::cout << "processing drank physics" << std::endl;
+                // std::cout << "processing drank physics" << std::endl;
                 processPhysics(deltaTime, 0, drank.pEntity, worldInstance, iamreal, iamalsoreal, false, true, drank.collider, drank.cPlaneCount); // last bool is for collision
             }
 
@@ -586,7 +624,7 @@ void update() {
     static double lastPrintTime = 0.0;
     double now = GetTime();
     if (now - lastPrintTime >= 0.25) {
-        std::cout << "FPS: " << GetFPS() << std::endl;
+        std::cout << "FPS: " << GetFPS() << "\n";
         lastPrintTime = now;
     }
     // levelLogic(player1, deltaTime, gData, deathSound, level1win, level2win, level3win, bgMusicLevel1, bgMusicLevel2, bgMusicLevel3, chairSound, chairScared, roombaDialog, chair1, evilroomba2);
@@ -594,70 +632,92 @@ void update() {
 
 // this bs (MAKE SURE TO DUAL RENDER, SHADOWS AND SCENE BOTH HAVE TO BE RENDERED) Load into shadow map then draw the map and shadows.
 
-static void RenderShadowMapPass(const mtx44& lightSpace) {
+static void RenderShadowMapPass(const mtx44& nearLSM, const mtx44& farLSM) {
     if (shadowMapRT.id == 0) return;
 
-    rlViewport(0, 0, SHADOW_MAP_SIZE, SHADOW_MAP_SIZE);
+    // Shared draw-casters lambda — same geometry in both cascades
+    auto drawCasters = [&]() {
+        rlEnableBackfaceCulling();
+        Draw3DDepthGPU(cube);
+        Draw3DDepthGPU(testcar);
+        Draw3DDepthGPU(testcarwheel);
+        Draw3DDepthGPU(gasPump);
+        Draw3DDepthGPU(gasPumpNozzle);
+        Draw3DDepthGPU(gasPumpNozzleOff);
+        Draw3DDepthGPU(cashRegister);
+        Draw3DDepthGPU(dragan);
+        Draw3DDepthGPU(tree);
+        Draw3DDepthGPU(drank);
+        // Draw3DDepthGPU(buyBox);
+        Draw3DDepthGPU(testingplatforms);
+    };
+
+    // Near cascade — small frustum, high texel density
+    rlViewport(0, 0, SHADOW_MAP_NEAR, SHADOW_MAP_NEAR);
     rlEnableFramebuffer(shadowMapRT.id);
     rlClearScreenBuffers();
-
     BeginShaderMode(depthShader);
-    SetShaderValueMatrix(depthShader, depthLightSpaceLoc, ToRaylibMatrix(lightSpace));
-
-    // Solid closed objects: front-face cull so back-face depth is stored.
-    // Back-face depth > front-face depth so the comparison passes without bias,
-    // eliminating peter panning on these objects entirely.
-    rlEnableBackfaceCulling();
-    // rlSetCullFace(RL_CULL_FACE_FRONT);
-    Draw3DDepthGPU(cube);
-    Draw3DDepthGPU(testcar);
-    Draw3DDepthGPU(testcarwheel);
-    Draw3DDepthGPU(gasPump);
-    Draw3DDepthGPU(gasPumpNozzle);
-    Draw3DDepthGPU(gasPumpNozzleOff);
-    Draw3DDepthGPU(cashRegister);
-    Draw3DDepthGPU(drank); // skysphere is solid and closed, so culling works fine and it benefits from no peter panning
-    // Draw3DDepthGPU(buyBox);
-
-    // Flat/open geometry: use normal back-face culling so the only face is rendered.
-    // rlSetCullFace(RL_CULL_FACE_BACK);
-    Draw3DDepthGPU(testingplatforms);
+    SetShaderValueMatrix(depthShader, depthLightSpaceLoc, ToRaylibMatrix(nearLSM));
+    drawCasters();
     EndShaderMode();
-
     rlDisableFramebuffer();
+
+    // Far cascade — large frustum, wide coverage
+    if (shadowMapRTFar.id != 0) {
+        rlViewport(0, 0, SHADOW_MAP_FAR, SHADOW_MAP_FAR);
+        rlEnableFramebuffer(shadowMapRTFar.id);
+        rlClearScreenBuffers();
+        BeginShaderMode(depthShader);
+        SetShaderValueMatrix(depthShader, depthLightSpaceLoc, ToRaylibMatrix(farLSM));
+        drawCasters();
+        EndShaderMode();
+        rlDisableFramebuffer();
+    }
+
     rlViewport(0, 0, GetRenderWidth(), GetRenderHeight());
 }
 
-static void DrawSceneWithShadows(const mtx44& frameVP, const mtx44& lightSpace) {
+static void DrawSceneWithShadows(const mtx44& frameVP, const mtx44& nearLSM, const mtx44& farLSM) {
+    float t = (float)GetTime();
     BeginShaderMode(w2sShader.shader);
     SetShaderValue(w2sShader.shader, w2sShader.lightDirLoc, &lightDir, SHADER_UNIFORM_VEC3);
     SetShaderValue(w2sShader.shader, w2sShader.lightColorLoc, &lightColor, SHADER_UNIFORM_VEC4);
     SetShaderValue(w2sShader.shader, w2sShader.ambientLoc, &ambient, SHADER_UNIFORM_FLOAT);
     SetShaderValue(w2sShader.shader, w2sShader.fadeToLoc, &gData.fadeTo, SHADER_UNIFORM_FLOAT);
-    SetShaderValueMatrix(w2sShader.shader, w2sShader.lightSpaceMatrixLoc, ToRaylibMatrix(lightSpace));
+    SetShaderValue(w2sShader.shader, w2sShader.timeLoc, &t, SHADER_UNIFORM_FLOAT);
+    SetShaderValue(w2sShader.shader, w2sShader.drunkennessLoc, &player1.pState.drunkenness, SHADER_UNIFORM_FLOAT);
+    float camPosArr[3] = { player1.camera.camPos.x, player1.camera.camPos.y, player1.camera.camPos.z };
+    SetShaderValue(w2sShader.shader, w2sShader.camPosLoc, camPosArr, SHADER_UNIFORM_VEC3);
+    SetShaderValueMatrix(w2sShader.shader, w2sShader.lightSpaceMatrixLoc,    ToRaylibMatrix(nearLSM));
+    SetShaderValueMatrix(w2sShader.shader, w2sShader.lightSpaceMatrixFarLoc, ToRaylibMatrix(farLSM));
+    float cascadeSplit = CASCADE_SPLIT;
+    SetShaderValue(w2sShader.shader, w2sShader.cascadeSplitLoc, &cascadeSplit, SHADER_UNIFORM_FLOAT);
     const bool hasShadowMap = shadowMapRT.depth.id != 0;
-    const Texture2D* shadowTex = hasShadowMap ? &shadowMapRT.depth : nullptr;
+    const Texture2D* shadowTex    = hasShadowMap ? &shadowMapRT.depth : nullptr;
+    const Texture2D* shadowTexFar = (shadowMapRTFar.depth.id != 0) ? &shadowMapRTFar.depth : nullptr;
 
     switch(gData.currentLevel) {
         case gameData::TESTING_ENVIRONMENT:
-            Draw3DGPU(skysphere1, player1.camera, w2sShader, {255, 0, 0, 255}, &frameVP, shadowTex, false);
-            Draw3DGPU(testingplatforms, player1.camera, w2sShader, {255, 0, 0, 255}, &frameVP, shadowTex, hasShadowMap);
-            Draw3DGPU(testcar, player1.camera, w2sShader, {255, 0, 0, 255}, &frameVP, shadowTex, hasShadowMap);
-            Draw3DGPU(testcarwheel, player1.camera, w2sShader, {255, 0, 0, 255}, &frameVP, shadowTex, hasShadowMap);
-            Draw3DGPU(cube, player1.camera, w2sShader, {255, 0, 0, 255}, &frameVP, shadowTex, hasShadowMap);
-            Draw3DGPU(gasPump, player1.camera, w2sShader, {255, 0, 0, 255}, &frameVP, shadowTex, hasShadowMap);
-            Draw3DGPU(gasPumpNozzle, player1.camera, w2sShader, {255, 0, 0, 255}, &frameVP, shadowTex, hasShadowMap);
-            Draw3DGPU(gasPumpNozzleOff, player1.camera, w2sShader, {255, 0, 0, 255}, &frameVP, shadowTex, hasShadowMap);
-            Draw3DGPU(cashRegister, player1.camera, w2sShader, {255, 0, 0, 255}, &frameVP, shadowTex, hasShadowMap);
-            Draw3DGPU(drank, player1.camera, w2sShader, {255, 0, 0, 255}, &frameVP, shadowTex, hasShadowMap);
-            // Draw3DGPU(buyBox, player1.camera, w2sShader, {255, 0, 0, 255}, &frameVP, shadowTex, hasShadowMap);
+            Draw3DGPU(skysphere1,       player1.camera, w2sShader, {255,0,0,255}, &frameVP, shadowTex, false);
+            Draw3DGPU(testingplatforms, player1.camera, w2sShader, {255,0,0,255}, &frameVP, shadowTex, hasShadowMap, shadowTexFar);
+            Draw3DGPU(testcar,          player1.camera, w2sShader, {255,0,0,255}, &frameVP, shadowTex, hasShadowMap, shadowTexFar);
+            Draw3DGPU(testcarwheel,     player1.camera, w2sShader, {255,0,0,255}, &frameVP, shadowTex, hasShadowMap, shadowTexFar);
+            Draw3DGPU(cube,             player1.camera, w2sShader, {255,0,0,255}, &frameVP, shadowTex, hasShadowMap, shadowTexFar);
+            Draw3DGPU(gasPump,          player1.camera, w2sShader, {255,0,0,255}, &frameVP, shadowTex, hasShadowMap, shadowTexFar);
+            Draw3DGPU(gasPumpNozzle,    player1.camera, w2sShader, {255,0,0,255}, &frameVP, shadowTex, hasShadowMap, shadowTexFar);
+            Draw3DGPU(gasPumpNozzleOff, player1.camera, w2sShader, {255,0,0,255}, &frameVP, shadowTex, hasShadowMap, shadowTexFar);
+            Draw3DGPU(cashRegister,     player1.camera, w2sShader, {255,0,0,255}, &frameVP, shadowTex, hasShadowMap, shadowTexFar);
+            Draw3DGPU(drank,            player1.camera, w2sShader, {255,0,0,255}, &frameVP, shadowTex, hasShadowMap, shadowTexFar);
+            Draw3DGPU(dragan,           player1.camera, w2sShader, {255,0,0,255}, &frameVP, shadowTex, hasShadowMap, shadowTexFar);
+            Draw3DGPU(tree,             player1.camera, w2sShader, {255,0,0,255}, &frameVP, shadowTex, hasShadowMap, shadowTexFar);
+            // Draw3DGPU(buyBox, ...);
 
             DrawColliderGPU(testcar.cPlaneCount, testcar.collider, player1.camera, w2sShader, {0, 255, 0, 255}, &frameVP);
             DrawColliderGPU(player1.cPlaneCount, player1.collider, player1.camera, w2sShader, {0, 255, 0, 255}, &frameVP);
             DrawColliderGPU(gasPump.cPlaneCount, gasPump.collider, player1.camera, w2sShader, {0, 255, 0, 255}, &frameVP);
             DrawColliderGPU(cashRegister.cPlaneCount, cashRegister.collider, player1.camera, w2sShader, {0, 255, 0, 255}, &frameVP);
             DrawColliderGPU(drank.cPlaneCount, drank.collider, player1.camera, w2sShader, {0, 255, 0, 255}, &frameVP);
-            // DrawColliderGPU(buyBox.cPlaneCount, buyBox.collider, player1.camera, w2sShader, {0, 255, 0, 255}, &frameVP);
+            DrawColliderGPU(dragan.cPlaneCount, dragan.collider, player1.camera, w2sShader, {0, 255, 0, 255}, &frameVP);
 
             DrawPlaneNormalsGPU(testcar.cPlaneCount, testcar.collider, player1.camera, w2sShader, {255, 0, 0, 255}, 1.0f, &frameVP);
 
@@ -689,15 +749,16 @@ void render()
         rlMatrixMode(RL_MODELVIEW);
         rlLoadIdentity();
 
-        mtx44 lightSpace = BuildLightSpaceMatrix();
-        RenderShadowMapPass(lightSpace);
+        mtx44 nearLSM = BuildLightSpaceMatrix(SHADOW_RANGE_NEAR);
+        mtx44 farLSM  = BuildLightSpaceMatrix(SHADOW_RANGE_FAR);
+        RenderShadowMapPass(nearLSM, farLSM);
 
         // Compute VP once per frame and share across all Draw3DGPU calls
         mtx44 frameView = viewMtx44(player1.camera.camPos, player1.camera.camTarget, player1.camera.up);
         mtx44 frameProj = projMtx44(player1.camera.fov, player1.camera.aspect, 0.1f, 1000000000000000000.0f);
         mtx44 frameVP   = mmult4(frameProj, frameView);
 
-        DrawSceneWithShadows(frameVP, lightSpace);
+        DrawSceneWithShadows(frameVP, nearLSM, farLSM);
 
         rlMatrixMode(RL_PROJECTION);
         rlLoadIdentity();
@@ -747,11 +808,16 @@ void shutdown()
     UnloadMusicStream(carEngine);
 
 
+
+
     UnloadShader(w2sShader.shader);
     UnloadShader(depthShader);
     if (shadowMapRT.texture.id != 0) rlUnloadTexture(shadowMapRT.texture.id);
     if (shadowMapRT.depth.id != 0) rlUnloadTexture(shadowMapRT.depth.id);
     if (shadowMapRT.id != 0) rlUnloadFramebuffer(shadowMapRT.id);
+    if (shadowMapRTFar.texture.id != 0) rlUnloadTexture(shadowMapRTFar.texture.id);
+    if (shadowMapRTFar.depth.id != 0) rlUnloadTexture(shadowMapRTFar.depth.id);
+    if (shadowMapRTFar.id != 0) rlUnloadFramebuffer(shadowMapRTFar.id);
 
     // Free CPU mesh data for all loaded objects
     free(skysphere1.mesh.tris);
@@ -766,7 +832,8 @@ void shutdown()
     free(testcar.mesh.trisO);
     free(testcarwheel.mesh.tris);
     free(testcarwheel.mesh.trisO);
-
+    free(tree.mesh.tris);
+    free(tree.mesh.trisO);
 
     CloseAudioDevice();
     CloseWindow(); // Close window and OpenGL context
