@@ -30,6 +30,16 @@
 #include <thread>
 #include <cstring>
 
+/**
+* Author: Maxim Jovanovic
+* Assignment: Final Project - 3113 Engine
+* Date due: 4/24/2026, 2:00pm
+* I pledge that I have completed this assignment without
+* collaborating with anyone else, in conformance with the
+* NYU School of Engineering Policies and Procedures on
+* Academic Misconduct.
+**/
+
 int thrust[] = {249, 250, 119, 120};
 int alt[] = {99, 101, 227, 229};
 int fuel[] = {47, 49, 173, 174};
