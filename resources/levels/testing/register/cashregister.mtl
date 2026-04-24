@@ -1,4 +1,4 @@
-# Blender 4.0.2 MTL File: 'untitled.blend'
+# Blender 4.0.2 MTL File: 'gasStation.blend'
 # www.blender.org
 
 newmtl Management.001
@@ -19,7 +19,7 @@ Ke 0.000000 0.000000 0.000000
 Ni 1.450000
 d 1.000000
 illum 1
-map_Kd C:/Users/Max J/Downloads/gs/source/Gas_station_Props/Marble.jpg
+map_Kd cash.png
 
 newmtl Pack_lighters.001
 Ns 0.000000

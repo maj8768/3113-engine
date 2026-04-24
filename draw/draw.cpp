@@ -7,11 +7,8 @@
 #include <stdio.h>
 #include <iostream>
 
-
-// current (GPU)
-
 void Draw3DGPU(const meshedObject& object, const camera& cam, shaderStore& shader, vector4 color, const mtx44* precomputedVP, const Texture2D* shadowTex, bool receiveShadows, const Texture2D* shadowTexFar) {
-    triDomMesh mesh = object.mesh;
+    const triDomMesh& mesh = object.mesh;
     mtx44 vp;
     if (precomputedVP) {
         vp = *precomputedVP;
@@ -21,7 +18,6 @@ void Draw3DGPU(const meshedObject& object, const camera& cam, shaderStore& shade
         vp = mmult4(proj, view);
     }
 
-
     rlDrawRenderBatchActive();
 
     if (shader.shadowsEnabledLoc >= 0) {
@@ -29,46 +25,48 @@ void Draw3DGPU(const meshedObject& object, const camera& cam, shaderStore& shade
         SetShaderValue(shader.shader, shader.shadowsEnabledLoc, &shadowFlag, SHADER_UNIFORM_INT);
     }
     if (shadowTex != nullptr && shadowTex->id != 0 && shader.shadowMapLoc >= 0)
-        SetShaderValueTexture(shader.shader, shader.shadowMapLoc, *shadowTex);
+    SetShaderValueTexture(shader.shader, shader.shadowMapLoc, *shadowTex);
     if (shadowTexFar != nullptr && shadowTexFar->id != 0 && shader.shadowMapFarLoc >= 0)
-        SetShaderValueTexture(shader.shader, shader.shadowMapFarLoc, *shadowTexFar);
+    SetShaderValueTexture(shader.shader, shader.shadowMapFarLoc, *shadowTexFar);
     SetShaderValueTexture(shader.shader, shader.texoLoc, object.texo);
     SetShaderValueMatrix(shader.shader, shader.vpLoc, ToRaylibMatrix(vp));
+    mtx44 model = buildModelMatrix(object.pEntity.location, object.pEntity.rot, object.offset);
+    SetShaderValueMatrix(shader.shader, shader.modelLoc, ToRaylibMatrix(model));
 
-//    rlSetTexture(object.texo.id);
-//    std::cout << object.texo.id << std::endl;
     rlBegin(RL_TRIANGLES);
     rlColor4ub(color.x, color.y, color.z, color.t);
     for (int i = 0; i < mesh.count; i++) {
-        rlNormal3f(mesh.tris[i].n[0].x, mesh.tris[i].n[0].y, mesh.tris[i].n[0].z);
-        rlTexCoord2f(mesh.tris[i].t[0].x, mesh.tris[i].t[0].y);
-        rlVertex3f(mesh.tris[i].v[0].x, mesh.tris[i].v[0].y, mesh.tris[i].v[0].z);
+        rlNormal3f(mesh.trisO[i].n[0].x, mesh.trisO[i].n[0].y, mesh.trisO[i].n[0].z);
+        rlTexCoord2f(mesh.trisO[i].t[0].x, mesh.trisO[i].t[0].y);
+        rlVertex3f(mesh.trisO[i].v[0].x, mesh.trisO[i].v[0].y, mesh.trisO[i].v[0].z);
 
-        rlNormal3f(mesh.tris[i].n[1].x, mesh.tris[i].n[1].y, mesh.tris[i].n[1].z);
-        rlTexCoord2f(mesh.tris[i].t[1].x, mesh.tris[i].t[1].y);
-        rlVertex3f(mesh.tris[i].v[1].x, mesh.tris[i].v[1].y, mesh.tris[i].v[1].z);
+        rlNormal3f(mesh.trisO[i].n[1].x, mesh.trisO[i].n[1].y, mesh.trisO[i].n[1].z);
+        rlTexCoord2f(mesh.trisO[i].t[1].x, mesh.trisO[i].t[1].y);
+        rlVertex3f(mesh.trisO[i].v[1].x, mesh.trisO[i].v[1].y, mesh.trisO[i].v[1].z);
 
-        rlNormal3f(mesh.tris[i].n[2].x, mesh.tris[i].n[2].y, mesh.tris[i].n[2].z);
-        rlTexCoord2f(mesh.tris[i].t[2].x, mesh.tris[i].t[2].y);
-        rlVertex3f(mesh.tris[i].v[2].x, mesh.tris[i].v[2].y, mesh.tris[i].v[2].z);
+        rlNormal3f(mesh.trisO[i].n[2].x, mesh.trisO[i].n[2].y, mesh.trisO[i].n[2].z);
+        rlTexCoord2f(mesh.trisO[i].t[2].x, mesh.trisO[i].t[2].y);
+        rlVertex3f(mesh.trisO[i].v[2].x, mesh.trisO[i].v[2].y, mesh.trisO[i].v[2].z);
     }
     rlEnd();
-    // rlSetTexture(0);
-//    SetShaderValueTexture(shader.shader, shader.texoLoc, );
 }
 
-void Draw3DDepthGPU(const meshedObject& object) {
-    triDomMesh mesh = object.mesh;
+void Draw3DDepthGPU(const meshedObject& object, Shader depthShader, int modelLoc) {
+    const triDomMesh& mesh = object.mesh;
+
+    rlDrawRenderBatchActive();
+    mtx44 model = buildModelMatrix(object.pEntity.location, object.pEntity.rot, object.offset);
+    SetShaderValueMatrix(depthShader, modelLoc, ToRaylibMatrix(model));
 
     rlSetTexture(object.texo.id);
     rlBegin(RL_TRIANGLES);
     for (int i = 0; i < mesh.count; i++) {
-        rlTexCoord2f(mesh.tris[i].t[0].x, mesh.tris[i].t[0].y);
-        rlVertex3f(mesh.tris[i].v[0].x, mesh.tris[i].v[0].y, mesh.tris[i].v[0].z);
-        rlTexCoord2f(mesh.tris[i].t[1].x, mesh.tris[i].t[1].y);
-        rlVertex3f(mesh.tris[i].v[1].x, mesh.tris[i].v[1].y, mesh.tris[i].v[1].z);
-        rlTexCoord2f(mesh.tris[i].t[2].x, mesh.tris[i].t[2].y);
-        rlVertex3f(mesh.tris[i].v[2].x, mesh.tris[i].v[2].y, mesh.tris[i].v[2].z);
+        rlTexCoord2f(mesh.trisO[i].t[0].x, mesh.trisO[i].t[0].y);
+        rlVertex3f(mesh.trisO[i].v[0].x, mesh.trisO[i].v[0].y, mesh.trisO[i].v[0].z);
+        rlTexCoord2f(mesh.trisO[i].t[1].x, mesh.trisO[i].t[1].y);
+        rlVertex3f(mesh.trisO[i].v[1].x, mesh.trisO[i].v[1].y, mesh.trisO[i].v[1].z);
+        rlTexCoord2f(mesh.trisO[i].t[2].x, mesh.trisO[i].t[2].y);
+        rlVertex3f(mesh.trisO[i].v[2].x, mesh.trisO[i].v[2].y, mesh.trisO[i].v[2].z);
     }
     rlEnd();
     rlSetTexture(0);
@@ -87,6 +85,7 @@ void DrawColliderGPU(int cPlaneCount, const planeMtx* colliders, const camera& c
 
     rlDrawRenderBatchActive();
     SetShaderValueMatrix(shader.shader, shader.vpLoc, ToRaylibMatrix(vp));
+    SetShaderValueMatrix(shader.shader, shader.modelLoc, ToRaylibMatrix(identityMatrix()));
 
     rlBegin(RL_LINES);
     rlColor4ub(color.x, color.y, color.z, color.t);
@@ -113,6 +112,7 @@ void DrawPlaneNormalsGPU(int planeCount, const planeMtx* planes, const camera& c
 
     rlDrawRenderBatchActive();
     SetShaderValueMatrix(shader.shader, shader.vpLoc, ToRaylibMatrix(vp));
+    SetShaderValueMatrix(shader.shader, shader.modelLoc, ToRaylibMatrix(identityMatrix()));
 
     rlBegin(RL_LINES);
     rlColor4ub(color.x, color.y, color.z, color.t);
@@ -123,8 +123,8 @@ void DrawPlaneNormalsGPU(int planeCount, const planeMtx* planes, const camera& c
 
         vector3 center = {
             (planes[i].m[0][0] + planes[i].m[1][0] + planes[i].m[2][0] + planes[i].m[3][0]) * 0.25f,
-            (planes[i].m[0][1] + planes[i].m[1][1] + planes[i].m[2][1] + planes[i].m[3][1]) * 0.25f,
-            (planes[i].m[0][2] + planes[i].m[1][2] + planes[i].m[2][2] + planes[i].m[3][2]) * 0.25f
+                (planes[i].m[0][1] + planes[i].m[1][1] + planes[i].m[2][1] + planes[i].m[3][1]) * 0.25f,
+                (planes[i].m[0][2] + planes[i].m[1][2] + planes[i].m[2][2] + planes[i].m[3][2]) * 0.25f
         };
 
         vector3 normal = normalize3(cross3(p2 - p1, p4 - p1));
@@ -139,29 +139,29 @@ void DrawPlaneNormalsGPU(int planeCount, const planeMtx* planes, const camera& c
 void DrawPlaneGPU(planeMtx plane, camera cam, shaderStore shader, vector4 color, float scale) {
     mtx44 view = viewMtx44(cam.camPos, cam.camTarget, cam.up);
     mtx44 proj = projMtx44(cam.fov, cam.aspect, 0.1f, 1000.0f);
-    mtx44 vp   = mmult4(proj, view);
+    mtx44 vp = mmult4(proj, view);
 
-    vector3 p0 = { plane.m[0][0], plane.m[0][1], plane.m[0][2] };
-    vector3 p1 = { plane.m[1][0], plane.m[1][1], plane.m[1][2] };
-    vector3 p2 = { plane.m[2][0], plane.m[2][1], plane.m[2][2] };
-    vector3 p3 = { plane.m[3][0], plane.m[3][1], plane.m[3][2] };
+    vector3 p0 = {plane.m[0][0], plane.m[0][1], plane.m[0][2]};
+    vector3 p1 = {plane.m[1][0], plane.m[1][1], plane.m[1][2]};
+    vector3 p2 = {plane.m[2][0], plane.m[2][1], plane.m[2][2]};
+    vector3 p3 = {plane.m[3][0], plane.m[3][1], plane.m[3][2]};
 
-    vector3 edge1 = { plane.m[1][0] - plane.m[0][0], plane.m[1][1] - plane.m[0][1], plane.m[1][2] - plane.m[0][2] };
-    vector3 edge2 = { plane.m[3][0] - plane.m[0][0], plane.m[3][1] - plane.m[0][1], plane.m[3][2] - plane.m[0][2] };
+    vector3 edge1 = {plane.m[1][0] - plane.m[0][0], plane.m[1][1] - plane.m[0][1], plane.m[1][2] - plane.m[0][2]};
+    vector3 edge2 = {plane.m[3][0] - plane.m[0][0], plane.m[3][1] - plane.m[0][1], plane.m[3][2] - plane.m[0][2]};
 
     float nx = edge1.y * edge2.z - edge1.z * edge2.y;
     float ny = edge1.z * edge2.x - edge1.x * edge2.z;
     float nz = edge1.x * edge2.y - edge1.y * edge2.x;
     float nlen = sqrtf(nx*nx + ny*ny + nz*nz);
-    float normal[3] = { nx/nlen, ny/nlen, nz/nlen };
+    float normal[3] = {nx/nlen, ny/nlen, nz/nlen};
 
     SetShaderValue(shader.shader, shader.normalLoc, normal, SHADER_UNIFORM_VEC3);
-    
+
     vector3 ndc1, ndc2, ndc3, ndc4;
     rlBegin(RL_TRIANGLES);
     rlColor4ub(color.x, color.y, color.z, color.t);
     if (CullAndProjectTriangleToNDC(vp, p0, p1, p2, ndc1, ndc2, ndc3)) {
-//        std::cout << "1" << std::endl;
+
         rlNormal3f(normal[0], normal[1], normal[2]);
         rlVertex3f(ndc1.x, ndc1.y, ndc1.z);
         rlNormal3f(normal[0], normal[1], normal[2]);
@@ -170,7 +170,7 @@ void DrawPlaneGPU(planeMtx plane, camera cam, shaderStore shader, vector4 color,
         rlVertex3f(ndc3.x, ndc3.y, ndc3.z);
     }
     if (CullAndProjectTriangleToNDC(vp, p0, p2, p3, ndc1, ndc3, ndc4)) {
-//        std::cout << "2" << std::endl;
+
         rlNormal3f(normal[0], normal[1], normal[2]);
         rlVertex3f(ndc1.x, ndc1.y, ndc1.z);
         rlNormal3f(normal[0], normal[1], normal[2]);
@@ -189,7 +189,7 @@ void DrawSphereGPU(sphere_ sphere, float n, vector3 centp, camera& cam, float sc
 
     for (int i = 0; i < mtxmtx.size; i++) {
         for (int j = 0; j < mtxmtx.mtxarr[i].size; j++) {
-            world.m[0][0] = 1; world.m[1][1] = 1; world.m[2][2] = 1; world.m[3][3] = 1; // identity mtx
+            world.m[0][0] = 1; world.m[1][1] = 1; world.m[2][2] = 1; world.m[3][3] = 1;
 
             vector3 object_coords;
             object_coords.x = mtxmtx.mtxarr[i].mtx[j].x + centp.x;
@@ -204,20 +204,14 @@ void DrawSphereGPU(sphere_ sphere, float n, vector3 centp, camera& cam, float sc
             bool sing_ok = worldToScreen(object_coords, world, view, proj, screenW, screenH, screen);
 
             if (sing_ok) {
-                // mtxmtx.mtxarr[i].mtx[j].x = screen.x;
-                // mtxmtx.mtxarr[i].mtx[j].y = screen.y;
-                // mtxmtx.mtxarr[i].mtx[j].z = screen.z;
+
                 verts[i][j].x = screen.x;
                 verts[i][j].y = screen.y;
 
             }
-            // std::cout << "i: " << i << std::endl;
-            // std::cout << screen.x << ", " << screen.y << ", " << screen.z << std::endl;
-            // DrawGon(50, mtxmtx.mtxarr[i]);
+
         }
     }
-
-    // draw calls
 
     for (int p = 0; p < mtxmtx.size; p ++) {
         for (int k = 0; k < mtxmtx.mtxarr[p].size; k++) {
@@ -240,14 +234,9 @@ void DrawSphereGPU(sphere_ sphere, float n, vector3 centp, camera& cam, float sc
     }
 }
 
-// deprecated (CPU)
-
-// 2D
-
 void DrawLineFancy(float x1, float y1, float x2, float y2, Color color) {
-    DrawLineV({ (float)x1, (float)y1 }, { (float)x2, (float)y2 }, color);
+    DrawLineV({(float)x1, (float)y1}, {(float)x2, (float)y2}, color);
 }
-
 
 void DrawTriangleFancy(const triangleMtx& triangle, Color color) {
     DrawLineFancy(triangle.x1, triangle.y1, triangle.x2, triangle.y2, color);
@@ -256,25 +245,19 @@ void DrawTriangleFancy(const triangleMtx& triangle, Color color) {
 }
 
 void DrawGon(const int size, gonalMtx& coords) {
-    //calculateGon2D(coords.size, coords, true, size);
+
     for (int i = 0; i < coords.size; i++) {
         if (i == coords.size-1) {
             std::cout << coords.mtx[i].x << ", " << coords.mtx[i].y << std::endl;
             std::cout << coords.mtx[0].x << ", " << coords.mtx[0].y << std::endl;
             DrawLineFancy(coords.mtx[i].x,coords.mtx[i].y,coords.mtx[0].x,coords.mtx[0].y, BLACK);
-            // DrawLine3D({coords.mtx[i].x,coords.mtx[i].y,coords.mtx[i].z},{coords.mtx[0].x,coords.mtx[].y,coords.mtx[i].z},BLACK)
+
         }
         else {
             DrawLineFancy(coords.mtx[i].x,coords.mtx[i].y,coords.mtx[i+1].x,coords.mtx[i+1].y, BLACK);
         }
     }
 }
-
-
-// 3D
-
-
-//worldToScreen(vector3& wpos, mtx44& world, mtx44& view, mtx44& projection, float screenW, float screenH, vector2& scpos)
 
 void DrawSphere(sphere_ sphere, camera& cam, float screenW, float screenH) {
     DrawPolyHedron(sphere.spungon_mtx,sphere.size,sphere.location,cam,screenW,screenH);
@@ -287,7 +270,7 @@ void DrawPolyHedron(spungonMtx mtxmtx, float n, vector3 centp, camera& cam, floa
 
     for (int i = 0; i < mtxmtx.size; i++) {
         for (int j = 0; j < mtxmtx.mtxarr[i].size; j++) {
-            world.m[0][0] = 1; world.m[1][1] = 1; world.m[2][2] = 1; world.m[3][3] = 1; // identity mtx
+            world.m[0][0] = 1; world.m[1][1] = 1; world.m[2][2] = 1; world.m[3][3] = 1;
 
             vector3 object_coords;
             object_coords.x = mtxmtx.mtxarr[i].mtx[j].x + centp.x;
@@ -302,20 +285,14 @@ void DrawPolyHedron(spungonMtx mtxmtx, float n, vector3 centp, camera& cam, floa
             bool sing_ok = worldToScreen(object_coords, world, view, proj, screenW, screenH, screen);
 
             if (sing_ok) {
-                // mtxmtx.mtxarr[i].mtx[j].x = screen.x;
-                // mtxmtx.mtxarr[i].mtx[j].y = screen.y;
-                // mtxmtx.mtxarr[i].mtx[j].z = screen.z;
+
                 verts[i][j].x = screen.x;
                 verts[i][j].y = screen.y;
 
             }
-            // std::cout << "i: " << i << std::endl;
-            // std::cout << screen.x << ", " << screen.y << ", " << screen.z << std::endl;
-            // DrawGon(50, mtxmtx.mtxarr[i]);
+
         }
     }
-
-    // draw calls
 
     for (int p = 0; p < mtxmtx.size; p ++) {
         for (int k = 0; k < mtxmtx.mtxarr[p].size; k++) {
@@ -342,11 +319,9 @@ void DrawPlaneFancy(const planeMtx& plane, camera& cam, float screenW, float scr
     mtx44 world = {};
     planeMtx screenCoords;
 
-
     for (int k = 0; k < 4; k++) {
-        // std::cout << k << std::endl;
 
-        world.m[0][0] = 1; world.m[1][1] = 1; world.m[2][2] = 1; world.m[3][3] = 1; // identity mtx
+        world.m[0][0] = 1; world.m[1][1] = 1; world.m[2][2] = 1; world.m[3][3] = 1;
 
         vector3 object_coords;
         object_coords.x = plane.m[k][0];
@@ -364,7 +339,7 @@ void DrawPlaneFancy(const planeMtx& plane, camera& cam, float screenW, float scr
             screenCoords.m[k][0] = screen.x;
             screenCoords.m[k][1] = screen.y;
             screenCoords.m[k][2] = screen.z;
-            //std::cout << screen.z << ", " << std::endl;
+
         } else {
             std::cout << "Point is behind camera or outside the view" << std::endl;
         }
@@ -372,19 +347,19 @@ void DrawPlaneFancy(const planeMtx& plane, camera& cam, float screenW, float scr
 
     DrawLineFancy(screenCoords.m[0][0], screenCoords.m[0][1], screenCoords.m[1][0], screenCoords.m[1][1], color);
     DrawLineFancy(screenCoords.m[1][0], screenCoords.m[1][1], screenCoords.m[2][0], screenCoords.m[2][1], color);
-    // DrawLineFancy(screenCoords.m[2][0], screenCoords.m[2][1], screenCoords.m[0][0], screenCoords.m[0][1], color);
+
     DrawLineFancy(screenCoords.m[0][0], screenCoords.m[0][1], screenCoords.m[3][0], screenCoords.m[3][1], color);
-    // DrawLineFancy(screenCoords.m[1][0], screenCoords.m[1][1], screenCoords.m[3][0], screenCoords.m[3][1], color);
+
     DrawLineFancy(screenCoords.m[2][0], screenCoords.m[2][1], screenCoords.m[3][0], screenCoords.m[3][1], color);
 
     if (drawNormal) {
         vector3 vt[2];
-        world.m[0][0] = 1; world.m[1][1] = 1; world.m[2][2] = 1; world.m[3][3] = 1; // identity mtx
+        world.m[0][0] = 1; world.m[1][1] = 1; world.m[2][2] = 1; world.m[3][3] = 1;
 
         vector3 centroid = {
             (plane.m[0][0] + plane.m[1][0] + plane.m[2][0] + plane.m[3][0])/4,
-            (plane.m[0][1] + plane.m[1][1] + plane.m[2][1] + plane.m[3][1])/4,
-            (plane.m[0][2] + plane.m[1][2] + plane.m[2][2] + plane.m[3][2])/4
+                (plane.m[0][1] + plane.m[1][1] + plane.m[2][1] + plane.m[3][1])/4,
+                (plane.m[0][2] + plane.m[1][2] + plane.m[2][2] + plane.m[3][2])/4
         };
 
         vector3 p1 = {plane.m[0][0], plane.m[0][1], plane.m[0][2]};
@@ -398,17 +373,14 @@ void DrawPlaneFancy(const planeMtx& plane, camera& cam, float screenW, float scr
 
         vector3 repos = centroid - normal.fmult(1 / normal.mag());
 
-        // modmmult(world, extendV3(centroid));
         mtx44 view = viewMtx44(cam.camPos, cam.camTarget, cam.up);
         mtx44 proj = projMtx44(cam.fov, cam.aspect, 0.1f, 1000.0f);
 
         bool nsc1 = worldToScreen(repos, world, view, proj, screenW, screenH, vt[0]);
         bool nsc2 = worldToScreen(centroid, world, view, proj, screenW, screenH, vt[1]);
 
-        // std::cout << nsc1 << nsc2 << std::endl;
-
         if (nsc1 && nsc2) {
-            // std::cout << vt[0].x << ", " << vt[0].y << ", " << vt[1].x << ", " << vt[1].y << std::endl;
+
             DrawLineFancy(vt[0].x,vt[0].y,vt[1].x,vt[1].y,ORANGE);
         } else {
             std::cout << "Point is behind camera or outside the view" << std::endl;
@@ -418,14 +390,13 @@ void DrawPlaneFancy(const planeMtx& plane, camera& cam, float screenW, float scr
 }
 
 void DrawPyramidFancy(const pyramidMtx& pyramid, camera& cam, float screenW, float screenH, Color color) {
-    
+
     mtx44 world = {};
     pyramidMtx screenCoords;
 
     for (int k = 0; k < 4; k++) {
-        // std::cout << k << std::endl;
 
-        world.m[0][0] = 1; world.m[1][1] = 1; world.m[2][2] = 1; world.m[3][3] = 1; // identity mtx
+        world.m[0][0] = 1; world.m[1][1] = 1; world.m[2][2] = 1; world.m[3][3] = 1;
 
         vector3 object_coords;
         object_coords.x = pyramid.m[k][0];
@@ -443,38 +414,19 @@ void DrawPyramidFancy(const pyramidMtx& pyramid, camera& cam, float screenW, flo
             screenCoords.m[k][0] = screen.x;
             screenCoords.m[k][1] = screen.y;
             screenCoords.m[k][2] = screen.z;
-            //std::cout << screen.z << ", " << std::endl;
+
         } else {
             std::cout << "Point is behind camera or outside the view" << std::endl;
         }
     }
-    //std::cout << "next" << std::endl;
-
-    // Draw the base triangles
-
-    //DrawLineFancy(screenCoords.m[0][0], screenCoords.m[0][1], screenCoords.m[1][0], screenCoords.m[1][1], color);
-    //DrawLineFancy(screenCoords.m[1][0], screenCoords.m[1][1], screenCoords.m[2][0], screenCoords.m[2][1], color);
-    //DrawLineFancy(screenCoords.m[2][0], screenCoords.m[2][1], screenCoords.m[0][0], screenCoords.m[0][1], color);
-    //DrawLineFancy(screenCoords.m[0][0], screenCoords.m[0][1], screenCoords.m[3][0], screenCoords.m[3][1], color);
-    //DrawLineFancy(screenCoords.m[1][0], screenCoords.m[1][1], screenCoords.m[3][0], screenCoords.m[3][1], color);
-    //DrawLineFancy(screenCoords.m[2][0], screenCoords.m[2][1], screenCoords.m[3][0], screenCoords.m[3][1], color);
-    // std::cout << "ended" << std::endl;
-
-    // painters (back->front) (no true z bcz no depth layer)
-
-    /*
-     * I'm choosing painters because the alternatives require math outside my
-     * realm of understanding
-    */
 
     int faceTri[4][3] = {
-        {0, 2, 1}, // bottom
-        {0, 1, 3}, // side 1
-        {1, 2, 3}, // side 2
-        {2, 0, 3}, // side 3
-    };
+        {0, 2, 1},
+            {0, 1, 3},
+            {1, 2, 3},
+            {2, 0, 3},
+        };
 
-    // find barycentric z by averaging z at each coord for each triangle
     float faceZ[4];
     int faceOrder[4] = {0, 1, 2, 3};
 
@@ -483,7 +435,6 @@ void DrawPyramidFancy(const pyramidMtx& pyramid, camera& cam, float screenW, flo
         faceZ[f] = (screenCoords.m[a][2] + screenCoords.m[b][2] + screenCoords.m[c][2]) / 3.0f;
     }
 
-    // sorts faces by z and stores position of farthest face in screencoords first in tri
     for (int i = 0; i < 4; i++) {
         for (int j = i + 1; j < 4; j++) {
             if (faceZ[faceOrder[i]] > faceZ[faceOrder[j]]) {
@@ -494,7 +445,6 @@ void DrawPyramidFancy(const pyramidMtx& pyramid, camera& cam, float screenW, flo
         }
     }
 
-    //rlDrawRenderBatchActive();
     rlDisableDepthTest();
     rlDisableColorBlend();
     rlDisableBackfaceCulling();
@@ -503,8 +453,8 @@ void DrawPyramidFancy(const pyramidMtx& pyramid, camera& cam, float screenW, flo
     rlSetTexture(pyramid.texture.id);
     rlColor4f(1, 1, 1, 1);
 
-    for (int t = 0; t < 4; t++) { // draws screencoords in order of tri (which stores position of verticies in order of faces far->close)
-        int f = faceOrder[t];          // face id
+    for (int t = 0; t < 4; t++) {
+        int f = faceOrder[t];
         int a = faceTri[f][0];
         int b = faceTri[f][1];
         int c = faceTri[f][2];
@@ -518,12 +468,7 @@ void DrawPyramidFancy(const pyramidMtx& pyramid, camera& cam, float screenW, flo
         rlTexCoord2f(pyramid.textureArea[f][4], pyramid.textureArea[f][5]);
         rlVertex2f(screenCoords.m[a][0], screenCoords.m[a][1]);
 
-        //std::cout << t << ": " << std::endl;
-        //std:: cout << pyramid.textureArea[t][0] << ", " << pyramid.textureArea[t][1] << std::endl;
-        //std:: cout << pyramid.textureArea[t][2] << ", " << pyramid.textureArea[t][3] << std::endl;
-        //std:: cout << pyramid.textureArea[t][4] << ", " << pyramid.textureArea[t][5] << std::endl;
     }
-    //std::cout << "===" << std::endl;
 
     rlEnd();
     rlSetTexture(0);
@@ -532,29 +477,7 @@ void DrawPyramidFancy(const pyramidMtx& pyramid, camera& cam, float screenW, flo
     rlEnableDepthTest();
     rlEnableBackfaceCulling();
 
-    //Vector2 originOffset = {
-        //static_cast<float>(gScale.x) / 2.0f,
-        // static_cast<float>(gScale.y) / 2.0f
-    //    0.f,
-    //    0.f
-    //};
-
-    //DrawTexturePro(
-     //   gTexture,
-      //  textureArea,
-       // destinationArea,
-      //  originOffset,
-      //  gAngle,
-      //  WHITE
-    //);
-
-
 }
-
-
-// Transforms
-
-// 2D
 
 void ZRotatePointAboutPoint(float cx, float cy, float& x, float& y, float angle) {
     float px = cos(angle)*(x-cx)-sin(angle)*(y-cy) + cx;
@@ -597,7 +520,7 @@ void ZRotateTriangleAboutPoint(triangleMtx& triangle, float px, float py, float 
 }
 
 void XYScaleTriangleAroundCenter(triangleMtx& triangle, float scaleFactor) {
-    
+
     float cx = (triangle.x1 + triangle.x2 + triangle.x3) / 3.0f;
     float cy = (triangle.y1 + triangle.y2 + triangle.y3) / 3.0f;
 
@@ -611,95 +534,28 @@ void XYScaleTriangleAroundCenter(triangleMtx& triangle, float scaleFactor) {
     triangle.y3 = cy + (triangle.y3 - cy) * scaleFactor;
 }
 
-// 3D (this is fake, uses made up z from raylib)
-
-// need to redo / repurpose into world space transforms
-
-// void XYZScalePyramidAroundCenter(pyramidMtx& pyramid, float scaleFactor) {
-    
-//     float cx = (pyramid.x1 + pyramid.x2 + pyramid.x3 + pyramid.x4) / 4.0f;
-//     float cy = (pyramid.y1 + pyramid.y2 + pyramid.y3 + pyramid.y4) / 4.0f;
-//     float cz = (pyramid.z1 + pyramid.z2 + pyramid.z3 + pyramid.z4) / 4.0f;
-
-//     pyramid.x1 = cx + (pyramid.x1 - cx) * scaleFactor;
-//     pyramid.y1 = cy + (pyramid.y1 - cy) * scaleFactor;
-//     pyramid.z1 = cz + (pyramid.z1 - cz) * scaleFactor;
-
-//     pyramid.x2 = cx + (pyramid.x2 - cx) * scaleFactor;
-//     pyramid.y2 = cy + (pyramid.y2 - cy) * scaleFactor;
-//     pyramid.z2 = cz + (pyramid.z2 - cz) * scaleFactor;
-
-//     pyramid.x3 = cx + (pyramid.x3 - cx) * scaleFactor;
-//     pyramid.y3 = cy + (pyramid.y3 - cy) * scaleFactor;
-//     pyramid.z3 = cz + (pyramid.z3 - cz) * scaleFactor;
-
-//     pyramid.x4 = cx + (pyramid.x4 - cx) * scaleFactor;
-//     pyramid.y4 = cy + (pyramid.y4 - cy) * scaleFactor;
-//     pyramid.z4 = cz + (pyramid.z4 - cz) * scaleFactor;
-// }
-
-// void XYZRotatePyramidAboutSelf(pyramidMtx& pyramid, float angleX, float angleY, float angleZ) {
-//     float cx = (pyramid.x1 + pyramid.x2 + pyramid.x3 + pyramid.x4) / 4.0f;
-//     float cy = (pyramid.y1 + pyramid.y2 + pyramid.y3 + pyramid.y4) / 4.0f;
-//     float cz = (pyramid.z1 + pyramid.z2 + pyramid.z3 + pyramid.z4) / 4.0f;
-
-//     // Z rotation: rotate (x, y) about (cx, cy)
-//     ZRotatePointAboutPoint(cx, cy, pyramid.x1, pyramid.y1, angleZ);
-//     ZRotatePointAboutPoint(cx, cy, pyramid.x2, pyramid.y2, angleZ);
-//     ZRotatePointAboutPoint(cx, cy, pyramid.x3, pyramid.y3, angleZ);
-//     ZRotatePointAboutPoint(cx, cy, pyramid.x4, pyramid.y4, angleZ);
-
-//     // Y rotation: rotate (x, z) about (cx, cz)
-//     ZRotatePointAboutPoint(cx, cz, pyramid.x1, pyramid.z1, angleY);
-//     ZRotatePointAboutPoint(cx, cz, pyramid.x2, pyramid.z2, angleY);
-//     ZRotatePointAboutPoint(cx, cz, pyramid.x3, pyramid.z3, angleY);
-//     ZRotatePointAboutPoint(cx, cz, pyramid.x4, pyramid.z4, angleY);
-
-//     // X rotation: rotate (y, z) about (cy, cz)
-//     ZRotatePointAboutPoint(cy, cz, pyramid.y1, pyramid.z1, angleX);
-//     ZRotatePointAboutPoint(cy, cz, pyramid.y2, pyramid.z2, angleX);
-//     ZRotatePointAboutPoint(cy, cz, pyramid.y3, pyramid.z3, angleX);
-//     ZRotatePointAboutPoint(cy, cz, pyramid.y4, pyramid.z4, angleX);
-// }
-
-// void XYZRotatePyramidAboutPoint(pyramidMtx& pyramid, float px, float py, float pz, float ix, float iy, float iz) {
-//     // Rotate the pyramid about a point (px, py, pz)
-
-//     float angleX = atan2(iy - py, iz - pz);
-//     float angleY = atan2(ix - px, iz - pz);
-//     float angleZ = atan2(iy - py, ix - px);
-
-//     XYZRotatePyramidAboutSelf(pyramid, angleX, angleY, angleZ);
-// }
-
-// textures
-
 Color ColorFromHex(const char *hex) {
-    // Skip leading '#', if present
+
     if (hex[0] == '#') hex++;
 
-    // Default alpha = 255 (opaque)
-    unsigned int r = 0, 
-                 g = 0, 
-                 b = 0, 
-                 a = 255;
+    unsigned int r = 0,
+        g = 0,
+        b = 0,
+        a = 255;
 
-    // 6‑digit form: RRGGBB
     if (sscanf(hex, "%02x%02x%02x", &r, &g, &b) == 3) {
-        return (Color){ (unsigned char) r,
-                        (unsigned char) g,
-                        (unsigned char) b,
-                        (unsigned char) a };
+        return (Color){(unsigned char) r,
+                (unsigned char) g,
+                (unsigned char) b,
+                (unsigned char) a};
     }
 
-    // 8‑digit form: RRGGBBAA
     if (sscanf(hex, "%02x%02x%02x%02x", &r, &g, &b, &a) == 4) {
-        return (Color){ (unsigned char) r,
-                        (unsigned char) g,
-                        (unsigned char) b,
-                        (unsigned char) a };
+        return (Color){(unsigned char) r,
+                (unsigned char) g,
+                (unsigned char) b,
+                (unsigned char) a};
     }
 
-    // Fallback – return white so you notice something went wrong
     return RAYWHITE;
 }

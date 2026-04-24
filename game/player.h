@@ -5,6 +5,7 @@ void playerFollowBall(player& player1, sphere_ ball, bool swappedNormals);
 
 void getStartingInput(gameData& gData);
 void getRestartInput(gameData& gData);
+void getEscapeMenuInput(gameData& gData);
 
 void standardCollide(int id);
 void killPlayer(int id);

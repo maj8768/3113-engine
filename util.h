@@ -3,40 +3,41 @@
 #include <cmath>
 
 #ifndef M_PI
-    #define M_PI 3.14159
+#define M_PI 3.14159
 #endif
 
-// Global Constants
-constexpr int SCREEN_WIDTH        = 1280,
-              SCREEN_HEIGHT       = 720,
-                FPS               = 0;
-                
+constexpr int SCREEN_WIDTH = 1280,
+    SCREEN_HEIGHT = 720,
+    FPS = 0;
+
 constexpr float eps = 1e-6;
 
 enum physicsComplexity {
     SIMPLE,
-    COMPLEX
+        COMPLEX
 };
 
 extern bool debugMode;
 
 enum buyState {
     START,
-    GOODBYE,
-    DRANK_SELECT,
-    CIG_SELECT,
-    GOODBYE_SELECT,
-    BACK_SELECT,
-    DRANK,
-    CIG,
-    BUY_DRANK,
-    BUY_CIG,
-    THANKS,
-    POOR,
-};
+        GOODBYE,
+        DRANK_SELECT,
+        CIG_SELECT,
+        GOODBYE_SELECT,
+        BACK_SELECT,
+        DRANK,
+        CIG,
+        BUY_DRANK,
+        BUY_CIG,
+        THANKS,
+        POOR,
+        GAS_1_SELECT,
+        GAS_5_SELECT,
+    };
 
 enum buySelection {
-        ONE,
+    ONE,
         TWO,
         THREE
 };
@@ -54,17 +55,18 @@ struct playerState {
     bool inCar;
     float drunkenness;
     float cigaretteTimer;
-    float carFuel;
+    float carFuel = 50.f;
     float leftTurn = 0.f;
     float rightTurn = 0.f;
     float brake = 0.f;
     float forward = 0.f;
-    float money = 100.f;
+    float money = 0.f;
     bool shiftUp = false;
     bool shiftDown = false;
-    bool reverseDown  = false;
+    bool reverseDown = false;
     bool canGasPump = false;
     bool hasGasPump = false;
+    bool gasMenuOpen = false;
     bool pumpingUp = false;
     bool canPickDrank = false;
     bool hasDrank = false;
@@ -74,11 +76,12 @@ struct playerState {
     bool canDrinkDrank = false;
     bool canSmokeCig = false;
     bool noClip = false;
+    bool uberMenuOpen = false;
 
 };
 
 struct gameData {
-    
+
     float fadeTo;
     bool isDying;
 
@@ -98,16 +101,22 @@ struct gameData {
 
     enum levels {
         LEVEL1,
-        LEVEL2,
-        LEVEL3,
-        GAMEEND,
-        GAMEWIN,
-        GAMESTART,
-        GAMEINFOMERCIAL,
-        TESTING_ENVIRONMENT
+            LEVEL2,
+            LEVEL3,
+            LEVEL4,
+            GAMEEND,
+            GAMEWIN,
+            GAMESTART,
+            GAMEINFOMERCIAL,
+            TESTING_ENVIRONMENT
     } currentLevel;
 
     int lives;
+
+    float drankTimer = 170.0f;
+    float levelTimer = 0.0f;
+    int dranksConsumed = 0;
+    bool escapeMenuOpen = false;
 
 };
 
@@ -130,6 +139,7 @@ struct shaderStore {
     int texoLoc;
     int fadeToLoc;
     int vpLoc;
+    int modelLoc;
     int lightSpaceMatrixLoc;
     int shadowMapLoc;
     int shadowsEnabledLoc;
@@ -139,6 +149,11 @@ struct shaderStore {
     int shadowMapFarLoc;
     int lightSpaceMatrixFarLoc;
     int cascadeSplitLoc;
+    int pointPosLoc;
+    int pointColorLoc;
+    int pointRadiusLoc;
+    int pointCountLoc;
+    int drankUrgencyLoc;
 };
 
 struct pyramidMtx {
@@ -148,13 +163,10 @@ struct pyramidMtx {
     Texture2D texture;
 };
 
-/**
- * m[0][~] and m[2][~] are min/max
- */
 struct planeMtx {
     float m[4][3];
     Color color;
-    // float textureArea[4][2];
+
     Texture2D texture;
     int id;
     void (*action)(int);
@@ -162,12 +174,12 @@ struct planeMtx {
 
 struct vector4 {
     float x, y, z, t;
-    void murder() { x = 0.0f; y = 0.0f; z = 0.0f; t = 0.0f; }
+    void murder() {x = 0.0f; y = 0.0f; z = 0.0f; t = 0.0f;}
 };
 
 struct vector3 {
     float x, y, z;
-    void murder() { x = 0.0f; y = 0.0f; z = 0.0f; };
+    void murder() {x = 0.0f; y = 0.0f; z = 0.0f;};
 
     vector3(float x = 0, float y = 0, float z = 0) : x(x), y(y), z(z) {}
 
@@ -188,7 +200,7 @@ struct vector3 {
         return {(std::pow(x,other)), std::pow(y,other), std::pow(z,other)};
     }
 
-    vector3& operator+=(const vector3& o) { x+=o.x; y+=o.y; z+=o.z; return *this; }
+    vector3& operator+=(const vector3& o) {x+=o.x; y+=o.y; z+=o.z; return *this;}
 
     [[nodiscard]] vector3 fmult(const float other) const {
         return {x * other, y * other, z * other};
@@ -221,7 +233,7 @@ struct vector3 {
 
 struct vector2 {
     float x, y;
-    void murder() { x = 0.0f; y = 0.0f; }
+    void murder() {x = 0.0f; y = 0.0f;}
 };
 
 struct mtx44 {
@@ -276,9 +288,9 @@ struct physicsEntity {
 
 struct player {
     struct camera camera;
-    planeMtx* model; // probably leave blank
-    planeMtx* collider; // top and bottom
-    planeMtx* colliderO; // original collider for collision response
+    planeMtx* model;
+    planeMtx* collider;
+    planeMtx* colliderO;
     int cPlaneCount;
     vector4 controls;
     bool canMove;
@@ -286,9 +298,14 @@ struct player {
     struct playerState pState;
 };
 
-struct world {
+struct worldSegment {
     planeMtx* planes;
-    int planeCount;
+    int count;
+};
+
+struct world {
+    worldSegment* segments;
+    int segmentCount;
 };
 
 struct tri {
@@ -320,8 +337,6 @@ struct meshedObject {
 
 };
 
-
-
 void objToQuads(const char* path, meshedObject& mesh, float scale, player& player, bool playerObj);
 
 mtx44 mmult4(const mtx44&, const mtx44&);
@@ -329,6 +344,9 @@ mtx44 mmult4(const mtx44&, const mtx44&);
 vector4 modmmult(const mtx44&, const vector4&);
 
 Matrix ToRaylibMatrix(const mtx44& a);
+
+mtx44 buildModelMatrix(vector3 location, vector3 rot, vector3 offset);
+mtx44 identityMatrix();
 
 float dot3(const vector3&, const vector3&);
 
@@ -357,6 +375,7 @@ void moveUVs(triDomMesh& mesh, int* coords, int coordcount, float adjustment);
 void applyRot(vector3& v, vector3 rot, float xMod, float yMod, float zMod);
 void applyCamRot(vector3& v, vector3 camTarget, float xMod, float yMod, float zMod);
 
-bool isPointInCameraRadius(const camera& cam, const vector3& worldPoint, float screenW, float screenH, float radiusPixels);
+bool isPointInCameraRadius(const camera& cam, const vector3& worldPoint, float screenW, float screenH, float radiusPixels, vector3 offset = {0,0,0});
+bool isColliderInCameraRadius(const camera& cam, const planeMtx* collider, int cPlaneCount, float screenW, float screenH, float radiusPixels);
 
-bool canInteract(const player& player, const vector3& worldPoint, float maxDist, float screenW, float screenH, float radiusPixels, vector3 offset);
+bool canInteract(const player& player, const planeMtx* collider, int cPlaneCount, float maxDist, float screenW, float screenH, float radiusPixels);

@@ -14,6 +14,5 @@ void updateColliderLocation(meshedObject& object, player& player, bool playerObj
 
 void resetMeshedLocation(meshedObject& object);
 
-world buildWorld(meshedObject** objects, int objectCount, player& player);
-
+void buildWorld(world& w, meshedObject** objects, int objectCount);
 

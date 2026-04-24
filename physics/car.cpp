@@ -10,9 +10,9 @@
 
 void processCar(meshedObject& car, meshedObject& wheel, player& player, float deltaTime, Music& engineSound) {
 
-    static const float gearRpmRise[4] = { 0.25f, 0.25f, 0.25f, 0.167f };
-    static const float gearRpmFall[4] = { 0.80f, 0.50f, 0.30f, 0.16f };
-    static const float gearTopSpeeds[4] = { 10.f, 20.f, 30.f, 50.f };
+    static const float gearRpmRise[4] = {0.1875f, 0.125f, 0.0625f, 0.04175f};
+    static const float gearRpmFall[4] = {0.80f, 0.50f, 0.30f, 0.16f};
+    static const float gearTopSpeeds[4] = {10.f, 20.f, 35.f, 65.f};
 
     const float reverseAccel = 4.0f;
     const float brakeAccel = 18.f;
@@ -29,9 +29,9 @@ void processCar(meshedObject& car, meshedObject& wheel, player& player, float de
     static bool shiftPending = false;
     static bool shiftIsUp = false;
     static float shiftTimer = 0.f;
-    const  float shiftDelay = 0.45f;
+    const float shiftDelay = 0.45f;
 
-vector3 forward = {0.f, 0.f, 0.f};
+    vector3 forward = {0.f, 0.f, 0.f};
     applyRot(forward, car.pEntity.rot, 0.f, 0.f, -1.f);
     if (!shiftPending) {
         int targetGear = gear;
@@ -78,17 +78,17 @@ vector3 forward = {0.f, 0.f, 0.f};
     lastGear = gear;
 
     if (gear == 0) {
-        if (throttleInput > 0.f) rpm = fminf(rpm + 2.75f * deltaTime, 1.f);
-        else rpm = fmaxf(rpm - 1.0f  * deltaTime, 0.f);
+        if (throttleInput > 0.f) rpm = fminf(rpm + 0.6875f * deltaTime, 1.f);
+        else rpm = fmaxf(rpm - 1.0f * deltaTime, 0.f);
         player.pState.carFuel = fmaxf(player.pState.carFuel - deltaTime * 0.5f * rpm, 0.f);
-        
+
     }
     else if (gear == -1) {
         rpm = fmaxf(0.f, fminf(hSpeedPre / reverseTopSpeed, 1.f));
         player.pState.carFuel = fmaxf(player.pState.carFuel - deltaTime * 0.5f * rpm, 0.f);
     }
     else {
-        static const float upshiftRetain[4] = { 1.f, 0.40f, 0.55f, 0.65f };
+        static const float upshiftRetain[4] = {1.f, 0.40f, 0.55f, 0.65f};
 
         if (gearChanged) {
             if (shiftIsUp && gear >= 2 && gear <= 4) {
@@ -101,20 +101,19 @@ vector3 forward = {0.f, 0.f, 0.f};
         else if (player.pState.brake > 0.f) {
             float brakeRpmRate = brakeAccel / gearTopSpeeds[gear - 1];
             rpm = fmaxf(rpm - brakeRpmRate * deltaTime, 0.f);
-        } 
+        }
         else if (throttleInput > 0.f && player.pState.carFuel > 0.f) {
             rpm = fminf(rpm + gearRpmRise[gear - 1] * deltaTime, 1.f);
             player.pState.carFuel = fmaxf(player.pState.carFuel - deltaTime * 0.5f * rpm, 0.f);
-        } 
+        }
         else {
             rpm = fmaxf(rpm - gearRpmFall[gear - 1] * deltaTime, 0.f);
         }
     }
 
-
     if (gearChanged && gear >= 0) {
         if (shiftIsUp) engineSynth_upshift(rpm);
-        else           engineSynth_downshift(rpm);
+        else engineSynth_downshift(rpm);
     }
 
     if (gear == 0) {
@@ -124,7 +123,7 @@ vector3 forward = {0.f, 0.f, 0.f};
         float backSpeed = -(forward.x * car.pEntity.magnitude.x + forward.z * car.pEntity.magnitude.z);
         if (player.pState.forward > 0.f) {
             if (backSpeed < reverseTopSpeed)
-                car.pEntity.magnitude = car.pEntity.magnitude + forward.fmult(-reverseAccel * deltaTime);
+            car.pEntity.magnitude = car.pEntity.magnitude + forward.fmult(-reverseAccel * deltaTime);
         }
         else if (player.pState.brake > 0.f) {
             float spd = sqrtf(car.pEntity.magnitude.x * car.pEntity.magnitude.x + car.pEntity.magnitude.z * car.pEntity.magnitude.z);
@@ -147,26 +146,22 @@ vector3 forward = {0.f, 0.f, 0.f};
             car.pEntity.magnitude.x += fwdUnit.x * (driveSpeed - curFwdSpeed);
             car.pEntity.magnitude.z += fwdUnit.z * (driveSpeed - curFwdSpeed);
 
-            // Damp lateral (perpendicular) velocity — tires resist sideways slip.
             vector3 fwdVel = fwdUnit.fmult(dot3(car.pEntity.magnitude, fwdUnit));
-            float latDamp = powf(0.01f, deltaTime);  // ~-40 dB/s
+            float latDamp = powf(0.01f, deltaTime);
             car.pEntity.magnitude.x = fwdVel.x + (car.pEntity.magnitude.x - fwdVel.x) * latDamp;
             car.pEntity.magnitude.z = fwdVel.z + (car.pEntity.magnitude.z - fwdVel.z) * latDamp;
         }
     }
 
-    // Dead-zone: check horizontal only — Y is non-zero due to gravity and would
-    // prevent this from ever firing if included in mag().
     float hMag = sqrtf(car.pEntity.magnitude.x * car.pEntity.magnitude.x +
-                       car.pEntity.magnitude.z * car.pEntity.magnitude.z);
+        car.pEntity.magnitude.z * car.pEntity.magnitude.z);
     if (hMag < 0.01f) {
         car.pEntity.magnitude.x = 0.f;
         car.pEntity.magnitude.z = 0.f;
     }
 
-    // Steering
     float steerTarget = 0.f;
-    if (player.pState.leftTurn > 0.f)  steerTarget =  1.f;
+    if (player.pState.leftTurn > 0.f) steerTarget = 1.f;
     if (player.pState.rightTurn > 0.f) steerTarget = -1.f;
 
     float rate = (steerTarget != 0.f) ? steerInRate : steerOutRate;
@@ -220,9 +215,9 @@ vector3 forward = {0.f, 0.f, 0.f};
     car.pEntity.magnitude.x = vx;
     car.pEntity.magnitude.z = vz;
 
-    player.pState.forward   = 0.f;
-    player.pState.brake     = 0.f;
-    player.pState.leftTurn  = 0.f;
+    player.pState.forward = 0.f;
+    player.pState.brake = 0.f;
+    player.pState.leftTurn = 0.f;
     player.pState.rightTurn = 0.f;
 
     if (player.pState.inCar) {
@@ -238,5 +233,5 @@ vector3 forward = {0.f, 0.f, 0.f};
     engineSynth_update();
 
     float absRPM = 1500.f + rpm * (6000.f - 1500.f);
-    // printf("RPM: %.3f  (%.0f abs)  gear=%d  thr=%.2f\n", rpm, absRPM, gear, throttleInput);
+
 }

@@ -3,20 +3,43 @@
 #include "../physics/physics.h"
 #include "../system/keyboard/keyboard.h"
 #include "../draw/gui.h"
+#include "game.h"
 #include <iostream>
 #include <thread>
 #include <chrono>
 #include <algorithm>
 
+Sound sndShopIntro = {0};
+Sound sndShopBye = {0};
+Sound sndShopThank = {0};
+Sound sndGasIntro = {0};
+Sound sndGasPurchase = {0};
+
+void playMenuSound(Sound s) {
+    static Sound last = {0};
+    if (last.frameCount > 0) StopSound(last);
+    PlaySound(s);
+    last = s;
+}
+
 static bool locked = false;
 static bool interacting = true;
 static bool interactingG = true;
+
+void resetLevelLogicState() {
+    locked = false;
+    interacting = true;
+    interactingG = true;
+}
 static vector3 PumpStorage = {0.f, 0.f, 0.f};
 
+static vector3 drinkoffset = {-79.9136f, -3.f, 25.2414f};
+static vector3 gasPumpOffset = {49.3031f, 5.81f, -24.243f};
+
 void holdItem(player& player, meshedObject& item) {
-    item.pEntity.location = player.camera.camPos;
-    applyCamRot(item.pEntity.location, vector3{player.camera.camTarget.x, 0.f, 0.f}, 0.f, 0.f, 1.5f);
-    // item.pEntity.rot.y = -player.camera.camTarget.x;
+    item.pEntity.location = player.camera.camPos + drinkoffset;
+    applyCamRot(item.pEntity.location, vector3{player.camera.camTarget.x, 0.f, 0.f}, 0.f, 0.f, 1.5);
+
 }
 
 void buy(player& player, int buy_guy) {
@@ -25,20 +48,20 @@ void buy(player& player, int buy_guy) {
 }
 
 void checkBuyBox(player& player, float deltaTime, gameData& gData, meshedObject& buyBox) {
-    // std::cout << "buybox loc: " << buyBox.pEntity.location.x << ", " << buyBox.pEntity.location.y << ", " << buyBox.pEntity.location.z << std::endl;
-     if (canInteract(player, buyBox.pEntity.location, 6.0f, GetScreenWidth(), GetScreenHeight(), 300.f, {0.f, 2.75f, 0.f})) {
+
+    if (canInteract(player, buyBox.collider, buyBox.cPlaneCount, 6.0f, GetScreenWidth(), GetScreenHeight(), 300.f)) {
         player.pState.canBuy = true;
-        // std::cout << "can buy" << std::endl;
+
     }
     else {
-        // std::cout << "cant buy" << std::endl;
+
         player.pState.canBuy = false;
     }
 }
 
 void checkDrank(player& player, float deltaTime, gameData& gData, meshedObject& drankEntity) {
-    // std::cout << "drank loc: " << drankEntity.pEntity.location.x << ", " << drankEntity.pEntity.location.y << ", " << drankEntity.pEntity.location.z << std::endl;
-     if (canInteract(player, drankEntity.pEntity.location, 6.0f, GetScreenWidth(), GetScreenHeight(), 125.f, {0.f, -1.f, 0.f})) {
+
+    if (canInteract(player, drankEntity.collider, drankEntity.cPlaneCount, 6.0f, GetScreenWidth(), GetScreenHeight(), 125.f)) {
         player.pState.canPickDrank = true;
     }
     else {
@@ -47,7 +70,7 @@ void checkDrank(player& player, float deltaTime, gameData& gData, meshedObject& 
 }
 
 void checkCar(player& player, float deltaTime, gameData& gData, meshedObject& carEntity) {
-    if (canInteract(player, carEntity.pEntity.location, 6.0f, GetScreenWidth(), GetScreenHeight(), 125.f, {0.f, 1.5f, 0.f})) {
+    if (canInteract(player, carEntity.collider, carEntity.cPlaneCount, 6.0f, GetScreenWidth(), GetScreenHeight(), 125.f)) {
         player.pState.canCar = true;
     }
     else {
@@ -56,21 +79,22 @@ void checkCar(player& player, float deltaTime, gameData& gData, meshedObject& ca
 }
 
 void checkGasPump(player& player, float deltaTime, gameData& gData, meshedObject& gasPump) {
-    // std::cout << "gaspump loc " << gasPump.pEntity.location.x << ", " << gasPump.pEntity.location.y << ", " << gasPump.pEntity.location.z << std::endl;
-    if (canInteract(player, gasPump.pEntity.location, 6.0f, GetScreenWidth(), GetScreenHeight(), 125.f, {0.f, 2.f, 0.f})) {
+
+    if (canInteract(player, gasPump.collider, gasPump.cPlaneCount, 6.0f, GetScreenWidth(), GetScreenHeight(), 500.f)) {
         player.pState.canGasPump = true;
-    } 
+    }
     else {
         player.pState.canGasPump = false;
     }
 }
 
-// player, then all things you want to check interact with
 void interact(player& player, float deltaTime, gameData& gData, meshedObject& car, meshedObject& gasPump, meshedObject& gasPumpNozzle, meshedObject& gasPumpNozzleOff, meshedObject& drank, Sound swallow) {
-    // std::cout << "Car: " << player.pState.canCar << " GasPump: " << player.pState.canGasPump << "Has Gas Pump: " << player.pState.hasGasPump << std::endl;
+
     if (getAsyncKeyStateWrapper(KEY_G)) {
         if (player.pState.hasDrank && interactingG) {
-            drank.pEntity.location = player.camera.camPos;
+            drank.pEntity.location = {0.f, 0.f, 0.f};
+            drank.pEntity.magnitude = {0.f, 0.f, 0.f};
+            drank.pEntity.collidingY = false;
             player.pState.hasDrank = false;
             player.pState.canPickDrank = false;
             player.pState.canBuy = false;
@@ -80,15 +104,15 @@ void interact(player& player, float deltaTime, gameData& gData, meshedObject& ca
     else {
         interactingG = true;
     }
-    if (getAsyncKeyStateWrapper(KEY_F)) {
-        if (player.pState.canGasPump && interacting ) {
-            if (!player.pState.hasGasPump && !player.pState.pumpingUp) {
-                player.pState.hasGasPump = true;
+    if (getAsyncKeyStateWrapper(KEY_F) && !player.pState.uberMenuOpen) {
+        if (player.pState.canGasPump && interacting) {
+            if (!player.pState.hasGasPump && !player.pState.pumpingUp && !player.pState.gasMenuOpen) {
+                player.pState.gasMenuOpen = true;
+                player.canMove = false;
                 PumpStorage = gasPumpNozzle.pEntity.location;
-                gasPumpNozzle.pEntity.location = {0.f, -20.f, 0.f};
+                playMenuSound(sndGasIntro);
                 interacting = false;
-            }
-            else if (player.pState.hasGasPump) {
+            } else if (player.pState.hasGasPump) {
                 player.pState.hasGasPump = false;
                 player.pState.pumpingUp = false;
                 gasPumpNozzle.pEntity.location = PumpStorage;
@@ -102,12 +126,11 @@ void interact(player& player, float deltaTime, gameData& gData, meshedObject& ca
                 locked = true;
                 player.pState.hasGasPump = false;
                 player.pState.pumpingUp = true;
-                // resetMeshedLocation(gasPumpNozzleOff);
-                // applyCamRot(gasPumpNozzleOff.pEntity.location, vector3{0.f, 0.f, 0.f}, 0.f, 0.f, 0.f);
+
                 gasPumpNozzleOff.pEntity.location = car.pEntity.location + vector3{0.f, 5.5f, 0.f};
                 interacting = false;
             }
-        } 
+        }
         else if (interacting && player.pState.canPickDrank && !player.pState.hasDrank) {
             player.pState.hasDrank = true;
             interacting = false;
@@ -116,6 +139,7 @@ void interact(player& player, float deltaTime, gameData& gData, meshedObject& ca
             if (player.pState.canBuy || player.pState.buying) {
                 player.canMove = !player.canMove;
                 player.pState.buying = !player.pState.buying;
+                if (player.pState.buying) playMenuSound(sndShopIntro);
                 interacting = false;
             }
             else if (player.pState.canDrinkDrank) {
@@ -123,14 +147,16 @@ void interact(player& player, float deltaTime, gameData& gData, meshedObject& ca
                 player.pState.drunkenness += 0.2f;
                 PlaySound(swallow);
                 player.pState.hasDrank = false;
-                drank.pEntity.location = {15.f, 3.f, 15.f};
+                drank.pEntity.location = {0.f, 0.f, 0.f};
+                gData.dranksConsumed++;
+                gData.drankTimer = 170.0f;
                 interacting = false;
             }
         }
         else if (interacting && player.pState.pumpingUp) {
             if (player.pState.canCar) {
                 resetMeshedLocation(gasPumpNozzleOff);
-                // gasPumpNozzle.pEntity.location = PumpStorage;
+
                 player.pState.hasGasPump = true;
                 player.pState.pumpingUp = false;
                 interacting = false;
@@ -156,32 +182,70 @@ void interact(player& player, float deltaTime, gameData& gData, meshedObject& ca
     }
 }
 
-// bruh idc
 static constexpr int kNozzleAnchorTriA = 22;
 static constexpr int kNozzleAnchorTriB = 120;
 
 void deformGasPump(meshedObject& gasPump, meshedObject& gasPumpNozzleOff) {
-    if (kNozzleAnchorTriA < gasPumpNozzleOff.mesh.count && kNozzleAnchorTriB < gasPumpNozzleOff.mesh.count) {
-        vector3 anchorVerts[6];
-        int anchorCount = 0;
+    if (kNozzleAnchorTriA >= gasPumpNozzleOff.mesh.count || kNozzleAnchorTriB >= gasPumpNozzleOff.mesh.count) return;
+
+    struct AffectedVert {int tri, vert; vector3 orig;};
+    static AffectedVert affected[64];
+    static int affectedCount = 0;
+    static bool initialized = false;
+
+    if (!initialized) {
+        vector3 anchors[6];
+        int ac = 0;
         for (int j = 0; j < 3; j++) {
-            anchorVerts[anchorCount++] = gasPumpNozzleOff.mesh.trisO[kNozzleAnchorTriA].v[j];
-            anchorVerts[anchorCount++] = gasPumpNozzleOff.mesh.trisO[kNozzleAnchorTriB].v[j];
+            anchors[ac++] = gasPumpNozzleOff.mesh.trisO[kNozzleAnchorTriA].v[j];
+            anchors[ac++] = gasPumpNozzleOff.mesh.trisO[kNozzleAnchorTriB].v[j];
         }
         const float kEps = 1e-4f;
-        for (int i = 0; i < gasPumpNozzleOff.mesh.count; i++) {
-            for (int j = 0; j < 3; j++) {
-                const vector3& lv = gasPumpNozzleOff.mesh.trisO[i].v[j];
-                for (int k = 0; k < anchorCount; k++) {
-                    if (fabsf(lv.x - anchorVerts[k].x) < kEps &&
-                        fabsf(lv.y - anchorVerts[k].y) < kEps &&
-                        fabsf(lv.z - anchorVerts[k].z) < kEps) {
-                        gasPumpNozzleOff.mesh.tris[i].v[j] = lv + gasPump.pEntity.location;
+        for (int i = 0; i < gasPumpNozzleOff.mesh.count && affectedCount < 64; i++) {
+            for (int j = 0; j < 3 && affectedCount < 64; j++) {
+                const vector3& v = gasPumpNozzleOff.mesh.trisO[i].v[j];
+                for (int k = 0; k < ac; k++) {
+                    if (fabsf(v.x - anchors[k].x) < kEps &&
+                        fabsf(v.y - anchors[k].y) < kEps &&
+                        fabsf(v.z - anchors[k].z) < kEps) {
+                        affected[affectedCount++] = {i, j, v};
                         break;
                     }
                 }
             }
         }
+        initialized = true;
+    }
+
+    vector3 target = gasPumpOffset - gasPumpNozzleOff.pEntity.location;
+    vector3 rot = gasPumpNozzleOff.pEntity.rot;
+
+    float cz = cosf(rot.z), sz = sinf(rot.z);
+    float cy = cosf(rot.y), sy = sinf(rot.y);
+    float cx = cosf(rot.x), sx = sinf(rot.x);
+    {float x = target.x*cz + target.y*sz; float y = -target.x*sz + target.y*cz; target.x=x; target.y=y;}
+    {float x = target.x*cy - target.z*sy; float z = target.x*sy + target.z*cy; target.x=x; target.z=z;}
+    {float y = target.y*cx + target.z*sx; float z = -target.y*sx + target.z*cx; target.y=y; target.z=z;}
+    vector3 centroid = {0, 0, 0};
+    for (int i = 0; i < affectedCount; i++) {
+        centroid.x += affected[i].orig.x;
+        centroid.y += affected[i].orig.y;
+        centroid.z += affected[i].orig.z;
+    }
+    if (affectedCount > 0) {
+        centroid.x /= affectedCount;
+        centroid.y /= affectedCount;
+        centroid.z /= affectedCount;
+    }
+
+    for (int i = 0; i < affectedCount; i++) {
+        float relX = affected[i].orig.x - centroid.x;
+        float relZ = affected[i].orig.z - centroid.z;
+        gasPumpNozzleOff.mesh.trisO[affected[i].tri].v[affected[i].vert] = {
+            target.x + relX,
+                target.y,
+                target.z + relZ
+        };
     }
 }
 
@@ -200,17 +264,82 @@ void gasPumpLogic(player& player, float deltaTime, gameData& gData, meshedObject
     }
 }
 
+int gGasMenuSelection = 0;
+
+static void gasMenuLogic(player& player, meshedObject& gasPumpNozzle) {
+    int& selection = gGasMenuSelection;
+    static bool canNav = true;
+    static bool canAction = false;
+
+    if (!player.pState.gasMenuOpen) {
+        selection = 0;
+        canAction = false;
+        return;
+    }
+
+    if (!getAsyncKeyStateWrapper(KEY_F))
+    canAction = true;
+
+    bool full = player.pState.carFuel >= 100.f;
+    bool broke = player.pState.money <= 0.0f;
+    int opts = (full || broke) ? 1 : 2;
+
+    if (getAsyncKeyStateWrapper(KEY_UP)) {
+        if (canNav) {selection = (selection - 1 + opts) % opts; canNav = false;}
+    } else if (getAsyncKeyStateWrapper(KEY_DOWN)) {
+        if (canNav) {selection = (selection + 1) % opts; canNav = false;}
+    } else {
+        canNav = true;
+    }
+
+    if (getAsyncKeyStateWrapper(KEY_F)) {
+        if (canAction) {
+            player.pState.gasMenuOpen = false;
+            player.canMove = true;
+            canAction = false;
+        }
+        return;
+    }
+
+    if (!getAsyncKeyStateWrapper(KEY_ENTER))
+    canAction = true;
+
+    if (!canAction) return;
+
+    if (getAsyncKeyStateWrapper(KEY_ENTER)) {
+        bool wantBuy = !full && !broke && selection == 0;
+        bool wantClose = !wantBuy;
+        if (wantBuy) {
+            float gallonsNeeded = (100.f - player.pState.carFuel) / 4.f;
+            float maxAfford = std::min(gallonsNeeded, player.pState.money / 2.5f);
+            float cost = maxAfford * 2.5f;
+            if (maxAfford > 0.0f) {
+                player.pState.money -= cost;
+                player.pState.carFuel += maxAfford * 4.0f;
+                if (player.pState.carFuel > 100.f) player.pState.carFuel = 100.f;
+                player.pState.hasGasPump = true;
+                gasPumpNozzle.pEntity.location = {0.f, -20.f, 0.f};
+                playMenuSound(sndGasPurchase);
+            }
+        }
+        if (wantBuy || wantClose) {
+            player.pState.gasMenuOpen = false;
+            player.canMove = true;
+            canAction = false;
+        }
+    }
+
+}
+
 void levelLogic(player& player, float deltaTime,gameData& gData, meshedObject& testcar, meshedObject& gasPump, meshedObject& gasPumpNozzle, meshedObject& gasPumpNozzleOff, meshedObject& drank, meshedObject& buyBox, Sound swallow) {
-    // std::cout << "current plane: " << player.pEntity.groundPlane << std::endl;
     gasPumpLogic(player, deltaTime, gData, gasPump, testcar, gasPumpNozzleOff);
     checkCar(player, deltaTime, gData, testcar);
     checkGasPump(player, deltaTime, gData, gasPump);
     checkDrank(player, deltaTime, gData, drank);
     checkBuyBox(player, deltaTime, gData, buyBox);
     if (player.pState.hasDrank) holdItem(player, drank);
-    if (player.pState.buying) buy(player,1);
+    if (player.pState.buying) buy(player, 1);
     interact(player, deltaTime, gData, testcar, gasPump, gasPumpNozzle, gasPumpNozzleOff, drank, swallow);
-    // std::cout << "drank: " << player.pState.canPickDrank << ", hasDrank: " << player.pState.hasDrank << std::endl;
-    // std::cout << "drunkenness: " << player.pState.drunkenness << std::endl;
-    // std::cout << "\033[2J\033[H"; 
+    gasMenuLogic(player, gasPumpNozzle);
+
 }

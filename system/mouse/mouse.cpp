@@ -15,14 +15,14 @@ static LRESULT CALLBACK RawMouseWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPAR
     switch (msg)
     {
         case WM_INPUT:
-        {
+            {
             UINT size = 0;
             if (GetRawInputData(
-                    reinterpret_cast<HRAWINPUT>(lParam),
-                    RID_INPUT,
-                    nullptr,
-                    &size,
-                    sizeof(RAWINPUTHEADER)) != 0)
+                reinterpret_cast<HRAWINPUT>(lParam),
+                RID_INPUT,
+                nullptr,
+                &size,
+                sizeof(RAWINPUTHEADER)) != 0)
             {
                 break;
             }
@@ -67,10 +67,10 @@ bool RawMouseInitFromHWND(void* windowHandle)
     if (!g_oldWndProc) return false;
 
     RAWINPUTDEVICE rid = {};
-    rid.usUsagePage = 0x01; // generic desktop controls
-    rid.usUsage     = 0x02; // mouse
-    rid.dwFlags     = 0;
-    rid.hwndTarget  = g_hwnd;
+    rid.usUsagePage = 0x01;
+    rid.usUsage = 0x02;
+    rid.dwFlags = 0;
+    rid.hwndTarget = g_hwnd;
 
     if (!RegisterRawInputDevices(&rid, 1, sizeof(rid)))
     {
@@ -106,7 +106,7 @@ void RawMouseGetDelta(float& dx, float& dy)
 
 void pumpMessages() {
     MSG msg;
-    int limit = 50; // process at most 10 messages per frame
+    int limit = 50;
     while (limit-- && PeekMessage(&msg, nullptr, 0, 0, PM_REMOVE))
     {
         TranslateMessage(&msg);
@@ -120,7 +120,7 @@ void pumpMessages() {
 #include "mouse.h"
 #include "raylib.h"
 
-bool RawMouseInitFromHWND(void* windowHandle) { return true; }
+bool RawMouseInitFromHWND(void* windowHandle) {return true;}
 void RawMouseShutdown() {}
 
 void RawMouseGetDelta(float& dx, float& dy)

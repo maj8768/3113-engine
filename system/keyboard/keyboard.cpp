@@ -1,6 +1,5 @@
 #include "keyboard.h"
 #include <iostream>
-// #include "raylib.h"
 
 int rlToMacKey(int key) {
     switch (key) {
@@ -21,10 +20,10 @@ int rlToMacKey(int key) {
         case 80: return 35;
         case 340: return 56;
         case 341: return 59;
-        case 263: return 123; // KEY_LEFT  → Mac Left Arrow
-        case 265: return 126; // KEY_UP    → Mac Up Arrow
-        case 262: return 124; // KEY_RIGHT → Mac Right Arrow
-        case 264: return 125; // KEY_DOWN  → Mac Down Arrow
+        case 263: return 123;
+        case 265: return 126;
+        case 262: return 124;
+        case 264: return 125;
         case 257: return 36;
         default: return key;
     }
@@ -47,8 +46,8 @@ int rlToWinKey(int key) {
         case 50: return 50;
         case 51: return 51;
         case 80: return 80;
-        case 340: return 16;  // KEY_LEFT_SHIFT  → VK_SHIFT
-        case 341: return 17;  // KEY_LEFT_CONTROL → VK_CONTROL
+        case 340: return 16;
+        case 341: return 17;
         case 263: return 37;
         case 265: return 38;
         case 262: return 39;
@@ -59,55 +58,55 @@ int rlToWinKey(int key) {
 }
 
 #ifdef _WIN32
-    #include <windows.h>
+#include <windows.h>
 
-    bool getAsyncKeyStateWrapper(int key) {
-        // std::cout << key << std::endl;
-        SHORT state = GetAsyncKeyState(rlToWinKey(key));
-        // if (state != 0) std::cout << state << std::endl;
-        return (state & 0x8000) != 0;
-    }
+bool getAsyncKeyStateWrapper(int key) {
+
+    SHORT state = GetAsyncKeyState(rlToWinKey(key));
+
+    return (state & 0x8000) != 0;
+}
 
 #elif defined(__APPLE__)
-    #include <ApplicationServices/ApplicationServices.h>
+#include <ApplicationServices/ApplicationServices.h>
 
-    bool getAsyncKeyStateWrapper(int key) {
-        int macKey = rlToMacKey(key);
-//        std::cout << macKey << std::endl;
-        return CGEventSourceKeyState(kCGEventSourceStateCombinedSessionState, macKey);
-    }
+bool getAsyncKeyStateWrapper(int key) {
+    int macKey = rlToMacKey(key);
+
+    return CGEventSourceKeyState(kCGEventSourceStateCombinedSessionState, macKey);
+}
 
 #elif defined(__linux__)
-    #if defined(USE_X11)
-        #include <X11/Xlib.h>
-        #include <X11/keysym.h>
+#if defined(USE_X11)
+#include <X11/Xlib.h>
+#include <X11/keysym.h>
 
-        bool getAsyncKeyStateWrapper(KeySym keysym) {
-            static Display* display = XOpenDisplay(nullptr);
-            if (!display) return false;
+bool getAsyncKeyStateWrapper(KeySym keysym) {
+    static Display* display = XOpenDisplay(nullptr);
+    if (!display) return false;
 
-            char keys[32];
-            XQueryKeymap(display, keys);
+    char keys[32];
+    XQueryKeymap(display, keys);
 
-            KeyCode keycode = XKeysymToKeycode(display, keysym);
-            if (keycode == 0) return false;
+    KeyCode keycode = XKeysymToKeycode(display, keysym);
+    if (keycode == 0) return false;
 
-            return (keys[keycode / 8] & (1 << (keycode % 8))) != 0;
-        }
+    return (keys[keycode / 8] & (1 << (keycode % 8))) != 0;
+}
 
-    #elif defined(USE_WAYLAND)
-        #include <unordered_map>
+#elif defined(USE_WAYLAND)
+#include <unordered_map>
 
-        static std::unordered_map<int, bool> g_keyStates;
+static std::unordered_map<int, bool> g_keyStates;
 
-        inline void onWaylandKeyEvent(int key, bool pressed) {
-            g_keyStates[key] = pressed;
-        }
+inline void onWaylandKeyEvent(int key, bool pressed) {
+    g_keyStates[key] = pressed;
+}
 
-        bool getAsyncKeyStateWrapper(int key) {
-            auto it = g_keyStates.find(key);
-            if (it == g_keyStates.end()) return false;
-            return it->second;
-        }
-    #endif
+bool getAsyncKeyStateWrapper(int key) {
+    auto it = g_keyStates.find(key);
+    if (it == g_keyStates.end()) return false;
+    return it->second;
+}
+#endif
 #endif
