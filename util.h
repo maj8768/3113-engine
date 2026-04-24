@@ -154,6 +154,7 @@ struct shaderStore {
     int pointRadiusLoc;
     int pointCountLoc;
     int drankUrgencyLoc;
+    int resolutionLoc;
 };
 
 struct pyramidMtx {

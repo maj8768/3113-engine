@@ -530,6 +530,7 @@ void initialise()
     w2sShader.pointRadiusLoc= GetShaderLocation(w2sShader.shader, "uPointRadius");
     w2sShader.pointCountLoc = GetShaderLocation(w2sShader.shader, "uPointCount");
     w2sShader.drankUrgencyLoc = GetShaderLocation(w2sShader.shader, "uDrankUrgency");
+    w2sShader.resolutionLoc   = GetShaderLocation(w2sShader.shader, "uResolution");
 
     shadowMapRT = LoadShadowMapRenderTexture(SHADOW_MAP_NEAR, SHADOW_MAP_NEAR);
     shadowMapRTFar = LoadShadowMapRenderTexture(SHADOW_MAP_FAR, SHADOW_MAP_FAR);
@@ -1131,6 +1132,8 @@ static void DrawSceneWithShadows(const mtx44& frameVP, const mtx44& nearLSM, con
         : 1.1f;
     }
     SetShaderValue(w2sShader.shader, w2sShader.drankUrgencyLoc, &drankUrgency, SHADER_UNIFORM_FLOAT);
+    float resArr[2] = { (float)GetRenderWidth(), (float)GetRenderHeight() };
+    SetShaderValue(w2sShader.shader, w2sShader.resolutionLoc, resArr, SHADER_UNIFORM_VEC2);
 
     SetShaderValueMatrix(w2sShader.shader, w2sShader.lightSpaceMatrixLoc, ToRaylibMatrix(nearLSM));
     SetShaderValueMatrix(w2sShader.shader, w2sShader.lightSpaceMatrixFarLoc, ToRaylibMatrix(farLSM));

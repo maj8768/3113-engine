@@ -26,6 +26,7 @@ uniform vec3 uPointColor[MAX_POINT_LIGHTS];
 uniform float uPointRadius[MAX_POINT_LIGHTS];
 uniform int uPointCount;
 uniform float uDrankUrgency;
+uniform vec2  uResolution;
 
 out vec4 fragColor;
 
@@ -131,7 +132,7 @@ vec4 drankUrgencyEffect(vec4 color, vec2 screenUV, float urgency) {
     if (urgency >= 1.0) return vec4(0.0, 0.0, 0.0, color.a);
 
     vec2 centered = screenUV - vec2(0.5);
-    centered.x *= 1280.0 / 720.0;
+    centered.x *= uResolution.x / uResolution.y;
     float dist = length(centered);
 
     float outerEdge = mix(1.2, 0.02, urgency);
@@ -166,7 +167,7 @@ void main() {
 
     fragColor = vec4(lit, 1.0) * texSample * fadeTo;
 
-    vec2 screenUV = gl_FragCoord.xy / vec2(1280.0, 720.0);
+    vec2 screenUV = gl_FragCoord.xy / uResolution;
     fragColor = drunkEffect(fragColor, screenUV, uTime, uDrunkenness);
 
     float fogDist = length(vWorldPos - uCamPos);
