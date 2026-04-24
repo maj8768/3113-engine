@@ -9,4 +9,4 @@ Ke 0.000000 0.000000 0.000000
 Ni 1.450000
 d 1.000000
 illum 1
-map_Kd C:/msys64/home/Max J/3113-engine/resources/levels/testing/gas_pump/Fuel_pump.png
+map_Kd ../Fuel_pump.png

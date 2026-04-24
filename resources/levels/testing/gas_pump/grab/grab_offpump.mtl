@@ -8,5 +8,4 @@ Ks 0.000000 0.000000 0.000000
 Ke 0.000000 0.000000 0.000000
 Ni 1.450000
 illum 1
-map_Kd C:/msys64/home/Max J/3113-engine/resources/levels/testing/gas_pump/pump/Fuel_pump.png
-map_d C:/Users/Max J/Downloads/gs/source/Gas_station_Props/Fuel_pump.png
+map_Kd ../Fuel_pump.png

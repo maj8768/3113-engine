@@ -8,5 +8,4 @@ Ks 0.000000 0.000000 0.000000
 Ke 0.000000 0.000000 0.000000
 Ni 1.450000
 illum 1
-map_Kd C:/Users/Max J/Downloads/panel-house-3f/source/panel house 3f/panel house 3f.png
-map_d C:/Users/Max J/Downloads/panel-house-3f/source/panel house 3f/panel house 3f.png
+map_Kd panel_house_3f.png
