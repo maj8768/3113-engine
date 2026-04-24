@@ -106,7 +106,7 @@ int analyticalEdgeCollision(physicsEntity& player, planeMtx plane, vector3& appl
         float feetY = 1e9f;
         for (int k = 0; k < ovc; k++) feetY = fminf(feetY, obbV[k].y);
         float stepH = topY - feetY;
-        bool canStep = stepH > 0.f && stepH < 0.75f && player.magnitude.y >= -1.0f;
+        bool canStep = stepH > 0.f && stepH < 0.25f && player.magnitude.y >= -1.0f;
         if (canStep) {
             player.location.y += stepH;
         } else {

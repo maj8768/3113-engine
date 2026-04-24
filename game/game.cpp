@@ -80,7 +80,7 @@ void checkCar(player& player, float deltaTime, gameData& gData, meshedObject& ca
 
 void checkGasPump(player& player, float deltaTime, gameData& gData, meshedObject& gasPump) {
 
-    if (canInteract(player, gasPump.collider, gasPump.cPlaneCount, 6.0f, GetScreenWidth(), GetScreenHeight(), 500.f)) {
+    if (canInteract(player, gasPump.collider, gasPump.cPlaneCount, 8.0f, GetScreenWidth(), GetScreenHeight(), 500.f)) {
         player.pState.canGasPump = true;
     }
     else {

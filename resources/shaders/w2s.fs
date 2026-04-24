@@ -146,7 +146,17 @@ vec4 drankUrgencyEffect(vec4 color, vec2 screenUV, float urgency) {
 }
 
 void main() {
-    vec3 n = normalize(vNormal);
+    // Use vertex normal when valid; fall back to screen-space geometric normal
+    // if the rlgl batch renderer doesn't wire normals on this platform (e.g. Mac).
+    vec3 n;
+    float nLen = dot(vNormal, vNormal);
+    if (nLen > 0.001) {
+        n = vNormal / sqrt(nLen);
+    } else {
+        vec3 dPdx = dFdx(vWorldPos);
+        vec3 dPdy = dFdy(vWorldPos);
+        n = normalize(cross(dPdx, dPdy));
+    }
     vec3 toLight = normalize(-uLightDir);
 
     float diffuse = max(dot(n, toLight), 0.0);
