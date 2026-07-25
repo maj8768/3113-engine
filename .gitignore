@@ -32,6 +32,9 @@ bin/
 # Dependency files
 *.d
 
+# Internal (vendored) dependencies — fetched via setup-deps.sh, not committed
+vendor/
+
 # Miscellaneous
 # Log files, temporary files, editor-specific files, etc.
 *.log

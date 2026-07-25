@@ -67,7 +67,12 @@ mtx44 viewMtx44(const vector3& pos, const vector3& target, const vector3& up) {
 
 mtx44 lookAtMtx44(const vector3& eye, const vector3& target, const vector3& up) {
     vector3 F = normalize3(target - eye);
-    vector3 R = normalize3(cross3(F, up));
+    // Guard against F being (nearly) parallel to `up` — e.g. a point light placed
+    // directly overhead. In that case cross3(F, up) is the zero vector and
+    // normalize3 divides by zero, producing a NaN view matrix that poisons the
+    // shadow term and blacks out the whole scene. Fall back to a different up axis.
+    vector3 upv = (fabsf(dot3(F, normalize3(up))) > 0.999f) ? vector3{0.f, 0.f, 1.f} : up;
+    vector3 R = normalize3(cross3(F, upv));
     vector3 U = cross3(R, F);
 
     mtx44 view{};

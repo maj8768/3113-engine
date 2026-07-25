@@ -29,6 +29,8 @@ void Draw3DGPU(const meshedObject& object, const camera& cam, shaderStore& shade
     if (shadowTexFar != nullptr && shadowTexFar->id != 0 && shader.shadowMapFarLoc >= 0)
     SetShaderValueTexture(shader.shader, shader.shadowMapFarLoc, *shadowTexFar);
     SetShaderValueTexture(shader.shader, shader.texoLoc, object.texo);
+    SetShaderValue(shader.shader, shader.emissiveLoc, &object.emissive, SHADER_UNIFORM_VEC4);
+    SetShaderValue(shader.shader, shader.bloomParamsLoc, &object.bloom, SHADER_UNIFORM_VEC2);
     SetShaderValueMatrix(shader.shader, shader.vpLoc, ToRaylibMatrix(vp));
     mtx44 model = buildModelMatrix(object.pEntity.location, object.pEntity.rot, object.offset);
     SetShaderValueMatrix(shader.shader, shader.modelLoc, ToRaylibMatrix(model));

@@ -1,0 +1,21 @@
+# Axis-aligned BOX player collider.
+# Replaces the tapered/pointed collider (playercollider.obj) whose angled bottom
+# faces fed slanted axes into the SAT, so ground contacts resolved along a tilted
+# direction and nudged the player sideways (forward walking weaved left/right).
+# A box has only world-aligned face normals, so a contact with the flat platform
+# always resolves straight up. Matches the original width/height and bottom
+# (feet at y=1.535738), so resting height is unchanged.
+v -0.056085 1.535738  0.051843
+v -0.056085 1.535738 -0.051843
+v  0.056085 1.535738 -0.051843
+v  0.056085 1.535738  0.051843
+v -0.056085 7.002716  0.051843
+v -0.056085 7.002716 -0.051843
+v  0.056085 7.002716 -0.051843
+v  0.056085 7.002716  0.051843
+f 1 2 3 4
+f 5 8 7 6
+f 1 4 8 5
+f 2 6 7 3
+f 1 5 6 2
+f 4 3 7 8

@@ -19,10 +19,19 @@ endif
 
 CXXFLAGS := -std=c++17
 
+# Internal (vendored) raylib — see vendor/ and setup-deps.sh.
+# If vendor/raylib exists it is preferred; otherwise fall back to a system install.
+VENDOR_RAYLIB := vendor/raylib
+
 ifeq ($(PLATFORM),MACOS)
     TARGET := TheGame
-    INCLUDES := -I/opt/homebrew/include
-    LIBDIRS  := -L/opt/homebrew/lib
+    ifneq ($(wildcard $(VENDOR_RAYLIB)/include/raylib.h),)
+        INCLUDES := -I$(VENDOR_RAYLIB)/include
+        LIBDIRS  := -L$(VENDOR_RAYLIB)/lib
+    else
+        INCLUDES := -I/opt/homebrew/include
+        LIBDIRS  := -L/opt/homebrew/lib
+    endif
     LIBS     := -lraylib \
                 -framework OpenGL \
                 -framework Cocoa \
@@ -32,15 +41,25 @@ endif
 
 ifeq ($(PLATFORM),LINUX)
     TARGET := TheGame
-    INCLUDES := -I/usr/local/include
-    LIBDIRS  := -L/usr/local/lib
+    ifneq ($(wildcard $(VENDOR_RAYLIB)/include/raylib.h),)
+        INCLUDES := -I$(VENDOR_RAYLIB)/include
+        LIBDIRS  := -L$(VENDOR_RAYLIB)/lib
+    else
+        INCLUDES := -I/usr/local/include
+        LIBDIRS  := -L/usr/local/lib
+    endif
     LIBS     := -lraylib -lm -lpthread -ldl -lrt -lX11
 endif
 
 ifeq ($(PLATFORM),WINDOWS)
     TARGET := TheGame.exe
-    INCLUDES :=
-    LIBDIRS  :=
+    ifneq ($(wildcard $(VENDOR_RAYLIB)/include/raylib.h),)
+        INCLUDES := -I$(VENDOR_RAYLIB)/include
+        LIBDIRS  := -L$(VENDOR_RAYLIB)/lib
+    else
+        INCLUDES :=
+        LIBDIRS  :=
+    endif
     LIBS     := -lraylib -lopengl32 -lgdi32 -lwinmm
 endif
 

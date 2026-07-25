@@ -135,8 +135,14 @@ struct shaderStore {
     int lightColorLoc;
     int ambientLoc;
     int lightPosLoc;
+    int lightRangeLoc;
     int normalLoc;
     int texoLoc;
+    int emissiveLoc;
+    int emissiveOnlyLoc;
+    int bloomParamsLoc;
+    int bloomFocalLoc;
+    int bloomMaxLoc;
     int fadeToLoc;
     int vpLoc;
     int modelLoc;
@@ -328,6 +334,8 @@ struct meshedObject {
     int cPlaneCount;
     float scale;
     Texture2D texo;
+    vector4 emissive = {0.f, 0.f, 0.f, 0.f}; // rgb = glow color, .t = emission amount (0..1)
+    vector2 bloom = {1.f, 1.f};              // bloom: x = brightness, y = length/spread (0..1)
     bool noCull = false;
     char text[100];
     float textRenderDistance;

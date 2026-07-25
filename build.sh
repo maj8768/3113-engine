@@ -1,1 +1,1 @@
-g++ $(find . -name "*.cpp") -o therewillnotbeafoldernamedthis -lraylib -I/usr/local/include -L/usr/local/lib -Wl,-rpath,/usr/local/lib -lm -lpthread -ldl -lrt -lX11 && make clean && ./therewillnotbeafoldernamedthis
+g++ $(find . -name "*.cpp") -o therewillnotbeafoldernamedthis -Ivendor/raylib/include -Lvendor/raylib/lib -lraylib -lm -lpthread -ldl -lrt -lX11 && make clean && ./therewillnotbeafoldernamedthis

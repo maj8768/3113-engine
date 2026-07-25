@@ -95,8 +95,15 @@ int analyticalEdgeCollision(physicsEntity& player, planeMtx plane, vector3& appl
 
     if (isGround) {
         if (!hasCollidedGround) {
-            player.location = player.location + mtv.fmult(minOv + eps);
-            float vn = dot3(player.magnitude, mtv); if (vn < 0.f) player.magnitude = player.magnitude - mtv.fmult(vn);
+            // Resolve ground contact VERTICALLY only. The SAT can return a slightly
+            // tilted MTV (e.g. from the player collider's angled bottom faces);
+            // correcting along it shoves the player sideways and cancels horizontal
+            // velocity, which makes forward walking weave left/right. Instead push
+            // straight up just enough to clear the penetration, and cancel only
+            // downward velocity — horizontal velocity is left untouched.
+            float ny = (mtv.y >= 0.f) ? fmaxf(mtv.y, 0.001f) : fminf(mtv.y, -0.001f);
+            player.location.y += (minOv + eps) / ny;
+            if (player.magnitude.y < 0.f) player.magnitude.y = 0.f;
             hasCollidedGround = true;
             player.groundPlane = planeIndex;
         }

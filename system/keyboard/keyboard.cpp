@@ -1,5 +1,14 @@
 #include "keyboard.h"
 #include <iostream>
+#include <unordered_map>
+
+bool getKeyPressedOnce(int key) {
+    static std::unordered_map<int, bool> prev;
+    bool down = getAsyncKeyStateWrapper(key);
+    bool wasDown = prev[key];
+    prev[key] = down;
+    return down && !wasDown;
+}
 
 int rlToMacKey(int key) {
     switch (key) {

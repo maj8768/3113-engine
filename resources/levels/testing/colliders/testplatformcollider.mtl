@@ -1,32 +1,12 @@
-# Blender 4.0.2 MTL File: 'gasStation.blend'
+# Blender 5.2.0 LTS MTL File: 'None'
 # www.blender.org
 
-newmtl Material.001
+newmtl Material
 Ns 250.000000
 Ka 1.000000 1.000000 1.000000
+Kd 0.800000 0.800000 0.800000
 Ks 0.500000 0.500000 0.500000
 Ke 0.000000 0.000000 0.000000
-Ni 1.450000
+Ni 1.500000
 d 1.000000
 illum 2
-map_Kd C:/msys64/home/Max J/3113-engine/resources/levels/testing/layouttest.png
-
-newmtl Material.002
-Ns 250.000000
-Ka 1.000000 1.000000 1.000000
-Ks 0.500000 0.500000 0.500000
-Ke 0.000000 0.000000 0.000000
-Ni 1.450000
-d 1.000000
-illum 2
-map_Kd C:/msys64/home/Max J/3113-engine/resources/levels/testing/layouttest.png
-
-newmtl Material.003
-Ns 0.000000
-Ka 1.000000 1.000000 1.000000
-Ks 0.500000 0.500000 0.500000
-Ke 0.000000 0.000000 0.000000
-Ni 1.000000
-d 1.000000
-illum 2
-map_Kd C:/msys64/home/Max J/3113-engine/resources/levels/testing/layouttest.png

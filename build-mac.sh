@@ -1,6 +1,6 @@
 g++ $(find . -name "*.cpp") -o therewillnotbeafoldernamedthis \
--I/opt/homebrew/include \
--L/opt/homebrew/lib \
+-Ivendor/raylib/include \
+-Lvendor/raylib/lib \
 -lraylib \
 -framework OpenGL \
 -framework Cocoa \

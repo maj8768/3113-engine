@@ -4,10 +4,12 @@
 #include "../system/keyboard/keyboard.h"
 #include "../draw/gui.h"
 #include "game.h"
+#include "attack_wizard.h"
 #include <iostream>
 #include <thread>
 #include <chrono>
 #include <algorithm>
+#include <cmath>
 
 Sound sndShopIntro = {0};
 Sound sndShopBye = {0};
@@ -21,6 +23,75 @@ void playMenuSound(Sound s) {
     PlaySound(s);
     last = s;
 }
+
+// Fire a projectile on each fresh 'E' press, then advance all live projectiles.
+void wizardCombatUpdate(player& player, float deltaTime, world& worldInstance) {
+    if (getKeyPressedOnce(KEY_E)) fireWizardAttack(player);
+    updateWizardAttacks(deltaTime, worldInstance, player);
+}
+
+/*
+// --- Wand: a holdable item -------------------------------------------------
+static bool gWandHeld = false;
+
+// Held-item placement in camera space + pickup range. Tune to the wand model.
+static const float WAND_FORWARD      = 2.0f;   // distance in front of the eye
+static const float WAND_RIGHT        = 1.0f;   // offset to the right
+static const float WAND_UP           = -0.8f;  // offset down
+static const float WAND_PICKUP_RANGE = 8.0f;   // must be this close to pick up
+// Base orientation tweak. Signs/values depend on the model's default facing;
+// adjust so the wand points where you look.
+static const vector3 WAND_ROT_OFFSET = {0.f, 0.f, 0.f};
+
+// Fixed-step: gravity + collision, but ONLY while the wand is free (not held).
+void updateWandPhysics(player& player, float deltaTime, world& worldInstance, meshedObject& wand) {
+    if (gWandHeld) return;
+    bool end = false;
+    int target = 0;
+    updateColliderLocation(wand, player, false);
+    processPhysics(deltaTime, 0, wand.pEntity, worldInstance, end, target,
+                   false, true, wand.collider, wand.cPlaneCount);
+}
+
+// Per-frame: F toggles pick up (when near) / drop. While held, the wand is placed
+// in front of the POV and rotated with the camera. Call AFTER the camera position
+// is finalised so it tracks the smoothed view.
+void updateWandHold(player& player, meshedObject& wand) {
+    if (getKeyPressedOnce(KEY_F)) {
+        if (gWandHeld) {
+            gWandHeld = false;                      // drop: resume gravity from rest
+            wand.pEntity.magnitude = {0.f, 0.f, 0.f};
+            wand.pEntity.collidingY = false;
+        } else {
+            float dx = wand.pEntity.location.x - player.camera.camPos.x;
+            float dy = wand.pEntity.location.y - player.camera.camPos.y;
+            float dz = wand.pEntity.location.z - player.camera.camPos.z;
+            if (dx*dx + dy*dy + dz*dz <= WAND_PICKUP_RANGE * WAND_PICKUP_RANGE) {
+                gWandHeld = true;
+                wand.pEntity.magnitude = {0.f, 0.f, 0.f};
+            }
+        }
+    }
+
+    if (!gWandHeld) return;
+
+    // Camera basis from yaw (camTarget.x) / pitch (camTarget.y) — same forward the
+    // view matrix builds (see viewMtx44).
+    float cyw = cosf(player.camera.camTarget.x), syw = sinf(player.camera.camTarget.x);
+    float cpi = cosf(player.camera.camTarget.y), spi = sinf(player.camera.camTarget.y);
+    vector3 F = normalize3({cpi * cyw, spi, cpi * syw});
+    vector3 R = normalize3(cross3(F, player.camera.up));
+    vector3 U = cross3(R, F);
+
+    wand.pEntity.location = player.camera.camPos
+                          + F.fmult(WAND_FORWARD)
+                          + R.fmult(WAND_RIGHT)
+                          + U.fmult(WAND_UP);
+    wand.pEntity.rot = { player.camera.camTarget.y + WAND_ROT_OFFSET.x,
+                        -player.camera.camTarget.x + WAND_ROT_OFFSET.y,
+                         WAND_ROT_OFFSET.z };
+}
+*/
 
 static bool locked = false;
 static bool interacting = true;
