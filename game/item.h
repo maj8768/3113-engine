@@ -21,6 +21,10 @@ item createItem(meshedObject* obj, float pickupDistance, float lookatRadius);
 // Register an item so the handler manages it (physics, pickup/drop, drawing).
 void addItem(item* it);
 
+// The meshedObject currently held, or nullptr if nothing is held. Compare against
+// a specific object (e.g. the wand) to gate actions on holding that item.
+meshedObject* heldItemObject();
+
 // Fixed timestep: gravity + collision for every item that isn't currently held.
 void updateItemsPhysics(player& player, float deltaTime, world& worldInstance);
 

@@ -69,6 +69,11 @@ void addItem(item* it) {
     gItems.push_back(it);
 }
 
+meshedObject* heldItemObject() {
+    if (gHeldIndex < 0 || gHeldIndex >= (int)gItems.size()) return nullptr;
+    return gItems[gHeldIndex]->obj;
+}
+
 void updateItemsPhysics(player& player, float deltaTime, world& worldInstance) {
     bool end = false;
     int target = 0;

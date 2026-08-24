@@ -29,10 +29,17 @@
 #include "system/keyboard/keyboard.h"
 #include "system/mouse/mouse.h"
 
+#include "server/server_util.h"
+#include "server/leader/server.h"
+#include "server/client/client.h"
+
 #include <cmath>
 #include <iostream>
 #include <thread>
 #include <cstring>
+#include <cstdio>
+#include <fstream>
+#include <string>
 
 int thrust[] = {249, 250, 119, 120};
 int alt[] = {99, 101, 227, 229};
@@ -108,6 +115,22 @@ static int glowBBProjBLoc = -1;
 static int glowBBFadeLoc = -1;
 static RenderTexture2D sceneDepthRT = {0}; // camera-view depth for the soft glow
 static Shader depthViewShader = {0};       // DEBUG: amplified depth visualiser
+
+// 3D heat-shockwave warp: the scene is captured to a colour + depth texture, then redrawn
+// full-screen through warpShader, which reconstructs world position from depth and refracts
+// only the pixels whose true 3D distance to the blast is within the sphere's shell band.
+static RenderTexture2D sceneColorRT = {0};  // colour + sampleable depth (LoadShadowMapRenderTexture)
+static Shader warpShader = {0};
+static int warpColorLoc = -1, warpDepthLoc = -1, warpResLoc = -1, warpTimeLoc = -1;
+static int warpProjALoc = -1, warpProjBLoc = -1;
+static int warpCamPosLoc = -1, warpCamRightLoc = -1, warpCamUpLoc = -1, warpCamFwdLoc = -1;
+static int warpTanHalfLoc = -1, warpAspectLoc = -1;
+static int warpCountLoc = -1, warpOriginLoc = -1, warpRadiusLoc = -1, warpThickLoc = -1;
+static int warpStrengthLoc = -1, warpCenterLoc = -1;
+static float gWarpClock = 0.f;             // seconds accumulator for the ripple animation
+// Heat-warp tuning: shell band half-width (world units) and peak refraction offset (screen px).
+static const float WARP_THICKNESS_WORLD = 12.0f;
+static const float WARP_STRENGTH_PX     = 40.0f;
 static float bloomSpread = 32.0f;      // GLOBAL max blur radius in texels (the halo cap).
                                        // A world-space bloom length projects to more texels
                                        // the closer the camera is; it's clamped to this.
@@ -138,6 +161,8 @@ static meshedObject testingplatforms;
 static meshedObject drank;
 static meshedObject wand;
 static item wandItem;
+static meshedObject hand;
+static item handItem;
 
 // do not delete
 
@@ -172,6 +197,10 @@ static Sound jump4;
 static Sound jump5;
 static Sound jump6;
 static Sound jump7;
+
+static Sound magic1;
+static Sound magic2;
+static Sound magic3;
 
 static Sound swallow;
 
@@ -283,6 +312,60 @@ void createPlane(planeMtx& plane, int id, vector3 location, float dimensions[4][
     plane.color = BLACK;
 }
 
+static void stripTrailing(std::string& s) {
+    while (!s.empty() && (s.back() == '\r' || s.back() == '\n' || s.back() == ' ' || s.back() == '\t'))
+        s.pop_back();
+}
+
+// Pulls emissive data out of the .mtl that the .obj references via mtllib.
+// raylib loads the diffuse map for us, but its material emission slot is not
+// something the vendored prebuilt can be relied on to fill, and the MTL format
+// is two lines of text — so read it directly.
+//
+// Returns true when a non-black Ke (flat emissive colour) was found. mapKeOut
+// receives the map_Ke path when one is declared; that is a PER-PIXEL emissive
+// texture, which w2s.fs has no sampler for, so it is reported and not applied.
+static bool readMtlEmissive(const char* objPath, vector3& ke, char* mapKeOut, size_t mapKeSize) {
+    ke = {0.f, 0.f, 0.f};
+    if (mapKeOut && mapKeSize) mapKeOut[0] = '\0';
+    if (!objPath) return false;
+
+    std::string obj(objPath);
+    size_t slash = obj.find_last_of("/\\");
+    std::string dir = (slash == std::string::npos) ? std::string("") : obj.substr(0, slash + 1);
+
+    std::ifstream objFile(objPath);
+    if (!objFile) return false;
+
+    std::string line, mtlName;
+    while (std::getline(objFile, line)) {
+        stripTrailing(line);
+        if (line.rfind("mtllib ", 0) == 0) { mtlName = line.substr(7); break; }
+    }
+    if (mtlName.empty()) return false;
+
+    std::ifstream mtlFile(dir + mtlName);
+    if (!mtlFile) return false;
+
+    bool found = false;
+    while (std::getline(mtlFile, line)) {
+        stripTrailing(line);
+
+        // "map_Ke" starts with 'm', so it can never be mistaken for "Ke ".
+        if (!found && line.rfind("Ke ", 0) == 0) {
+            float r = 0.f, g = 0.f, b = 0.f;
+            if (std::sscanf(line.c_str() + 3, "%f %f %f", &r, &g, &b) == 3 &&
+                (r > 0.f || g > 0.f || b > 0.f)) {
+                ke = {r, g, b};
+                found = true; // first non-black material wins
+            }
+        } else if (line.rfind("map_Ke ", 0) == 0 && mapKeOut && mapKeSize) {
+            std::snprintf(mapKeOut, mapKeSize, "%s%s", dir.c_str(), line.substr(7).c_str());
+        }
+    }
+    return found;
+}
+
 void create3dObject(meshedObject& object, const char* path, const char* colliderPath, bool collider, shaderStore& shader, float scale, vector3 location, char text[100], bool renderText, float textRenderDistance, vector3 relativeTextOffset) {
     memcpy(object.text, text, 100);
     object.renderText = renderText;
@@ -303,6 +386,20 @@ void create3dObject(meshedObject& object, const char* path, const char* collider
         totalTriangles += model.meshes[i].triangleCount;
     }
     std::cout << "triangles: " << totalTriangles << std::endl;
+
+    // Auto-detect emission from the material. Ke is a colour whose magnitude
+    // doubles as strength, so normalise the hue into emissive.rgb and carry the
+    // magnitude in .t — that is what uEmissive expects, since w2s.fs adds
+    // uEmissive.rgb * uEmissive.a to the lit colour.
+    vector3 ke;
+    char mapKe[260];
+    if (readMtlEmissive(path, ke, mapKe, sizeof(mapKe))) {
+        float peak = fmaxf(ke.x, fmaxf(ke.y, ke.z));
+        object.emissive = {ke.x / peak, ke.y / peak, ke.z / peak, peak > 1.f ? 1.f : peak};
+        std::cout << "  emissive: Ke " << ke.x << " " << ke.y << " " << ke.z << std::endl;
+    }
+    if (mapKe[0])
+        std::cout << "  map_Ke " << mapKe << " ignored: w2s.fs has no per-pixel emissive sampler\n";
 
     if (totalTriangles <= 0) {
         std::cout << "warning: no triangles in " << path << "\n";
@@ -386,13 +483,17 @@ static world secondaryInstance = {nullptr, 0};
 
 // Objects that emit physical light (point lights). Each one with emissive.t > 0
 // lights nearby geometry within its bloom length (bloom.y, world-space radius).
-static constexpr int MAX_POINT_LIGHTS = 8; // must match #define in w2s.fs
+static constexpr int MAX_POINT_LIGHTS = 32; // must match #define in w2s.fs
 static meshedObject* gEmitters[] = {&wand};
 
 static int gTorchEmitterId = -1;
 
 void initialise()
 {
+    initInstanceId();
+    netInit();
+    std::cout << "instance id: " << getInstanceId() << std::endl;
+    std::cout << "instance number: " << getInstanceNumber() << std::endl;
 
     InitWindow(SCREEN_WIDTH, SCREEN_HEIGHT, "Hello raylib!");
     InitAudioDevice();
@@ -404,6 +505,9 @@ void initialise()
     jump5 = LoadSound("resources/sounds/jumps/j5.mp3");
     jump6 = LoadSound("resources/sounds/jumps/j6.mp3");
     jump7 = LoadSound("resources/sounds/jumps/j7.mp3");
+    magic1 = LoadSound("resources/sounds/magic/magic1.wav");
+    magic2 = LoadSound("resources/sounds/magic/magic2.wav");
+    magic3 = LoadSound("resources/sounds/magic/magic3.wav");
 
     bgMusic1 = LoadMusicStream("resources/sounds/map/bg1.mp3");
     bgMusic2 = LoadMusicStream("resources/sounds/map/bg2.mp3");
@@ -475,7 +579,14 @@ void initialise()
     w2sShader.pointPosLoc = GetShaderLocation(w2sShader.shader, "uPointPos");
     w2sShader.pointColorLoc = GetShaderLocation(w2sShader.shader, "uPointColor");
     w2sShader.pointRadiusLoc= GetShaderLocation(w2sShader.shader, "uPointRadius");
+    w2sShader.pointAmbientLoc = GetShaderLocation(w2sShader.shader, "uPointAmbient");
+    w2sShader.beamAmbientLoc  = GetShaderLocation(w2sShader.shader, "uBeamAmbient");
     w2sShader.pointCountLoc = GetShaderLocation(w2sShader.shader, "uPointCount");
+    w2sShader.beamStartLoc  = GetShaderLocation(w2sShader.shader, "uBeamStart");
+    w2sShader.beamEndLoc    = GetShaderLocation(w2sShader.shader, "uBeamEnd");
+    w2sShader.beamColorLoc  = GetShaderLocation(w2sShader.shader, "uBeamColor");
+    w2sShader.beamRadiusLoc = GetShaderLocation(w2sShader.shader, "uBeamRadius");
+    w2sShader.beamCountLoc  = GetShaderLocation(w2sShader.shader, "uBeamCount");
     w2sShader.drankUrgencyLoc = GetShaderLocation(w2sShader.shader, "uDrankUrgency");
     w2sShader.resolutionLoc   = GetShaderLocation(w2sShader.shader, "uResolution");
 
@@ -511,6 +622,29 @@ void initialise()
     glowBBFadeLoc = GetShaderLocation(glowBBShader, "uFadeDist");
     sceneDepthRT = LoadShadowMapRenderTexture(SCREEN_WIDTH, SCREEN_HEIGHT);
     depthViewShader = LoadShader(0, "resources/shaders/depthview.fs");
+
+    // Heat-shockwave warp: full-res scene capture (colour + sampleable depth) + refraction shader.
+    sceneColorRT = LoadShadowMapRenderTexture(SCREEN_WIDTH, SCREEN_HEIGHT);
+    SetTextureFilter(sceneColorRT.texture, TEXTURE_FILTER_BILINEAR);
+    warpShader = LoadShader(0, "resources/shaders/warp.fs");
+    warpColorLoc    = GetShaderLocation(warpShader, "uColor");
+    warpDepthLoc    = GetShaderLocation(warpShader, "uDepth");
+    warpResLoc      = GetShaderLocation(warpShader, "uResolution");
+    warpTimeLoc     = GetShaderLocation(warpShader, "uTime");
+    warpProjALoc    = GetShaderLocation(warpShader, "uProjA");
+    warpProjBLoc    = GetShaderLocation(warpShader, "uProjB");
+    warpCamPosLoc   = GetShaderLocation(warpShader, "uCamPos");
+    warpCamRightLoc = GetShaderLocation(warpShader, "uCamRight");
+    warpCamUpLoc    = GetShaderLocation(warpShader, "uCamUp");
+    warpCamFwdLoc   = GetShaderLocation(warpShader, "uCamFwd");
+    warpTanHalfLoc  = GetShaderLocation(warpShader, "uTanHalf");
+    warpAspectLoc   = GetShaderLocation(warpShader, "uAspect");
+    warpCountLoc    = GetShaderLocation(warpShader, "uCount");
+    warpOriginLoc   = GetShaderLocation(warpShader, "uOrigin");
+    warpRadiusLoc   = GetShaderLocation(warpShader, "uRadius");
+    warpThickLoc    = GetShaderLocation(warpShader, "uThickness");
+    warpStrengthLoc = GetShaderLocation(warpShader, "uStrength");
+    warpCenterLoc   = GetShaderLocation(warpShader, "uCenter");
     w2sShader.emissiveOnlyLoc = GetShaderLocation(w2sShader.shader, "uEmissiveOnly");
     w2sShader.bloomParamsLoc = GetShaderLocation(w2sShader.shader, "uBloom");
     w2sShader.bloomFocalLoc = GetShaderLocation(w2sShader.shader, "uBloomFocal");
@@ -528,11 +662,29 @@ void initialise()
     */
 
     create3dObject(wand, "resources/levels/objects/wand.obj", "resources/levels/objects/colliders/wand_collider.obj", true, w2sShader, 1.f /* scale */, {0.f,2.f,5.f} /* location */, empty, false, 100, {0,0,0});
-    wand.emissive = {0.f, 1.f, 0.f, 0.15f}; // glow moved here from drank (green; recolor freely)
-    wand.bloom = {5.0f, 10.0f};             // bloom: x = brightness, y = world radius
     wandItem = createItem(&wand, 8.0f /* pickup distance */, 60.0f /* lookat radius (px) */);
     addItem(&wandItem);
     updateColliderLocation(wand, player1, false);
+
+    // Hand: same holdable treatment as the wand, spawned 3 units along +X from it.
+    // No hand_collider.obj exists yet, so it borrows the wand's — without a collider
+    // an item has zero collision planes and falls straight through the world.
+    create3dObject(hand, "resources/levels/objects/hand.obj", "resources/levels/objects/colliders/wand_collider.obj", true, w2sShader, 0.25f /* scale */, {3.f,2.f,5.f} /* location */, empty, false, 100, {0,0,0});
+    handItem = createItem(&hand, 8.0f /* pickup distance */, 60.0f /* lookat radius (px) */);
+    addItem(&handItem);
+    updateColliderLocation(hand, player1, false);
+
+    // Spells are data: every one is always live and fires only when the item it
+    // names is the held item. All three existing spells require the wand; the hand
+    // is deliberately absent, so holding it casts nothing.
+    registerSpell(KEY_ONE,   &wand, 2.0f,  castFireball);
+    registerSpell(KEY_TWO,   &wand, 10.0f, castHeavenSword);
+    registerSpell(KEY_THREE, &wand, 3.0f,  castDarkblast);
+
+    /*
+    // The hand glows red whenever it is held — no cast, no envelope, always on.
+    registerHeldLight(&hand, {1.f, 0.1f, 0.1f}, 3.0f, 4.0f);
+    */
 
     initializePhysicsEntity(player1.pEntity, 1.f, COMPLEX);
 
@@ -548,6 +700,8 @@ void initialise()
     gTorchEmitterId = spawnFireEmitter({0.f, 5.f, 0.f});
 
     initWizardAttacks(w2sShader);
+
+    spawnPlayers((int)NET_MAX_PLAYERS, w2sShader);
 
     gPreviousTicks = static_cast<float>(GetTime());
 }
@@ -633,9 +787,23 @@ void update() {
         gCamInterpInit = true;
     }
 
+    // Input only counts when the game window has focus (mouse context). Otherwise
+    // the OS-global key state (GetAsyncKeyState etc.) and raw mouse would drive the
+    // game while the player is in another window. Gate keyboard centrally and skip
+    // mouse look when unfocused (still read the delta so it doesn't snap on refocus).
+    bool inputActive = IsWindowFocused();
+    setInputEnabled(inputActive);
+
+    // Networking test harness: 8 spawns the loopback server, 9 spawns a client
+    // that joins it and pings once a second. Called every frame so the edge
+    // detector keeps tracking; reads already return false while unfocused.
+    if (getKeyPressedOnce(KEY_EIGHT)) startServerThread();
+    if (getKeyPressedOnce(KEY_NINE)) startClientThread();
+
     // Mouse look stays per-frame so the view is as smooth as the framerate allows.
     RawMouseGetDelta(md.x, md.y);
-    moveLook(player1, frameTime, md);
+    if (inputActive) moveLook(player1, frameTime, md);
+    else { md.x = 0.f; md.y = 0.f; }
 
     // Physics runs at a FIXED timestep, decoupled from the framerate: bank the real
     // frame time and consume it in constant PHYSICS_DT steps. Deterministic and
@@ -675,6 +843,40 @@ void update() {
 
     // Held item tracks the finalised (interpolated) camera, so update it here.
     handleItemInput(player1);
+
+    // Publish this instance's position for the network threads to send on their
+    // tick, and pull the latest snapshot onto the spawned bodies. Both are plain
+    // copies under a lock — the game thread never waits on the network.
+    netSetLocalPlayer(player1.pEntity.location.x,
+                      player1.pEntity.location.y,
+                      player1.pEntity.location.z);
+
+    // Whichever role is running filled this table, so the handler below just gets
+    // an array of packets and places bodies from it — no host/client branch here.
+    playerPacket netPackets[NET_MAX_PLAYERS];
+    int netPacketCount = netGetPlayerPackets(netPackets, (int)NET_MAX_PLAYERS);
+    processPlayerPackets(netPackets, netPacketCount);
+
+    // Spell casting (per-frame). Every registered spell is evaluated; each fires only
+    // when the item it requires is the held one, so this needs no per-item branch.
+    // castOrigin = held item's tip (its centre + look-forward offset), so the charge FX
+    // and projectiles follow whatever is in hand.
+    meshedObject* heldObj = heldItemObject();
+    vector3 castOrigin = heldObj ? heldObj->pEntity.location : player1.camera.camPos;
+    if (heldObj) {
+        float cyw = cosf(player1.camera.camTarget.x), syw = sinf(player1.camera.camTarget.x);
+        float cpi = cosf(player1.camera.camTarget.y), spi = sinf(player1.camera.camTarget.y);
+        vector3 F = normalize3({cpi * cyw, spi, cpi * syw});
+        vector3 R = normalize3(cross3(F, player1.camera.up));
+        vector3 U = cross3(R, F);
+        // Tip anchor, in camera space (tuned to sit at the wand's tip):
+        // forward = distance ahead of the eye, right = matches the held item, up = height.
+        castOrigin = player1.camera.camPos + F.fmult(2.2f) + R.fmult(1.0f) + U.fmult(0.3f);
+    }
+    spellsUpdate(player1, frameTime, castOrigin, magic1, magic2, magic3);
+
+    // Lights an item emits purely by being held (the hand's red glow).
+    heldLightUpdate(player1);
 
     {
         static double lastPrintTime = 0.0;
@@ -883,11 +1085,14 @@ static void RenderShadowMapPass(const mtx44& nearLSM, const mtx44& farLSM) {
     auto drawCasters = [&]() {
         rlEnableBackfaceCulling();
 
+        /*
         Draw3DDepthGPU(testingplatforms, depthShader, depthModelLoc);
+        */
         /*
         Draw3DDepthGPU(drank, depthShader, depthModelLoc);
         */
         drawItemsDepth(depthShader, depthModelLoc);
+        drawSpawnedPlayersDepth(depthShader, depthModelLoc);
         /*
         drawWizardAttacksDepth(depthShader, depthModelLoc);
         */
@@ -960,6 +1165,12 @@ static void DrawSceneWithShadows(const mtx44& frameVP, const mtx44& nearLSM, con
     float pointPos[3 * MAX_POINT_LIGHTS];
     float pointColor[3 * MAX_POINT_LIGHTS];
     float pointRadius[MAX_POINT_LIGHTS];
+    // Per-light ambient (flat, normal-independent share of the light's colour). Only
+    // the fireball and darkblast lights use it; every other source stays 0 and keeps
+    // its original pure-diffuse look. The array is parallel to the others, so every
+    // site that does pointCount++ MUST write this too or the shader reads stale values.
+    float pointAmbient[MAX_POINT_LIGHTS];
+    const float EFFECT_LIGHT_AMBIENT = 0.35f; // fireball + darkblast
     int pointCount = 0;
     for (int e = 0; e < (int)(sizeof(gEmitters) / sizeof(gEmitters[0])) && pointCount < MAX_POINT_LIGHTS; e++) {
         meshedObject* o = gEmitters[e];
@@ -971,14 +1182,123 @@ static void DrawSceneWithShadows(const mtx44& frameVP, const mtx44& nearLSM, con
         pointColor[pointCount * 3 + 1] = o->emissive.y * o->emissive.t * o->bloom.x;
         pointColor[pointCount * 3 + 2] = o->emissive.z * o->emissive.t * o->bloom.x;
         pointRadius[pointCount] = o->bloom.y; // physical light radius = bloom length (world units)
+        pointAmbient[pointCount] = 0.f;
+        pointCount++;
+    }
+    // Live attack balls are point lights too (so they light the floor as they fly),
+    // sharing the same MAX_POINT_LIGHTS cap.
+    for (int i = 0; i < wizardBallCount() && pointCount < MAX_POINT_LIGHTS; i++) {
+        meshedObject* o = wizardBallAt(i);
+        if (o->emissive.t <= 0.f) continue;
+        pointPos[pointCount * 3 + 0] = o->pEntity.location.x;
+        pointPos[pointCount * 3 + 1] = o->pEntity.location.y;
+        pointPos[pointCount * 3 + 2] = o->pEntity.location.z;
+        pointColor[pointCount * 3 + 0] = o->emissive.x * o->emissive.t * o->bloom.x;
+        pointColor[pointCount * 3 + 1] = o->emissive.y * o->emissive.t * o->bloom.x;
+        pointColor[pointCount * 3 + 2] = o->emissive.z * o->emissive.t * o->bloom.x;
+        pointRadius[pointCount] = o->bloom.y;
+        pointAmbient[pointCount] = EFFECT_LIGHT_AMBIENT; // fireball in flight
+        pointCount++;
+    }
+    // Transient explosion lights (very bright, grow/decay), sharing the same cap.
+    for (int i = 0; i < explosionLightCount() && pointCount < MAX_POINT_LIGHTS; i++) {
+        float ep[3], ec[3], er;
+        if (!explosionLightAt(i, ep, ec, &er)) continue;
+        pointPos[pointCount * 3 + 0] = ep[0];
+        pointPos[pointCount * 3 + 1] = ep[1];
+        pointPos[pointCount * 3 + 2] = ep[2];
+        pointColor[pointCount * 3 + 0] = ec[0];
+        pointColor[pointCount * 3 + 1] = ec[1];
+        pointColor[pointCount * 3 + 2] = ec[2];
+        pointRadius[pointCount] = er;
+        pointAmbient[pointCount] = EFFECT_LIGHT_AMBIENT; // fireball impact flash
+        pointCount++;
+    }
+    // Wand-tip glow (dim white) while casting.
+    if (pointCount < MAX_POINT_LIGHTS) {
+        float wp[3], wc[3], wr;
+        if (wandGlowLightAt(wp, wc, &wr)) {
+            pointPos[pointCount * 3 + 0] = wp[0];
+            pointPos[pointCount * 3 + 1] = wp[1];
+            pointPos[pointCount * 3 + 2] = wp[2];
+            pointColor[pointCount * 3 + 0] = wc[0];
+            pointColor[pointCount * 3 + 1] = wc[1];
+            pointColor[pointCount * 3 + 2] = wc[2];
+            pointRadius[pointCount] = wr;
+            pointAmbient[pointCount] = 0.f;
+            pointCount++;
+        }
+    }
+    // Held-item light (the hand's red glow): on for as long as the item is held.
+    if (pointCount < MAX_POINT_LIGHTS) {
+        float hp[3], hc[3], hr;
+        if (heldItemLightAt(hp, hc, &hr)) {
+            pointPos[pointCount * 3 + 0] = hp[0];
+            pointPos[pointCount * 3 + 1] = hp[1];
+            pointPos[pointCount * 3 + 2] = hp[2];
+            pointColor[pointCount * 3 + 0] = hc[0];
+            pointColor[pointCount * 3 + 1] = hc[1];
+            pointColor[pointCount * 3 + 2] = hc[2];
+            pointRadius[pointCount] = hr;
+            pointAmbient[pointCount] = 0.f;
+            pointCount++;
+        }
+    }
+    // Heaven-sword guide lights: one below each falling blade, until it impacts.
+    for (int i = 0; i < swordLightCount() && pointCount < MAX_POINT_LIGHTS; i++) {
+        float sp[3], sc[3], sr;
+        if (!swordLightAt(i, sp, sc, &sr)) continue;
+        pointPos[pointCount * 3 + 0] = sp[0];
+        pointPos[pointCount * 3 + 1] = sp[1];
+        pointPos[pointCount * 3 + 2] = sp[2];
+        pointColor[pointCount * 3 + 0] = sc[0];
+        pointColor[pointCount * 3 + 1] = sc[1];
+        pointColor[pointCount * 3 + 2] = sc[2];
+        pointRadius[pointCount] = sr;
+        pointAmbient[pointCount] = 0.f;
         pointCount++;
     }
     if (pointCount > 0) {
         SetShaderValueV(w2sShader.shader, w2sShader.pointPosLoc, pointPos, SHADER_UNIFORM_VEC3, pointCount);
         SetShaderValueV(w2sShader.shader, w2sShader.pointColorLoc, pointColor, SHADER_UNIFORM_VEC3, pointCount);
         SetShaderValueV(w2sShader.shader, w2sShader.pointRadiusLoc, pointRadius, SHADER_UNIFORM_FLOAT, pointCount);
+        SetShaderValueV(w2sShader.shader, w2sShader.pointAmbientLoc, pointAmbient, SHADER_UNIFORM_FLOAT, pointCount);
     }
     SetShaderValue(w2sShader.shader, w2sShader.pointCountLoc, &pointCount, SHADER_UNIFORM_INT);
+
+    // Let the smoke particles receive the same point lights the scene uses, so they
+    // aren't a flat dark blob inside lit areas (e.g. the sword's impact glow).
+    setParticleLights(pointCount, pointPos, pointColor, pointRadius);
+
+    // Beam (segment) lights: the darkblast lights its whole length via ONE line light each,
+    // so no need to spam point lights along it. (uBeamCount matches MAX_BEAM_LIGHTS = 4.)
+    const int MAX_BEAM_LIGHTS = 4;
+    float beamStart[3 * MAX_BEAM_LIGHTS];
+    float beamEnd[3 * MAX_BEAM_LIGHTS];
+    float beamColor[3 * MAX_BEAM_LIGHTS];
+    float beamRadius[MAX_BEAM_LIGHTS];
+    float beamAmbient[MAX_BEAM_LIGHTS];
+    int beamCount = 0;
+    for (int i = 0; i < darkblastBeamCount() && beamCount < MAX_BEAM_LIGHTS; i++) {
+        float bs[3], be[3], bc[3], br;
+        if (!darkblastBeamAt(i, bs, be, bc, &br)) continue;
+        for (int k = 0; k < 3; k++) {
+            beamStart[beamCount * 3 + k] = bs[k];
+            beamEnd[beamCount * 3 + k]   = be[k];
+            beamColor[beamCount * 3 + k] = bc[k];
+        }
+        beamRadius[beamCount] = br;
+        beamAmbient[beamCount] = EFFECT_LIGHT_AMBIENT; // darkblast
+        beamCount++;
+    }
+    if (beamCount > 0) {
+        SetShaderValueV(w2sShader.shader, w2sShader.beamStartLoc, beamStart, SHADER_UNIFORM_VEC3, beamCount);
+        SetShaderValueV(w2sShader.shader, w2sShader.beamEndLoc, beamEnd, SHADER_UNIFORM_VEC3, beamCount);
+        SetShaderValueV(w2sShader.shader, w2sShader.beamColorLoc, beamColor, SHADER_UNIFORM_VEC3, beamCount);
+        SetShaderValueV(w2sShader.shader, w2sShader.beamRadiusLoc, beamRadius, SHADER_UNIFORM_FLOAT, beamCount);
+        SetShaderValueV(w2sShader.shader, w2sShader.beamAmbientLoc, beamAmbient, SHADER_UNIFORM_FLOAT, beamCount);
+    }
+    SetShaderValue(w2sShader.shader, w2sShader.beamCountLoc, &beamCount, SHADER_UNIFORM_INT);
 
     // Bloom-length projection: convert a WORLD-space bloom length to screen texels
     // in the emissive shader. focal = (emissiveBufferHeight/2) / tan(fovY/2).
@@ -1013,6 +1333,7 @@ static void DrawSceneWithShadows(const mtx44& frameVP, const mtx44& nearLSM, con
         */
         float itemAlpha = gPhysicsAccumulator / PHYSICS_DT;
         drawItems(player1.camera, w2sShader, itemAlpha, &frameVP, shadowTex, hasShadowMap, shadowTexFar);
+        drawSpawnedPlayers(player1.camera, w2sShader, &frameVP, shadowTex, hasShadowMap, shadowTexFar);
         drawWizardAttacks(player1.camera, w2sShader, itemAlpha, &frameVP, shadowTex, hasShadowMap, shadowTexFar);
         /*
         Draw3DGPU(skysphere1, player1.camera, w2sShader, {255,0,0,255}, &frameVP, shadowTex, false);
@@ -1111,6 +1432,15 @@ void render()
             sceneDepthRT = LoadShadowMapRenderTexture(rw, rh);
         }
 
+        // Keep the heat-warp scene-capture RT (colour + depth) matched to the framebuffer too.
+        if (rw > 0 && rh > 0 && (sceneColorRT.texture.width != rw || sceneColorRT.texture.height != rh)) {
+            if (sceneColorRT.texture.id != 0) rlUnloadTexture(sceneColorRT.texture.id);
+            if (sceneColorRT.depth.id != 0) rlUnloadTexture(sceneColorRT.depth.id);
+            if (sceneColorRT.id != 0) rlUnloadFramebuffer(sceneColorRT.id);
+            sceneColorRT = LoadShadowMapRenderTexture(rw, rh);
+            SetTextureFilter(sceneColorRT.texture, TEXTURE_FILTER_BILINEAR);
+        }
+
         // --- CAMERA-VIEW SCENE DEPTH (for the glow occlusion depth check) ---
         // Opaque geometry depth from the camera's POV, so the glow pass can hide the
         // parts of each corona that sit behind scene geometry. depthShader transforms
@@ -1124,15 +1454,27 @@ void render()
             BeginShaderMode(depthShader);
             SetShaderValueMatrix(depthShader, depthLightSpaceLoc, ToRaylibMatrix(frameVP));
             Draw3DDepthGPU(testingplatforms, depthShader, depthModelLoc);
-            // Only OCCLUDERS go here — NOT the emitters (a light must not occlude its
-            // own corona) and NOT held items. The single-sample test at each light's
-            // centre then sees only geometry genuinely in front of the light.
+            Draw3DDepthGPU(wand, depthShader, depthModelLoc); // stick occludes the ball glows
+            // Emitters (the glowing balls) are NOT drawn here — a light must not occlude
+            // its own corona. The stick doesn't glow, so it's fine as an occluder.
             EndShaderMode();
             rlDisableFramebuffer();
             rlViewport(0, 0, GetRenderWidth(), GetRenderHeight());
         }
 
-        // --- MAIN SCENE to the screen ---
+        // --- MAIN SCENE (to the screen, or into sceneColorRT when a heat-warp is active) ---
+        // When a shockwave is live, capture the scene into sceneColorRT so the warp pass can
+        // refract it; otherwise render straight to the screen (zero extra cost the rest of the
+        // time). The scene/particle/corona passes set their own matrices, so routing them into
+        // an equally-sized RT changes nothing but the destination framebuffer.
+        bool warpActive = (shockwaveCount() > 0) && sceneColorRT.id != 0;
+        if (warpActive) {
+            rlDrawRenderBatchActive();
+            rlEnableFramebuffer(sceneColorRT.id);
+            rlViewport(0, 0, rw, rh);
+            rlClearScreenBuffers();
+        }
+
         rlMatrixMode(RL_PROJECTION);
         rlLoadIdentity();
         rlMatrixMode(RL_MODELVIEW);
@@ -1170,7 +1512,6 @@ void render()
             rlDisableDepthMask();
             BeginBlendMode(BLEND_ADDITIVE);
             BeginShaderMode(glowBBShader);
-            SetShaderValueTexture(glowBBShader, glowBBSceneDepthLoc, sceneDepthRT.depth);
             float gScr[2] = { (float)GetRenderWidth(), (float)GetRenderHeight() };
             SetShaderValue(glowBBShader, glowBBScreenLoc, gScr, SHADER_UNIFORM_VEC2);
             float gProjA = (zFar + zNear) / (zNear - zFar);
@@ -1179,17 +1520,14 @@ void render()
             SetShaderValue(glowBBShader, glowBBProjBLoc, &gProjB, SHADER_UNIFORM_FLOAT);
             float gFade = 4.0f; // world-space soft-fade distance (tunable)
             SetShaderValue(glowBBShader, glowBBFadeLoc, &gFade, SHADER_UNIFORM_FLOAT);
-            for (int e = 0; e < (int)(sizeof(gEmitters) / sizeof(gEmitters[0])); e++) {
-                meshedObject* o = gEmitters[e];
-                if (o->emissive.t <= 0.f) continue;
-                vector3 p = o->pEntity.location;
-                float rad = o->bloom.y; // world-space radius
-                float col[3] = {
-                    o->emissive.x * o->emissive.t * o->bloom.x * bloomIntensity,
-                    o->emissive.y * o->emissive.t * o->bloom.x * bloomIntensity,
-                    o->emissive.z * o->emissive.t * o->bloom.x * bloomIntensity
-                };
+
+            // Draw one soft billboard corona at world pos p, radius rad, additive
+            // colour col. The scene-depth sampler is bound per-corona because each
+            // per-corona flush clears that binding.
+            auto emitCoronaRaw = [&](vector3 p, float rad, const float col[3]) {
+                if (rad <= 0.f) return;
                 SetShaderValue(glowBBShader, glowBBColorLoc, col, SHADER_UNIFORM_VEC3);
+                SetShaderValueTexture(glowBBShader, glowBBSceneDepthLoc, sceneDepthRT.depth);
                 vector3 rx = { rgt.x * rad, rgt.y * rad, rgt.z * rad };
                 vector3 uy = { upv.x * rad, upv.y * rad, upv.z * rad };
                 vector3 tl = { p.x - rx.x + uy.x, p.y - rx.y + uy.y, p.z - rx.z + uy.z };
@@ -1203,13 +1541,157 @@ void render()
                     rlTexCoord2f(1.f, 1.f); rlVertex3f(br.x, br.y, br.z);
                     rlTexCoord2f(1.f, 0.f); rlVertex3f(tr.x, tr.y, tr.z);
                 rlEnd();
-                rlDrawRenderBatchActive(); // flush with this emitter's uGlowColor
+                rlDrawRenderBatchActive();
+            };
+            auto emitCorona = [&](meshedObject* o) {
+                if (o->emissive.t <= 0.f) return;
+                float col[3] = {
+                    o->emissive.x * o->emissive.t * o->bloom.x * bloomIntensity,
+                    o->emissive.y * o->emissive.t * o->bloom.x * bloomIntensity,
+                    o->emissive.z * o->emissive.t * o->bloom.x * bloomIntensity
+                };
+                emitCoronaRaw(o->pEntity.location, o->bloom.y, col);
+            };
+
+            for (int e = 0; e < (int)(sizeof(gEmitters) / sizeof(gEmitters[0])); e++)
+                emitCorona(gEmitters[e]);
+            for (int i = 0; i < wizardBallCount(); i++)
+                emitCorona(wizardBallAt(i));
+            // Transient impact coronas (grow/decay halo at each explosion).
+            for (int i = 0; i < explosionLightCount(); i++) {
+                float ep[3], ec[3], er;
+                if (explosionCoronaAt(i, ep, ec, &er))
+                    emitCoronaRaw({ep[0], ep[1], ep[2]}, er, ec);
             }
+            // Darkblast beam glow: soft coronas strung along the beam segment (a real glow,
+            // depth-occluded, not a widened sprite).
+            {
+                float bs[3], be[3], bc[3], br, bsp;
+                if (darkblastGlow(bs, be, bc, &br, &bsp)) {
+                    vector3 A = {bs[0], bs[1], bs[2]}, B = {be[0], be[1], be[2]};
+                    vector3 seg = B - A;
+                    float len = seg.mag();
+                    int n = (bsp > 0.f) ? (int)(len / bsp) : 0;
+                    if (n < 1) n = 1;
+                    if (n > 80) n = 80; // cap the corona count
+                    // Modulate each corona by the SAME sizzle the beams use, so the glow
+                    // crackles in lockstep along the beam instead of reading as a flat tube.
+                    for (int k = 0; k <= n; k++) {
+                        float u = (float)k / (float)n;
+                        float sz = darkblastSizzle(u, 0.f);
+                        float sc[3] = { bc[0] * sz, bc[1] * sz, bc[2] * sz };
+                        emitCoronaRaw(A + seg.fmult(u), br, sc);
+                    }
+                }
+            }
+            /*
+            // Wand-tip corona (small white) while casting.
+            {
+                float wp[3], wc[3], wr;
+                if (wandGlowCoronaAt(wp, wc, &wr))
+                    emitCoronaRaw({wp[0], wp[1], wp[2]}, wr, wc);
+            }
+            */
             EndShaderMode();
             EndBlendMode();
             rlEnableDepthTest();
             rlEnableDepthMask();
             rlEnableBackfaceCulling();
+        }
+
+        // --- HEAT-SHOCKWAVE WARP COMPOSITE ---
+        // The scene (colour + depth) was captured into sceneColorRT; redraw it full-screen
+        // through warpShader, which reconstructs each pixel's WORLD position from depth and
+        // refracts only where that pixel's true 3D distance to the blast is within the sphere's
+        // shell — so the distortion lies on the world surfaces the wave is sweeping through.
+        // With no shockwave in view (uCount==0) the shader is a plain copy.
+        if (warpActive) {
+            rlDrawRenderBatchActive();
+            rlDisableFramebuffer();
+            rlViewport(0, 0, rw, rh);
+
+            float wOrigin[3 * 4], wRadius[4], wThick[4], wStrength[4], wCenter[2 * 4];
+            int wCount = 0;
+            for (int i = 0; i < shockwaveCount() && wCount < 4; i++) {
+                float o[3], wr, ws;
+                if (!shockwaveAt(i, o, &wr, &ws)) continue;
+                vector3 p = { o[0], o[1], o[2] };
+                vector4 clip = modmmult(frameVP, {p.x, p.y, p.z, 1.0f});
+                if (clip.t > 0.001f) { // project the centre for the radial refraction direction
+                    wCenter[wCount*2+0] = (clip.x / clip.t * 0.5f + 0.5f) * rw;
+                    wCenter[wCount*2+1] = (clip.y / clip.t * 0.5f + 0.5f) * rh; // GL bottom-left
+                } else { // centre behind the camera: fall back to screen centre
+                    wCenter[wCount*2+0] = rw * 0.5f;
+                    wCenter[wCount*2+1] = rh * 0.5f;
+                }
+                wOrigin[wCount*3+0] = p.x; wOrigin[wCount*3+1] = p.y; wOrigin[wCount*3+2] = p.z;
+                wRadius[wCount]   = wr;                        // world radius
+                wThick[wCount]    = WARP_THICKNESS_WORLD;      // world band half-width
+                wStrength[wCount] = WARP_STRENGTH_PX * ws;     // screen offset px
+                wCount++;
+            }
+
+            gWarpClock += GetFrameTime();
+
+            // Camera basis for the depth->world ray reconstruction (matches viewMtx44 / the
+            // corona pass), and the perspective depth coeffs (matches the glow pass).
+            float cyw = cosf(player1.camera.camTarget.x), syw = sinf(player1.camera.camTarget.x);
+            float cpi = cosf(player1.camera.camTarget.y), spi = sinf(player1.camera.camTarget.y);
+            vector3 fwd = normalize3({ cpi * cyw, spi, cpi * syw });
+            vector3 rgt = normalize3(cross3(fwd, player1.camera.up));
+            vector3 upv = cross3(rgt, fwd);
+            float wProjA = (zFar + zNear) / (zNear - zFar);
+            float wProjB = (2.0f * zFar * zNear) / (zNear - zFar);
+            float wTanHalf = tanf(player1.camera.fov * 0.5f);
+
+            rlDisableDepthTest();
+            rlDisableDepthMask();
+            rlMatrixMode(RL_PROJECTION); rlLoadIdentity();
+            rlOrtho(0, rw, rh, 0, -1, 1);
+            rlMatrixMode(RL_MODELVIEW); rlLoadIdentity();
+
+            BeginShaderMode(warpShader);
+            float wRes[2]  = { (float)rw, (float)rh };
+            float wCamP[3] = { player1.camera.camPos.x, player1.camera.camPos.y, player1.camera.camPos.z };
+            float wCamR[3] = { rgt.x, rgt.y, rgt.z };
+            float wCamU[3] = { upv.x, upv.y, upv.z };
+            float wCamF[3] = { fwd.x, fwd.y, fwd.z };
+            SetShaderValue (warpShader, warpResLoc,     wRes,      SHADER_UNIFORM_VEC2);
+            SetShaderValue (warpShader, warpTimeLoc,    &gWarpClock, SHADER_UNIFORM_FLOAT);
+            SetShaderValue (warpShader, warpProjALoc,   &wProjA,   SHADER_UNIFORM_FLOAT);
+            SetShaderValue (warpShader, warpProjBLoc,   &wProjB,   SHADER_UNIFORM_FLOAT);
+            SetShaderValue (warpShader, warpCamPosLoc,  wCamP,     SHADER_UNIFORM_VEC3);
+            SetShaderValue (warpShader, warpCamRightLoc,wCamR,     SHADER_UNIFORM_VEC3);
+            SetShaderValue (warpShader, warpCamUpLoc,   wCamU,     SHADER_UNIFORM_VEC3);
+            SetShaderValue (warpShader, warpCamFwdLoc,  wCamF,     SHADER_UNIFORM_VEC3);
+            SetShaderValue (warpShader, warpTanHalfLoc, &wTanHalf, SHADER_UNIFORM_FLOAT);
+            SetShaderValue (warpShader, warpAspectLoc,  &player1.camera.aspect, SHADER_UNIFORM_FLOAT);
+            SetShaderValue (warpShader, warpCountLoc,   &wCount,   SHADER_UNIFORM_INT);
+            if (wCount > 0) {
+                SetShaderValueV(warpShader, warpOriginLoc,   wOrigin,   SHADER_UNIFORM_VEC3,  wCount);
+                SetShaderValueV(warpShader, warpRadiusLoc,   wRadius,   SHADER_UNIFORM_FLOAT, wCount);
+                SetShaderValueV(warpShader, warpThickLoc,    wThick,    SHADER_UNIFORM_FLOAT, wCount);
+                SetShaderValueV(warpShader, warpStrengthLoc, wStrength, SHADER_UNIFORM_FLOAT, wCount);
+                SetShaderValueV(warpShader, warpCenterLoc,   wCenter,   SHADER_UNIFORM_VEC2,  wCount);
+            }
+            // Bind both samplers right before the single draw so the bindings survive the one
+            // batch flush (same reason the glow pass binds its depth sampler per-draw), then draw
+            // the full-screen quad in immediate mode. The shader samples via gl_FragCoord, so the
+            // bottom-up RT composites upright regardless of texcoords.
+            SetShaderValueTexture(warpShader, warpColorLoc, sceneColorRT.texture);
+            SetShaderValueTexture(warpShader, warpDepthLoc, sceneColorRT.depth);
+            rlBegin(RL_QUADS);
+                rlColor4ub(255, 255, 255, 255);
+                rlTexCoord2f(0.f, 0.f); rlVertex2f(0.f, 0.f);
+                rlTexCoord2f(0.f, 1.f); rlVertex2f(0.f, (float)rh);
+                rlTexCoord2f(1.f, 1.f); rlVertex2f((float)rw, (float)rh);
+                rlTexCoord2f(1.f, 0.f); rlVertex2f((float)rw, 0.f);
+            rlEnd();
+            rlDrawRenderBatchActive();
+            EndShaderMode();
+
+            rlEnableDepthTest();
+            rlEnableDepthMask();
         }
 
         /*
@@ -1384,6 +1866,13 @@ void render()
 
 void shutdown()
 {
+    // Joins both threads before the std::thread objects die; a joinable thread
+    // destroyed un-joined calls std::terminate.
+    stopServerThread();
+    stopClientThread();
+    netShutdown();
+    shutdownSpawnedPlayers();
+
     shutdownParticles();
     shutdownWizardAttacks();
 
@@ -1394,6 +1883,9 @@ void shutdown()
     UnloadSound(jump5);
     UnloadSound(jump6);
     UnloadSound(jump7);
+    UnloadSound(magic1);
+    UnloadSound(magic2);
+    UnloadSound(magic3);
     stopCarEngineThread();
     UnloadMusicStream(carEngine);
     UnloadMusicStream(bgMusic1);
@@ -1417,6 +1909,11 @@ void shutdown()
     if (sceneDepthRT.depth.id != 0) rlUnloadTexture(sceneDepthRT.depth.id);
     if (sceneDepthRT.id != 0) rlUnloadFramebuffer(sceneDepthRT.id);
 
+    if (sceneColorRT.texture.id != 0) rlUnloadTexture(sceneColorRT.texture.id);
+    if (sceneColorRT.depth.id != 0) rlUnloadTexture(sceneColorRT.depth.id);
+    if (sceneColorRT.id != 0) rlUnloadFramebuffer(sceneColorRT.id);
+    if (warpShader.id != 0) UnloadShader(warpShader);
+
     if (emissiveRT.id != 0) UnloadRenderTexture(emissiveRT);
     if (bloomShader.id != 0) UnloadShader(bloomShader);
     if (glowShader.id != 0) UnloadShader(glowShader);
@@ -1432,6 +1929,10 @@ void shutdown()
     free(wand.mesh.trisO);
     delete[] wand.collider;
     delete[] wand.colliderO;
+    free(hand.mesh.tris);
+    free(hand.mesh.trisO);
+    delete[] hand.collider;
+    delete[] hand.colliderO;
     free(cube.mesh.tris);
     free(cube.mesh.trisO);
 

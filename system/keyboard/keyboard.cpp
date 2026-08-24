@@ -2,6 +2,9 @@
 #include <iostream>
 #include <unordered_map>
 
+static bool gInputEnabled = true; // gated by window focus (see setInputEnabled)
+void setInputEnabled(bool enabled) { gInputEnabled = enabled; }
+
 bool getKeyPressedOnce(int key) {
     static std::unordered_map<int, bool> prev;
     bool down = getAsyncKeyStateWrapper(key);
@@ -70,6 +73,7 @@ int rlToWinKey(int key) {
 #include <windows.h>
 
 bool getAsyncKeyStateWrapper(int key) {
+    if (!gInputEnabled) return false; // window not focused: ignore OS-global key state
 
     SHORT state = GetAsyncKeyState(rlToWinKey(key));
 
@@ -80,6 +84,7 @@ bool getAsyncKeyStateWrapper(int key) {
 #include <ApplicationServices/ApplicationServices.h>
 
 bool getAsyncKeyStateWrapper(int key) {
+    if (!gInputEnabled) return false; // window not focused: ignore OS-global key state
     int macKey = rlToMacKey(key);
 
     return CGEventSourceKeyState(kCGEventSourceStateCombinedSessionState, macKey);
@@ -91,6 +96,7 @@ bool getAsyncKeyStateWrapper(int key) {
 #include <X11/keysym.h>
 
 bool getAsyncKeyStateWrapper(KeySym keysym) {
+    if (!gInputEnabled) return false; // window not focused: ignore OS-global key state
     static Display* display = XOpenDisplay(nullptr);
     if (!display) return false;
 
@@ -113,6 +119,7 @@ inline void onWaylandKeyEvent(int key, bool pressed) {
 }
 
 bool getAsyncKeyStateWrapper(int key) {
+    if (!gInputEnabled) return false; // window not focused: ignore OS-global key state
     auto it = g_keyStates.find(key);
     if (it == g_keyStates.end()) return false;
     return it->second;

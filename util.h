@@ -158,7 +158,14 @@ struct shaderStore {
     int pointPosLoc;
     int pointColorLoc;
     int pointRadiusLoc;
+    int pointAmbientLoc;
     int pointCountLoc;
+    int beamStartLoc;
+    int beamEndLoc;
+    int beamColorLoc;
+    int beamRadiusLoc;
+    int beamAmbientLoc;
+    int beamCountLoc;
     int drankUrgencyLoc;
     int resolutionLoc;
 };

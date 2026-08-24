@@ -24,6 +24,20 @@ New Features:
 - Jumping!
 - The rest of the new stuff is basically just art :)
 
+Dependencies:
+=
+
+Dependencies live in ``vendor/``, which is gitignored, so after cloning run:
+
+``sh setup-deps.sh`` - raylib
+
+``sh setup-steamworks.sh`` - Steamworks SDK (optional)
+
+Steamworks is picked up automatically by every build script when
+``vendor/steamworks`` exists, and the matching ``steam_api`` runtime gets copied
+next to the executable. Wrap Steam code in ``#ifdef STEAMWORKS_AVAILABLE`` so
+builds without the SDK still work. Headers include as ``<steam/steam_api.h>``.
+
 Building/Running:
 =
 

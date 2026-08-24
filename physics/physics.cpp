@@ -228,7 +228,7 @@ void applyAcceleration(vector3 newAccel, physicsEntity& pEntity) {
     pEntity.acceleration = pEntity.acceleration + newAccel;
 }
 
-void processPhysics(float deltaTime, int frameRate, physicsEntity& pEntity, world& world, bool& end, int& target, bool invertedNormals, bool collide, planeMtx* collider, int collider_depth) {
+void processPhysics(float deltaTime, int frameRate, physicsEntity& pEntity, world& world, bool& end, int& target, bool invertedNormals, bool collide, planeMtx* collider, int collider_depth, bool* collidedOut, vector3* collisionPointOut) {
     bool acc = false;
     bool hasCollidedGround = false;
     bool hasCollidedWall = false;
@@ -285,6 +285,11 @@ void processPhysics(float deltaTime, int frameRate, physicsEntity& pEntity, worl
             }
         }
     }
+
+    // Report contact to the caller. The location has just been pushed to the surface
+    // by the collision resolution above, so it doubles as the impact point.
+    if (collidedOut) *collidedOut = (hasCollidedGround || hasCollidedWall);
+    if (collisionPointOut) *collisionPointOut = pEntity.location;
 
     if (pEntity.newForce.x !=0 || pEntity.newForce.y !=0 || pEntity.newForce.z !=0 || acc == true) {
 
@@ -475,4 +480,39 @@ void buildWorld(world& w, meshedObject** objects, int objectCount) {
 
 void intializePEntityLocation(meshedObject& object) {
 
+}
+
+// Raycast against the world's collider quads. Returns the distance to the NEAREST quad
+// the ray (origin + dir*t, t>0) hits within maxDist, or maxDist if nothing is hit. dir
+// should be unit length. Each quad is the parallelogram q0,q1,q2,q3 spanned by
+// u=q1-q0, v=q3-q0 (same convention the collision code uses).
+float raycastWorld(vector3 origin, vector3 dir, float maxDist, world& w) {
+    float best = maxDist;
+    for (int s = 0; s < w.segmentCount; s++) {
+        const worldSegment& seg = w.segments[s];
+        for (int i = 0; i < seg.count; i++) {
+            const planeMtx& pl = seg.planes[i];
+            vector3 q0 = {pl.m[0][0], pl.m[0][1], pl.m[0][2]};
+            vector3 uVec = vector3{pl.m[1][0], pl.m[1][1], pl.m[1][2]} - q0;
+            vector3 vVec = vector3{pl.m[3][0], pl.m[3][1], pl.m[3][2]} - q0;
+            vector3 n = cross3(uVec, vVec);
+            if (n.mag() < eps) continue;
+            float denom = dot3(dir, n);
+            if (fabsf(denom) < eps) continue;                 // ray parallel to the quad
+            float t = dot3(q0 - origin, n) / denom;
+            if (t <= 1e-4f || t >= best) continue;            // behind us or farther than a known hit
+            vector3 P = origin + dir.fmult(t);
+            // Solve P - q0 = sc*uVec + tc*vVec in the plane; inside if sc,tc in [0,1].
+            vector3 wv = P - q0;
+            float uu = dot3(uVec, uVec), uvd = dot3(uVec, vVec), vv = dot3(vVec, vVec);
+            float wu = dot3(wv, uVec), wvv = dot3(wv, vVec);
+            float den = uu * vv - uvd * uvd;
+            if (fabsf(den) < eps) continue;
+            float sc = (wu * vv - wvv * uvd) / den;
+            float tc = (wvv * uu - wu * uvd) / den;
+            if (sc < 0.f || sc > 1.f || tc < 0.f || tc > 1.f) continue;
+            best = t;
+        }
+    }
+    return best;
 }

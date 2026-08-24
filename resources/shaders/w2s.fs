@@ -55,11 +55,27 @@ uniform vec3 uCamPos;        // camera world position (fog + cascade distance ar
 uniform vec2 uResolution;    // viewport size in pixels (for screen-space UVs)
 
 // ---- Point lights -----------------------------------------------------------
-#define MAX_POINT_LIGHTS 8
+#define MAX_POINT_LIGHTS 32
 uniform vec3 uPointPos[MAX_POINT_LIGHTS];    // world positions
 uniform vec3 uPointColor[MAX_POINT_LIGHTS];  // colors
 uniform float uPointRadius[MAX_POINT_LIGHTS];// falloff radius
+// Per-light AMBIENT: a flat, normal-independent share of the light's colour, added
+// alongside the N.L term and attenuated the same way. 0 = pure diffuse (every light
+// before this existed). Lets an effect wash nearby geometry evenly instead of only
+// lighting faces that happen to point at it.
+uniform float uPointAmbient[MAX_POINT_LIGHTS];
 uniform int uPointCount;                     // how many are active
+
+// ---- Beam (segment) lights --------------------------------------------------
+// Each is a line light: a whole segment emits, not a point. Per fragment we light from
+// the CLOSEST point on the segment, so one light covers the entire beam.
+#define MAX_BEAM_LIGHTS 4
+uniform vec3 uBeamStart[MAX_BEAM_LIGHTS];
+uniform vec3 uBeamEnd[MAX_BEAM_LIGHTS];
+uniform vec3 uBeamColor[MAX_BEAM_LIGHTS];
+uniform float uBeamRadius[MAX_BEAM_LIGHTS];
+uniform float uBeamAmbient[MAX_BEAM_LIGHTS]; // see uPointAmbient
+uniform int uBeamCount;
 
 out vec4 fragColor; // final pixel color written to the framebuffer
 
@@ -279,7 +295,20 @@ void main() {
         float dist = length(toPoint);
         float atten = max(0.0, 1.0 - dist / uPointRadius[i]); // 1 at light, 0 at radius
         atten *= atten;                                       // square -> softer falloff
-        lit += max(dot(n, normalize(toPoint)), 0.0) * atten * uPointColor[i];
+        lit += (uPointAmbient[i] + max(dot(n, normalize(toPoint)), 0.0)) * atten * uPointColor[i];
+    }
+
+    // --- Beam (segment) lights: light from the closest point on each segment, so the
+    // whole beam emits with a single light (same radial falloff as point lights).
+    for (int i = 0; i < uBeamCount; i++) {
+        vec3 ab = uBeamEnd[i] - uBeamStart[i];
+        float denom = max(dot(ab, ab), 1e-4);
+        float s = clamp(dot(vWorldPos - uBeamStart[i], ab) / denom, 0.0, 1.0);
+        vec3 toBeam = (uBeamStart[i] + s * ab) - vWorldPos; // closest point on the segment
+        float dist = length(toBeam);
+        float atten = max(0.0, 1.0 - dist / uBeamRadius[i]);
+        atten *= atten;
+        lit += (uBeamAmbient[i] + max(dot(n, normalize(toBeam)), 0.0)) * atten * uBeamColor[i];
     }
 
     // --- Texture --------------------------------------------------------------
@@ -333,4 +362,8 @@ void main() {
 
     // COLOR OVERLAY #B: vignette + desaturate + blackout (see drankUrgencyEffect).
     fragColor = drankUrgencyEffect(fragColor, screenUV, uDrankUrgency);
+
+    // Per-object opacity from the vertex-color alpha (Draw3DGPU passes it via rlColor4ub).
+    // 1.0 for every normal object; a draw can pass alpha < 255 to fade out (heaven sword).
+    fragColor.a *= vColor.a;
 }

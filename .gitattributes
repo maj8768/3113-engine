@@ -1,0 +1,4 @@
+# core.autocrlf=true would hand MSYS/Git Bash CRLF copies of these on checkout,
+# and bash fails on the trailing \r ($'\r': command not found). Pin them to LF.
+*.sh    text eol=lf
+Makefile text eol=lf
