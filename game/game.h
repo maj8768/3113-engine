@@ -63,8 +63,7 @@ void processPlayerPackets(const playerPacket* packets, int count);
 int spawnedPlayerCount();
 
 void drawSpawnedPlayers(const camera& cam, shaderStore& shader, const mtx44* vp,
-                        const Texture2D* shadowTex, bool receiveShadows,
-                        const Texture2D* shadowTexFar);
+                        const TextureCubemap* shadowTex, bool receiveShadows);
 void drawSpawnedPlayersDepth(Shader depthShader, int modelLoc);
 
 // Frees the pool's meshes. Call from shutdown().

@@ -35,6 +35,7 @@ const float ITEM_FORWARD_FIX = 1.5707963f; // +90 deg about Y
 // Rotate an item's geometry (render verts + normals) and collider about Y, once,
 // so the loaded model's forward axis lines up with -Z.
 void rotateItemMeshY(meshedObject* o, float ang) {
+    o->mesh.gpuDirty = true;
     float c = cosf(ang), s = sinf(ang);
     for (int i = 0; i < o->mesh.count; i++)
         for (int j = 0; j < 3; j++) {
@@ -49,6 +50,11 @@ void rotateItemMeshY(meshedObject* o, float ang) {
             o->colliderO[i].m[k][0] = x * c + z * s;
             o->colliderO[i].m[k][2] = -x * s + z * c;
         }
+}
+
+vector3 itemRenderLocation(const item& it, int index, float alpha) {
+    if (index == gHeldIndex) return it.obj->pEntity.location;
+    return it.prevLoc + (it.obj->pEntity.location - it.prevLoc).fmult(alpha);
 }
 
 } // namespace
@@ -149,23 +155,22 @@ void handleItemInput(player& player) {
 }
 
 void drawItems(const camera& cam, shaderStore& shader, float alpha, const mtx44* vp,
-               const Texture2D* shadowTex, bool receiveShadows, const Texture2D* shadowTexFar) {
+               const TextureCubemap* shadowTex, bool receiveShadows) {
     for (int i = 0; i < (int)gItems.size(); i++) {
         item* it = gItems[i];
-        if (i == gHeldIndex) {
-            // Held: placed directly from the camera this frame, no interpolation.
-            Draw3DGPU(*it->obj, cam, shader, {255, 255, 255, 255}, vp, shadowTex, receiveShadows, shadowTexFar);
-        } else {
-            // Free: draw between the last two physics ticks for smooth motion.
-            vector3 real = it->obj->pEntity.location;
-            it->obj->pEntity.location = it->prevLoc + (real - it->prevLoc).fmult(alpha);
-            Draw3DGPU(*it->obj, cam, shader, {255, 255, 255, 255}, vp, shadowTex, receiveShadows, shadowTexFar);
-            it->obj->pEntity.location = real;
-        }
+        vector3 real = it->obj->pEntity.location;
+        it->obj->pEntity.location = itemRenderLocation(*it, i, alpha);
+        Draw3DGPU(*it->obj, cam, shader, {255, 255, 255, 255}, vp, shadowTex, receiveShadows);
+        it->obj->pEntity.location = real;
     }
 }
 
-void drawItemsDepth(Shader depthShader, int modelLoc) {
-    for (item* it : gItems)
+void drawItemsDepth(Shader depthShader, int modelLoc, float alpha) {
+    for (int i = 0; i < (int)gItems.size(); i++) {
+        item* it = gItems[i];
+        vector3 real = it->obj->pEntity.location;
+        it->obj->pEntity.location = itemRenderLocation(*it, i, alpha);
         Draw3DDepthGPU(*it->obj, depthShader, modelLoc);
+        it->obj->pEntity.location = real;
+    }
 }

@@ -2,6 +2,7 @@
 #include "raylib.h"
 #include <cmath>
 #include <vector>
+#include <memory>
 
 #ifndef M_PI
 #define M_PI 3.14159
@@ -147,15 +148,11 @@ struct shaderStore {
     int fadeToLoc;
     int vpLoc;
     int modelLoc;
-    int lightSpaceMatrixLoc;
     int shadowMapLoc;
     int shadowsEnabledLoc;
     int timeLoc;
     int drunkennessLoc;
     int camPosLoc;
-    int shadowMapFarLoc;
-    int lightSpaceMatrixFarLoc;
-    int cascadeSplitLoc;
     int pointPosLoc;
     int pointColorLoc;
     int pointRadiusLoc;
@@ -330,10 +327,14 @@ struct tri {
     unsigned int textureId;
 };
 
+struct GpuMesh;
+
 struct triDomMesh {
     tri* trisO;
     tri* tris;
     int count;
+    mutable std::shared_ptr<GpuMesh> gpu; // Geometry can be shared by unchanged instances.
+    mutable bool gpuDirty = true;         // Set after editing trisO vertices, normals, UVs, or textures.
 };
 
 struct meshedObject {

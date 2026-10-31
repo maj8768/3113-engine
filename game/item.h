@@ -35,5 +35,5 @@ void handleItemInput(player& player);
 
 // Render all items: main lit pass (free items interpolated by alpha) + shadow depth.
 void drawItems(const camera& cam, shaderStore& shader, float alpha, const mtx44* vp,
-               const Texture2D* shadowTex, bool receiveShadows, const Texture2D* shadowTexFar);
-void drawItemsDepth(Shader depthShader, int modelLoc);
+               const TextureCubemap* shadowTex, bool receiveShadows);
+void drawItemsDepth(Shader depthShader, int modelLoc, float alpha);

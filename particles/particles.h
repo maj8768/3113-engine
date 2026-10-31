@@ -4,8 +4,9 @@
 
 // Additive-billboard fire particle system. Self-contained: owns a procedurally
 // generated soft sprite and its own particle/emitter pools, and draws in its own
-// rlgl pass (camera-facing quads, additive blend, depth-tested but not depth-
-// writing). Lives outside the w2s mesh pipeline on purpose — see render().
+// instanced GPU pass (camera-facing quads, depth-tested, no depth writes). The
+// GPU expands compact instance records; smoke uses alpha blend and fire is additive.
+// Lives outside the w2s mesh pipeline on purpose — see render().
 
 void initParticles();                       // build soft sprite + clear pools
 // Feed the frame's point lights (world pos[3*n], color[3*n], radius[n]) so smoke is lit
@@ -28,7 +29,17 @@ void setFireEmitterActive(int id, bool on); // pause/resume emission; live parti
 void releaseEmitter(int id);                // free an emitter slot (live particles still finish)
 void updateParticles(float deltaTime);      // emit + integrate
 void drawFireParticles(vector3 camPos, vector3 camTarget, vector3 camUp,
-                       const mtx44& view, const mtx44& proj); // smoke (alpha) + fire/burst (additive) passes
+                       const mtx44& view, const mtx44& proj,
+                       const Texture2D* opaqueDepth = nullptr, unsigned int sceneFramebuffer = 0);
+// True when visible smoke needs an opaque-scene color/depth capture this frame.
+bool lowResolutionSmokeNeeded(const mtx44& vp);
+struct ParticleRenderStats {
+    int alive = 0;
+    int visible = 0; // conservative frustum test, before opacity filtering
+    int quads = 0;
+    int smokeWidth = 0, smokeHeight = 0; // off-screen target size, zero for full-resolution smoke
+};
+const ParticleRenderStats& particleRenderStats();
 void shutdownParticles();                   // free sprite
 
 // Transient explosion point lights, read by the renderer so they spill real light

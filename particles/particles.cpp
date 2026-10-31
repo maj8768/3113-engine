@@ -5,6 +5,10 @@
 
 #include <cmath>
 #include <cstring>
+#include <vector>
+#include <algorithm>
+#include <cstddef>
+#include <cstdlib>
 
 namespace {
 
@@ -171,6 +175,32 @@ Texture2D gHard   = {0}; // procedural crisp round sprite (hard-edged twinkles)
 Texture2D gStar   = {0}; // procedural 4-point star sprite (bright core + spikes)
 Shader    gSmokeShader = {0}; // solid-smoke shader (alpha as coverage mask + depth write)
 bool      gInit   = false;
+Shader    gParticleShader = {0};
+int gParticleVPLoc = -1, gParticleTextureLoc = -1, gParticleTintLoc = -1;
+int gSmokePassLoc = -1, gOpaqueDepthLoc = -1, gSmokeResolutionLoc = -1, gDepthCoefficientsLoc = -1;
+bool gHalfResolutionSmoke = true;
+bool gHasSmoke = false;
+RenderTexture2D gSmokeTarget = {0};
+Shader gSmokeCompositeShader = {0};
+int gCompositeSmokeLoc = -1, gCompositeDepthLoc = -1, gCompositeCoefficientsLoc = -1;
+unsigned int gSmokeCompositeVao = 0;
+
+struct ParticleInstance {
+    float center[3], right[3], up[3];
+    unsigned char bottomColor[4], topColor[4];
+    float uv[4]; // offset.xy, scale.zw
+};
+static_assert(sizeof(ParticleInstance) == 60, "Unexpected particle instance layout");
+struct ParticleBuffer {
+    unsigned int vao = 0, vbo = 0;
+    int capacity = 0;
+};
+ParticleBuffer gParticleBuffers[3]; // rotate uploads to reduce reuse of in-flight data
+int gParticleBufferIndex = 0;
+std::vector<ParticleInstance> gInstances;
+struct ParticleRange { int first = 0, count = 0; };
+
+ParticleRenderStats gRenderStats;
 
 // Point lights fed in from the renderer each frame (same set the scene uses). Smoke
 // samples these so it isn't a flat dark blob inside a lit area.
@@ -187,9 +217,10 @@ void lightAt(const vector3& p, float& lr, float& lg, float& lb) {
     lr = lg = lb = 0.f;
     for (int i = 0; i < gPLCount; i++) {
         float dx = gPLPos[i*3+0] - p.x, dy = gPLPos[i*3+1] - p.y, dz = gPLPos[i*3+2] - p.z;
-        float d = sqrtf(dx*dx + dy*dy + dz*dz);
+        float distanceSquared = dx*dx + dy*dy + dz*dz;
         float r = gPLRadius[i];
-        if (r <= 0.f) continue;
+        if (r <= 0.f || distanceSquared >= r*r) continue;
+        float d = sqrtf(distanceSquared);
         float at = 1.f - d / r; if (at <= 0.f) continue; at *= at;
         lr += gPLColor[i*3+0] * at;
         lg += gPLColor[i*3+1] * at;
@@ -307,6 +338,7 @@ void emitExplosionSmoke(const Emitter& e) {
     p.seed = frand() * TAU;
     p.alive = true;
     p.kind = PK_SMOKE;
+    gHasSmoke = true;
     p.maxSize = SMOKE_SIZE_END * e.scale;
     if (frand() < 0.85f) {                 // mostly black sooty smoke (alpha-blended -> darkens scene)
         unsigned char g = (unsigned char)(6 + GetRandomValue(0, 14));
@@ -331,6 +363,167 @@ void fireColor(float t, unsigned char& r, unsigned char& g, unsigned char& b) {
         float k = (t - 0.60f) / 0.40f;
         r = (unsigned char)(255 - k * 70.f); g = (unsigned char)(105 - k * 80.f); b = 15;
     }
+}
+
+void appendInstance(const vector3& center, const vector3& right, const vector3& up,
+                    Color bottom, Color top, bool stripe = false) {
+    gInstances.push_back({
+        {center.x, center.y, center.z}, {right.x, right.y, right.z}, {up.x, up.y, up.z},
+        {bottom.r, bottom.g, bottom.b, bottom.a}, {top.r, top.g, top.b, top.a},
+        {0.f, stripe ? 0.5f : 0.f, 1.f, stripe ? 0.f : 1.f}
+    });
+    gRenderStats.quads++;
+}
+
+bool ensureSmokeTarget(int width, int height, unsigned int restoreFramebuffer) {
+    int halfWidth = (width + 1) / 2, halfHeight = (height + 1) / 2;
+    if (gSmokeTarget.id != 0 && gSmokeTarget.texture.width == halfWidth &&
+        gSmokeTarget.texture.height == halfHeight) return true;
+    if (gSmokeTarget.id != 0) UnloadRenderTexture(gSmokeTarget);
+    gSmokeTarget = LoadRenderTexture(halfWidth, halfHeight);
+    if (gSmokeTarget.id != 0) {
+        SetTextureFilter(gSmokeTarget.texture, TEXTURE_FILTER_POINT);
+        SetTextureWrap(gSmokeTarget.texture, TEXTURE_WRAP_CLAMP);
+    }
+    // Texture creation changes the framebuffer binding, so restore the opaque scene.
+    rlEnableFramebuffer(restoreFramebuffer);
+    return gSmokeTarget.id != 0;
+}
+
+void compositeSmoke(const Texture2D& opaqueDepth, unsigned int sceneFramebuffer,
+                    const float coefficients[2]) {
+    // Detach depth while sampling it: reading an attachment of the draw FBO is undefined.
+    rlFramebufferAttach(sceneFramebuffer, 0, RL_ATTACHMENT_DEPTH, RL_ATTACHMENT_TEXTURE2D, 0);
+    rlEnableFramebuffer(sceneFramebuffer);
+    rlViewport(0, 0, opaqueDepth.width, opaqueDepth.height);
+    rlDisableDepthTest();
+    BeginBlendMode(BLEND_ALPHA_PREMULTIPLY);
+    BeginShaderMode(gSmokeCompositeShader);
+    const int smokeSlot = 0, depthSlot = 1;
+    SetShaderValue(gSmokeCompositeShader, gCompositeSmokeLoc, &smokeSlot, SHADER_UNIFORM_INT);
+    SetShaderValue(gSmokeCompositeShader, gCompositeDepthLoc, &depthSlot, SHADER_UNIFORM_INT);
+    SetShaderValue(gSmokeCompositeShader, gCompositeCoefficientsLoc, coefficients, SHADER_UNIFORM_VEC2);
+    rlActiveTextureSlot(0); rlEnableTexture(gSmokeTarget.texture.id);
+    rlActiveTextureSlot(1); rlEnableTexture(opaqueDepth.id);
+    rlActiveTextureSlot(0);
+    rlEnableShader(gSmokeCompositeShader.id);
+    rlEnableVertexArray(gSmokeCompositeVao);
+    rlDrawVertexArray(0, 3);
+    rlDisableVertexArray();
+    rlDisableShader();
+    EndShaderMode();
+    // The normal particle shader keeps this sampler valid, but never reads scene depth.
+    rlActiveTextureSlot(1); rlEnableTexture(rlGetTextureIdDefault());
+    rlActiveTextureSlot(0); rlDisableTexture();
+    rlFramebufferAttach(sceneFramebuffer, opaqueDepth.id, RL_ATTACHMENT_DEPTH, RL_ATTACHMENT_TEXTURE2D, 0);
+    rlEnableFramebuffer(sceneFramebuffer);
+    rlEnableDepthTest();
+}
+
+void drawParticleInstances(const ParticleRange ranges[5], const mtx44& vp, const mtx44& proj,
+                           const Texture2D* opaqueDepth, unsigned int sceneFramebuffer) {
+    if (gInstances.empty() || gParticleVPLoc < 0) return;
+    rlDrawRenderBatchActive();
+    ParticleBuffer& buffer = gParticleBuffers[gParticleBufferIndex];
+    gParticleBufferIndex = (gParticleBufferIndex + 1) % 3;
+    if (buffer.vao == 0) buffer.vao = rlLoadVertexArray();
+    if (buffer.vao == 0 || !rlEnableVertexArray(buffer.vao)) return;
+    int instanceCount = (int)gInstances.size();
+    if (instanceCount > buffer.capacity) {
+        int capacity = std::max(256, buffer.capacity);
+        while (capacity < instanceCount) capacity *= 2;
+        if (buffer.vbo != 0) rlUnloadVertexBuffer(buffer.vbo);
+        buffer.vbo = rlLoadVertexBuffer(nullptr, capacity * (int)sizeof(ParticleInstance), true);
+        buffer.capacity = buffer.vbo != 0 ? capacity : 0;
+    }
+    if (buffer.vbo == 0) { rlDisableVertexArray(); return; }
+    rlUpdateVertexBuffer(buffer.vbo, gInstances.data(), instanceCount * (int)sizeof(ParticleInstance), 0);
+    rlDisableVertexArray();
+    rlDisableVertexBuffer();
+
+    rlDisableBackfaceCulling();
+    rlEnableDepthTest();
+    rlDisableDepthMask();
+    BeginShaderMode(gParticleShader);
+    SetShaderValueMatrix(gParticleShader, gParticleVPLoc, ToRaylibMatrix(vp));
+    const int spriteSlot = 0;
+    const float tint[4] = {1.f, 1.f, 1.f, 1.f};
+    SetShaderValue(gParticleShader, gParticleTextureLoc, &spriteSlot, SHADER_UNIFORM_INT);
+    SetShaderValue(gParticleShader, gParticleTintLoc, tint, SHADER_UNIFORM_VEC4);
+    const int depthSlot = 1, normalPass = 0, smokePass = 1;
+    const float coefficients[2] = {proj.m[2][2], proj.m[2][3]};
+    SetShaderValue(gParticleShader, gSmokePassLoc, &normalPass, SHADER_UNIFORM_INT);
+    SetShaderValue(gParticleShader, gOpaqueDepthLoc, &depthSlot, SHADER_UNIFORM_INT);
+    SetShaderValue(gParticleShader, gDepthCoefficientsLoc, coefficients, SHADER_UNIFORM_VEC2);
+    rlActiveTextureSlot(1); rlEnableTexture(rlGetTextureIdDefault());
+    rlActiveTextureSlot(0);
+
+    auto drawRange = [&](int group) {
+        const ParticleRange& range = ranges[group];
+        if (range.count == 0) return;
+        rlEnableVertexArray(buffer.vao);
+        rlEnableVertexBuffer(buffer.vbo);
+        int base = range.first * (int)sizeof(ParticleInstance);
+        int stride = (int)sizeof(ParticleInstance);
+        rlSetVertexAttribute(0, 3, RL_FLOAT, false, stride, base + offsetof(ParticleInstance, center));
+        rlSetVertexAttribute(1, 3, RL_FLOAT, false, stride, base + offsetof(ParticleInstance, right));
+        rlSetVertexAttribute(2, 3, RL_FLOAT, false, stride, base + offsetof(ParticleInstance, up));
+        rlSetVertexAttribute(3, 4, RL_UNSIGNED_BYTE, true, stride, base + offsetof(ParticleInstance, bottomColor));
+        rlSetVertexAttribute(4, 4, RL_UNSIGNED_BYTE, true, stride, base + offsetof(ParticleInstance, topColor));
+        rlSetVertexAttribute(5, 4, RL_FLOAT, false, stride, base + offsetof(ParticleInstance, uv));
+        for (int attribute = 0; attribute < 6; attribute++) {
+            rlEnableVertexAttribute(attribute);
+            rlSetVertexAttributeDivisor(attribute, 1);
+        }
+        rlActiveTextureSlot(0);
+        rlEnableTexture(group == 2 ? gStar.id : gSoft.id);
+        // A blend-state change may flush rlgl and disable the actual GL program.
+        rlEnableShader(gParticleShader.id);
+        rlDrawVertexArrayInstanced(0, 6, range.count);
+    };
+    bool lowRes = gHalfResolutionSmoke && ranges[0].count > 0 && opaqueDepth != nullptr &&
+                  opaqueDepth->id != 0 && sceneFramebuffer != 0 && gSmokeCompositeVao != 0 &&
+                  gCompositeSmokeLoc >= 0 && ensureSmokeTarget(opaqueDepth->width, opaqueDepth->height, sceneFramebuffer);
+    if (lowRes) {
+        gRenderStats.smokeWidth = gSmokeTarget.texture.width;
+        gRenderStats.smokeHeight = gSmokeTarget.texture.height;
+        rlEnableFramebuffer(gSmokeTarget.id);
+        rlViewport(0, 0, gSmokeTarget.texture.width, gSmokeTarget.texture.height);
+        rlDisableDepthTest();
+        rlClearColor(0, 0, 0, 0);
+        rlClearScreenBuffers();
+        rlClearColor(0, 0, 0, 255);
+        const float resolution[2] = {(float)gSmokeTarget.texture.width, (float)gSmokeTarget.texture.height};
+        SetShaderValue(gParticleShader, gSmokePassLoc, &smokePass, SHADER_UNIFORM_INT);
+        SetShaderValue(gParticleShader, gSmokeResolutionLoc, resolution, SHADER_UNIFORM_VEC2);
+        rlActiveTextureSlot(1); rlEnableTexture(opaqueDepth->id);
+        rlActiveTextureSlot(0);
+        // RGB accumulates premultiplied radiance; alpha accumulates coverage, not alpha squared.
+        rlSetBlendFactorsSeparate(RL_SRC_ALPHA, RL_ONE_MINUS_SRC_ALPHA, RL_ONE, RL_ONE_MINUS_SRC_ALPHA,
+                                  RL_FUNC_ADD, RL_FUNC_ADD);
+        BeginBlendMode(BLEND_CUSTOM_SEPARATE);
+        drawRange(0);
+        EndShaderMode();
+        compositeSmoke(*opaqueDepth, sceneFramebuffer, coefficients);
+        BeginShaderMode(gParticleShader);
+        SetShaderValue(gParticleShader, gSmokePassLoc, &normalPass, SHADER_UNIFORM_INT);
+    } else {
+        BeginBlendMode(BLEND_ALPHA);
+        drawRange(0);
+    }
+    BeginBlendMode(BLEND_ADDITIVE);
+    for (int group = 1; group < 5; group++) drawRange(group);
+    EndBlendMode();
+    rlActiveTextureSlot(1);
+    rlDisableTexture();
+    rlActiveTextureSlot(0);
+    rlDisableTexture();
+    rlDisableVertexArray();
+    rlDisableVertexBuffer();
+    rlDisableShader();
+    EndShaderMode();
+    rlEnableDepthMask();
+    rlEnableBackfaceCulling();
 }
 
 } // namespace
@@ -364,6 +557,7 @@ void spawnShockSmoke(vector3 origin, float radius, float scale) {
         p.seed = frand() * TAU;
         p.alive = true;
         p.kind = PK_SMOKE;
+        gHasSmoke = true;
         p.maxSize = SHOCK_SMOKE_SIZE * scale;
         unsigned char g = (unsigned char)(30 + GetRandomValue(0, 40));
         p.cr = g; p.cg = g; p.cb = (unsigned char)(g + 4);
@@ -392,6 +586,7 @@ void spawnSmokeCloud(vector3 pos, float scale) {
         p.seed = frand() * TAU;
         p.alive = true;
         p.kind = PK_SMOKE;
+        gHasSmoke = true;
         p.maxSize = CLOUD_PUFF;
         if (frand() < 0.85f) {                  // mostly dark sooty smoke
             unsigned char g = (unsigned char)(6 + GetRandomValue(0, 14));
@@ -483,6 +678,27 @@ void initParticles() {
     SetTextureFilter(gStar, TEXTURE_FILTER_BILINEAR);
     UnloadImage(imgs);
 
+    gParticleShader = LoadShader("resources/shaders/particles.vs", "resources/shaders/particles.fs");
+    gParticleVPLoc = GetShaderLocation(gParticleShader, "uVP");
+    gParticleTextureLoc = GetShaderLocation(gParticleShader, "texture0");
+    gParticleTintLoc = GetShaderLocation(gParticleShader, "colDiffuse");
+    gSmokePassLoc = GetShaderLocation(gParticleShader, "uSmokePass");
+    gOpaqueDepthLoc = GetShaderLocation(gParticleShader, "uOpaqueDepth");
+    gSmokeResolutionLoc = GetShaderLocation(gParticleShader, "uSmokeResolution");
+    gDepthCoefficientsLoc = GetShaderLocation(gParticleShader, "uDepthCoefficients");
+    const char* halfRes = std::getenv("ENGINE_SMOKE_HALF_RES");
+    gHalfResolutionSmoke = halfRes == nullptr || std::strcmp(halfRes, "0") != 0;
+    if (gHalfResolutionSmoke) {
+        gSmokeCompositeShader = LoadShader("resources/shaders/smoke_composite.vs", "resources/shaders/smoke_composite.fs");
+        gCompositeSmokeLoc = GetShaderLocation(gSmokeCompositeShader, "uSmoke");
+        gCompositeDepthLoc = GetShaderLocation(gSmokeCompositeShader, "uOpaqueDepth");
+        gCompositeCoefficientsLoc = GetShaderLocation(gSmokeCompositeShader, "uDepthCoefficients");
+        if (gCompositeSmokeLoc >= 0 && gCompositeDepthLoc >= 0 && gCompositeCoefficientsLoc >= 0 &&
+            gSmokePassLoc >= 0 && gDepthCoefficientsLoc >= 0) {
+            gSmokeCompositeVao = rlLoadVertexArray();
+            ensureSmokeTarget(GetRenderWidth(), GetRenderHeight(), 0);
+        }
+    }
     gInit = true;
 }
 
@@ -769,6 +985,7 @@ bool wandGlowCoronaAt(float* pos, float* color, float* radius) {
 
 void updateParticles(float dt) {
     if (dt <= 0.f) return;
+    gHasSmoke = false;
     gTime += dt;
 
     // Emit from every emitter (fractional carry keeps the rate frame-independent).
@@ -814,6 +1031,7 @@ void updateParticles(float dt) {
         if (!p.alive) continue;
         p.age += dt;
         if (p.age >= p.life) { p.alive = false; continue; }
+        if (p.kind == PK_SMOKE) gHasSmoke = true;
 
         if (p.kind == PK_BURST) continue;            // one-shot puff: stays put (envelope in draw)
         if (p.kind == PK_RAY || p.kind == PK_BEAM) continue; // static beams: animated in draw
@@ -852,9 +1070,90 @@ void updateParticles(float dt) {
     }
 }
 
+bool lowResolutionSmokeNeeded(const mtx44& vp) {
+    if (!gInit || !gHasSmoke || !gHalfResolutionSmoke || gSmokeCompositeVao == 0 || gSmokeTarget.id == 0) return false;
+    struct Plane { float x, y, z, d, length; };
+    Plane planes[6];
+    for (int axis = 0; axis < 3; axis++) {
+        for (int side = 0; side < 2; side++) {
+            float sign = side == 0 ? 1.f : -1.f;
+            Plane& p = planes[axis * 2 + side];
+            p.x = vp.m[3][0] + sign * vp.m[axis][0];
+            p.y = vp.m[3][1] + sign * vp.m[axis][1];
+            p.z = vp.m[3][2] + sign * vp.m[axis][2];
+            p.d = vp.m[3][3] + sign * vp.m[axis][3];
+            p.length = sqrtf(p.x*p.x+p.y*p.y+p.z*p.z);
+        }
+    }
+    for (const Particle& particle : gParticles) {
+        if (!particle.alive || particle.kind != PK_SMOKE) continue;
+        bool visible = true;
+        float radius = fabsf(particle.maxSize) * 2.f;
+        for (const Plane& plane : planes) {
+            if (plane.x*particle.pos.x + plane.y*particle.pos.y + plane.z*particle.pos.z + plane.d <
+                -radius * plane.length - 1e-4f) { visible = false; break; }
+        }
+        if (visible) return true;
+    }
+    return false;
+}
+
 void drawFireParticles(vector3 camPos, vector3 camTarget, vector3 camUp,
-                       const mtx44& view, const mtx44& proj) {
+                       const mtx44& view, const mtx44& proj,
+                       const Texture2D* opaqueDepth, unsigned int sceneFramebuffer) {
+    gRenderStats = {};
     if (!gInit) return;
+
+    // Extract world-space frustum planes once. A zero-length far-plane normal
+    // is valid with the engine's effectively infinite camera projection.
+    struct FrustumPlane { float x, y, z, d, normalLength; };
+    FrustumPlane planes[6];
+    mtx44 vp = mmult4(proj, view);
+    for (int axis = 0; axis < 3; axis++) {
+        for (int side = 0; side < 2; side++) {
+            float sign = side == 0 ? 1.f : -1.f;
+            FrustumPlane& plane = planes[axis * 2 + side];
+            plane.x = vp.m[3][0] + sign * vp.m[axis][0];
+            plane.y = vp.m[3][1] + sign * vp.m[axis][1];
+            plane.z = vp.m[3][2] + sign * vp.m[axis][2];
+            plane.d = vp.m[3][3] + sign * vp.m[axis][3];
+            plane.normalLength = sqrtf(plane.x*plane.x + plane.y*plane.y + plane.z*plane.z);
+        }
+    }
+    auto visibleSphere = [&](const vector3& center, float radius) {
+        for (const FrustumPlane& plane : planes) {
+            float distance = plane.x*center.x + plane.y*center.y + plane.z*center.z + plane.d;
+            if (distance < -radius * plane.normalLength - 1e-4f) return false;
+        }
+        return true;
+    };
+    // Keep pool order within each group, preserving the existing smoke blending order.
+    static std::vector<int> visible[5]; // smoke, fire/burst, wisps, rays, beams
+    for (auto& group : visible) group.clear();
+    for (int i = 0; i < MAX_PARTICLES; i++) {
+        const Particle& particle = gParticles[i];
+        if (!particle.alive) continue;
+        gRenderStats.alive++;
+        int group = 1;
+        vector3 center = particle.pos;
+        // This bound covers every animated/rotated billboard size in the renderer.
+        float radius = fabsf(particle.maxSize) * 2.f;
+        if (particle.kind == PK_SMOKE) group = 0;
+        else if (particle.kind == PK_WISP) group = 2;
+        else if (particle.kind == PK_RAY) {
+            group = 3;
+            center.y += particle.maxSize * 0.5f;
+            radius = fabsf(particle.maxSize) * 0.5f + fabsf(particle.fadeStart) * (1.f + RAY_BLOOM);
+        } else if (particle.kind == PK_BEAM) {
+            group = 4;
+            center = (particle.pos + particle.vel).fmult(0.5f);
+            radius = (particle.vel - particle.pos).mag() * 0.5f + fabsf(particle.fadeStart);
+        }
+        if (!visibleSphere(center, radius)) continue;
+        visible[group].push_back(i);
+        gRenderStats.visible++;
+    }
+    if (gRenderStats.visible == 0) return;
 
     // Camera basis in world space, for billboarding.
     // camTarget holds yaw (.x) / pitch (.y) ANGLES, not a world point — build the
@@ -865,57 +1164,26 @@ void drawFireParticles(vector3 camPos, vector3 camTarget, vector3 camUp,
     vector3 right = normalize3(cross3(fwd, camUp));
     vector3 up = cross3(right, fwd); // orthonormal -> already unit length
 
-    rlDrawRenderBatchActive();                 // flush the opaque scene batch first
-    rlSetMatrixProjection(ToRaylibMatrix(proj));
-    rlSetMatrixModelview(ToRaylibMatrix(view)); // draw in the same VP as the scene
-
-    rlDisableBackfaceCulling();
-    rlEnableDepthTest();
-    rlDisableDepthMask();                       // occluded by the world, but not by each other
-
-    // One camera-facing quad, sized by half-extent sz, at world position pos.
+    gInstances.clear();
+    ParticleRange ranges[5];
     auto emitQuad = [&](const vector3& pos, float sz, unsigned char r, unsigned char g,
                         unsigned char b, unsigned char a) {
-        vector3 rx = { right.x * sz, right.y * sz, right.z * sz };
-        vector3 uy = { up.x * sz, up.y * sz, up.z * sz };
-        vector3 tl = { pos.x - rx.x + uy.x, pos.y - rx.y + uy.y, pos.z - rx.z + uy.z };
-        vector3 bl = { pos.x - rx.x - uy.x, pos.y - rx.y - uy.y, pos.z - rx.z - uy.z };
-        vector3 br = { pos.x + rx.x - uy.x, pos.y + rx.y - uy.y, pos.z + rx.z - uy.z };
-        vector3 tr = { pos.x + rx.x + uy.x, pos.y + rx.y + uy.y, pos.z + rx.z + uy.z };
-        rlColor4ub(r, g, b, a);
-        rlTexCoord2f(0.f, 0.f); rlVertex3f(tl.x, tl.y, tl.z);
-        rlTexCoord2f(0.f, 1.f); rlVertex3f(bl.x, bl.y, bl.z);
-        rlTexCoord2f(1.f, 1.f); rlVertex3f(br.x, br.y, br.z);
-        rlTexCoord2f(1.f, 0.f); rlVertex3f(tr.x, tr.y, tr.z);
+        Color color = {r,g,b,a};
+        appendInstance(pos, right.fmult(sz), up.fmult(sz), color, color);
     };
-
-    // Same billboard quad, but the in-plane basis is rotated by ang (radians) so a
-    // star sprite can spin in screen space as it twinkles.
     auto emitQuadRot = [&](const vector3& pos, float sz, float ang, unsigned char r,
                            unsigned char g, unsigned char b, unsigned char a) {
         float cs = cosf(ang), sn = sinf(ang);
-        vector3 rr = { right.x * cs + up.x * sn, right.y * cs + up.y * sn, right.z * cs + up.z * sn };
-        vector3 uu = { up.x * cs - right.x * sn, up.y * cs - right.y * sn, up.z * cs - right.z * sn };
-        vector3 rx = { rr.x * sz, rr.y * sz, rr.z * sz };
-        vector3 uy = { uu.x * sz, uu.y * sz, uu.z * sz };
-        vector3 tl = { pos.x - rx.x + uy.x, pos.y - rx.y + uy.y, pos.z - rx.z + uy.z };
-        vector3 bl = { pos.x - rx.x - uy.x, pos.y - rx.y - uy.y, pos.z - rx.z - uy.z };
-        vector3 br = { pos.x + rx.x - uy.x, pos.y + rx.y - uy.y, pos.z + rx.z - uy.z };
-        vector3 tr = { pos.x + rx.x + uy.x, pos.y + rx.y + uy.y, pos.z + rx.z + uy.z };
-        rlColor4ub(r, g, b, a);
-        rlTexCoord2f(0.f, 0.f); rlVertex3f(tl.x, tl.y, tl.z);
-        rlTexCoord2f(0.f, 1.f); rlVertex3f(bl.x, bl.y, bl.z);
-        rlTexCoord2f(1.f, 1.f); rlVertex3f(br.x, br.y, br.z);
-        rlTexCoord2f(1.f, 0.f); rlVertex3f(tr.x, tr.y, tr.z);
+        vector3 rr = right.fmult(cs) + up.fmult(sn);
+        vector3 uu = up.fmult(cs) - right.fmult(sn);
+        Color color = {r,g,b,a};
+        appendInstance(pos, rr.fmult(sz), uu.fmult(sz), color, color);
     };
 
     // --- Pass 1: SMOKE (simple alpha-blended dark cloud, drawn before the fire).
-    BeginBlendMode(BLEND_ALPHA);
-    rlSetTexture(gSoft.id);
-    rlBegin(RL_QUADS);
-    for (int i = 0; i < MAX_PARTICLES; i++) {
+    ranges[0].first = (int)gInstances.size();
+    for (int i : visible[0]) {
         const Particle& p = gParticles[i];
-        if (!p.alive || p.kind != PK_SMOKE) continue;
         float t = p.age / p.life;
         float sz = p.maxSize * 0.5f;
         float fade;
@@ -931,18 +1199,13 @@ void drawFireParticles(vector3 camPos, vector3 camTarget, vector3 camUp,
         int bb = p.cb + (int)(lb * SMOKE_LIGHT_GAIN); if (bb > 255) bb = 255;
         emitQuad(p.pos, sz, (unsigned char)rr, (unsigned char)gg, (unsigned char)bb, (unsigned char)a);
     }
-    rlEnd();
-    rlSetTexture(0);
-    rlDrawRenderBatchActive();
-    EndBlendMode();
+
+    ranges[0].count = (int)gInstances.size() - ranges[0].first;
 
     // --- Pass 2: FIRE + BURST (soft additive glow).
-    BeginBlendMode(BLEND_ADDITIVE);
-    rlSetTexture(gSoft.id);
-    rlBegin(RL_QUADS);
-    for (int i = 0; i < MAX_PARTICLES; i++) {
+    ranges[1].first = (int)gInstances.size();
+    for (int i : visible[1]) {
         const Particle& p = gParticles[i];
-        if (!p.alive || p.kind == PK_SMOKE || p.kind == PK_WISP || p.kind == PK_RAY || p.kind == PK_BEAM) continue;
         float t = p.age / p.life;
 
         float sz;
@@ -971,9 +1234,8 @@ void drawFireParticles(vector3 camPos, vector3 camTarget, vector3 camUp,
         if (a == 0) continue;
         emitQuad(p.pos, sz, r, g, b, a);
     }
-    rlEnd();
-    rlSetTexture(0);
-    rlDrawRenderBatchActive();
+
+    ranges[1].count = (int)gInstances.size() - ranges[1].first;
 
     // --- Pass 3: WISPS (star sprite -> spinning, scintillating twinkles).
     /*
@@ -994,11 +1256,9 @@ void drawFireParticles(vector3 camPos, vector3 camTarget, vector3 camUp,
     }
     rlEnd();
     */
-    rlSetTexture(gStar.id);
-    rlBegin(RL_QUADS);
-    for (int i = 0; i < MAX_PARTICLES; i++) {
+    ranges[2].first = (int)gInstances.size();
+    for (int i : visible[2]) {
         const Particle& p = gParticles[i];
-        if (!p.alive || p.kind != PK_WISP) continue;
         float t = p.age / p.life;
         float grow = t < 0.3f ? (t / 0.3f) : 1.f;        // quick grow-in
         float fin  = t < 0.2f ? (t / 0.2f) : 1.f;
@@ -1013,19 +1273,17 @@ void drawFireParticles(vector3 camPos, vector3 camTarget, vector3 camUp,
         if (a == 0) continue;
         emitQuadRot(p.pos, sz, ang, p.cr, p.cg, p.cb, a);
     }
-    rlEnd();
-    rlSetTexture(0);
-    rlDrawRenderBatchActive();
+
+    ranges[2].count = (int)gInstances.size() - ranges[2].first;
 
     // --- Pass 4: RAYS (vertical fire beams shooting up from a sword impact). Cylindrical
     // billboards: stand along world +Y, width faces the camera; bright at the base, fading
     // to transparent at the top (per-vertex alpha), fading out over life.
-    vector3 rayRight = normalize3(cross3(fwd, { 0.f, 1.f, 0.f })); // horizontal, faces camera
-    rlSetTexture(gSoft.id);
-    rlBegin(RL_QUADS);
-    for (int i = 0; i < MAX_PARTICLES; i++) {
+    vector3 rayRight = cross3(fwd, {0.f, 1.f, 0.f});
+    rayRight = len3(rayRight) > eps ? normalize3(rayRight) : right;
+    ranges[3].first = (int)gInstances.size();
+    for (int i : visible[3]) {
         const Particle& p = gParticles[i];
-        if (!p.alive || p.kind != PK_RAY) continue;
         float t = p.age / p.life;
         float shoot = p.age < RAY_SHOOT_TIME ? (p.age / RAY_SHOOT_TIME) : 1.f; // grow up fast
         float h = p.maxSize * shoot;                    // current height
@@ -1041,22 +1299,13 @@ void drawFireParticles(vector3 camPos, vector3 camTarget, vector3 camUp,
             float lw = (L == 0) ? w : w * (1.f + RAY_BLOOM);
             unsigned char base = (L == 0) ? ab : (unsigned char)(ab * BLOOM_ALPHA);
             if (base == 0) continue;
-            vector3 rx = { rayRight.x * lw, rayRight.y * lw, rayRight.z * lw };
-            vector3 bl = { p.pos.x - rx.x, p.pos.y,     p.pos.z - rx.z };
-            vector3 br = { p.pos.x + rx.x, p.pos.y,     p.pos.z + rx.z };
-            vector3 tr = { p.pos.x + rx.x, p.pos.y + h, p.pos.z + rx.z };
-            vector3 tl = { p.pos.x - rx.x, p.pos.y + h, p.pos.z - rx.z };
-            rlColor4ub(p.cr, p.cg, p.cb, base);
-            rlTexCoord2f(0.f, 0.5f); rlVertex3f(bl.x, bl.y, bl.z);
-            rlTexCoord2f(1.f, 0.5f); rlVertex3f(br.x, br.y, br.z);
-            rlColor4ub(p.cr, p.cg, p.cb, 0);
-            rlTexCoord2f(1.f, 0.5f); rlVertex3f(tr.x, tr.y, tr.z);
-            rlTexCoord2f(0.f, 0.5f); rlVertex3f(tl.x, tl.y, tl.z);
+            vector3 center = p.pos + vector3{0.f, h * 0.5f, 0.f};
+            appendInstance(center, rayRight.fmult(lw), {0.f, h * 0.5f, 0.f},
+                           {p.cr,p.cg,p.cb,base}, {p.cr,p.cg,p.cb,0}, true);
         }
     }
-    rlEnd();
-    rlSetTexture(0);
-    rlDrawRenderBatchActive();
+
+    ranges[3].count = (int)gInstances.size() - ranges[3].first;
 
     // --- Pass 5: DARKBLAST BEAMS (directed segments A=pos -> B=vel). Each quad is spun
     // around the central axis (its width runs TANGENT to the bundle circle at the beam's
@@ -1064,19 +1313,13 @@ void drawFireParticles(vector3 camPos, vector3 camTarget, vector3 camUp,
     // each piece's brightness can crackle (the sizzle). The soft glow is a separate pass.
     auto emitBeamQuad = [&](const vector3& A, const vector3& B, const vector3& wdir, float w,
                             unsigned char r, unsigned char g, unsigned char b, unsigned char al) {
-        vector3 rx = wdir.fmult(w);
-        vector3 a0 = A - rx, a1 = A + rx, b0 = B - rx, b1 = B + rx;
-        rlColor4ub(r, g, b, al);
-        rlTexCoord2f(0.f, 0.5f); rlVertex3f(a0.x, a0.y, a0.z);
-        rlTexCoord2f(1.f, 0.5f); rlVertex3f(a1.x, a1.y, a1.z);
-        rlTexCoord2f(1.f, 0.5f); rlVertex3f(b1.x, b1.y, b1.z);
-        rlTexCoord2f(0.f, 0.5f); rlVertex3f(b0.x, b0.y, b0.z);
+        Color color = {r,g,b,al};
+        appendInstance((A + B).fmult(0.5f), wdir.fmult(w), (B - A).fmult(0.5f),
+                       color, color, true);
     };
-    rlSetTexture(gSoft.id);
-    rlBegin(RL_QUADS);
-    for (int i = 0; i < MAX_PARTICLES; i++) {
+    ranges[4].first = (int)gInstances.size();
+    for (int i : visible[4]) {
         const Particle& p = gParticles[i];
-        if (!p.alive || p.kind != PK_BEAM) continue;
         float hold = 0.75f * p.life;
         float bright = p.age <= hold ? 1.f : (p.age >= p.life ? 0.f : 1.f - (p.age - hold) / (p.life - hold));
         float baseA = bright * (float)p.ca;
@@ -1103,14 +1346,12 @@ void drawFireParticles(vector3 camPos, vector3 camTarget, vector3 camUp,
             emitBeamQuad(A + axis.fmult(u0), A + axis.fmult(u1), wdir, p.fadeStart, p.cr, p.cg, p.cb, ab);
         }
     }
-    rlEnd();
-    rlSetTexture(0);
-    rlDrawRenderBatchActive();                  // flush our quads under the set matrices
-    EndBlendMode();
+    ranges[4].count = (int)gInstances.size() - ranges[4].first;
+    drawParticleInstances(ranges, vp, proj, opaqueDepth, sceneFramebuffer);
 
-    rlEnableDepthMask();
-    rlEnableBackfaceCulling();
 }
+
+const ParticleRenderStats& particleRenderStats() { return gRenderStats; }
 
 void shutdownParticles() {
     if (!gInit) return;
@@ -1121,5 +1362,19 @@ void shutdownParticles() {
     if (gStar.id) UnloadTexture(gStar);
     gStar = {0};
     /* if (gSmokeShader.id) UnloadShader(gSmokeShader); gSmokeShader = {0}; */
+    if (gParticleShader.id != 0) UnloadShader(gParticleShader);
+    gParticleShader = {};
+    for (ParticleBuffer& buffer : gParticleBuffers) {
+        if (buffer.vao != 0) rlUnloadVertexArray(buffer.vao);
+        if (buffer.vbo != 0) rlUnloadVertexBuffer(buffer.vbo);
+        buffer = {};
+    }
+    gInstances.clear();
+    if (gSmokeTarget.id != 0) UnloadRenderTexture(gSmokeTarget);
+    if (gSmokeCompositeShader.id != 0) UnloadShader(gSmokeCompositeShader);
+    if (gSmokeCompositeVao != 0) rlUnloadVertexArray(gSmokeCompositeVao);
+    gSmokeTarget = {};
+    gSmokeCompositeShader = {};
+    gSmokeCompositeVao = 0;
     gInit = false;
 }

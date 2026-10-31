@@ -40,6 +40,10 @@
 #include <cstdio>
 #include <fstream>
 #include <string>
+#include <vector>
+#include <cstdlib>
+#include <algorithm>
+#include <cstddef>
 
 int thrust[] = {249, 250, 119, 120};
 int alt[] = {99, 101, 227, 229};
@@ -55,7 +59,28 @@ constexpr char EDELGARD_FP[] = "test2.png";
 vector2 gPosition = {SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2};
 vector2 gScale = {250.0f, 250.0f};
 
-static float gPreviousTicks = 0.0f;
+static double gPreviousTicks = 0.0;
+static bool gProfileFrames = false;
+
+struct FrameWorkload {
+    bool focused = false;
+    bool sceneDepth = false;
+    bool warp = false;
+    int coronas = 0;
+    int pointLights = 0;
+    int beamLights = 0;
+};
+static FrameWorkload gFrameWorkload;
+
+enum RenderStage {RS_DEPTH_SETUP, RS_SCENE, RS_PARTICLES, RS_GLOW, RS_WARP, RS_OTHER, RS_COUNT};
+static double gRenderStageSeconds[RS_COUNT] = {};
+
+static void RecordRenderStage(RenderStage stage, double& checkpoint) {
+    if (!gProfileFrames) return;
+    double now = GetTime();
+    gRenderStageSeconds[stage] += now - checkpoint;
+    checkpoint = now;
+}
 
 float x = 0.0f;
 float z = 0.0f;
@@ -84,8 +109,14 @@ static Texture2D gasPumpPortrait = {0};
 static int depthLightSpaceLoc = -1;
 static int depthModelLoc = -1;
 
-static RenderTexture2D shadowMapRT = {0};
-static RenderTexture2D shadowMapRTFar = {0};
+struct PointShadowMap {
+    unsigned int framebuffer = 0;
+    TextureCubemap texture = {0}; // normalized radial distance in the red channel
+};
+static PointShadowMap pointShadowMap;
+static Shader pointShadowShader = {0};
+static int shadowLightSpaceLoc = -1, shadowModelLoc = -1;
+static int shadowLightPosLoc = -1, shadowLightRangeLoc = -1;
 
 // --- Emissive bloom ---------------------------------------------------------
 // The scene is rendered a second time in "emissive only" mode into emissiveRT
@@ -107,7 +138,9 @@ static int glowDepthArrLoc = -1, glowSceneDepthLoc = -1, glowScreenLoc = -1;
 static int glowProjALoc = -1, glowProjBLoc = -1, glowBiasLoc = -1, glowOccRadiusLoc = -1;
 
 static Shader glowBBShader = {0};
-static int glowBBColorLoc = -1;
+static int glowBBVPLoc = -1;
+static unsigned int glowBBVao = 0, glowBBVbo = 0;
+static int glowBBVertexCapacity = 0;
 static int glowBBSceneDepthLoc = -1;
 static int glowBBScreenLoc = -1;
 static int glowBBProjALoc = -1;
@@ -134,13 +167,9 @@ static const float WARP_STRENGTH_PX     = 40.0f;
 static float bloomSpread = 32.0f;      // GLOBAL max blur radius in texels (the halo cap).
                                        // A world-space bloom length projects to more texels
                                        // the closer the camera is; it's clamped to this.
-static constexpr int SHADOW_MAP_NEAR = 2048;
-static constexpr int SHADOW_MAP_FAR = 1024;
-static constexpr float SHADOW_RANGE_NEAR = 80.0f;
-static constexpr float SHADOW_RANGE_FAR = 300.0f;
-static constexpr float CASCADE_SPLIT = 65.0f;
-static constexpr float SHADOW_NEAR = 1.0f;
-static constexpr float SHADOW_FAR = 50 * 2.2f;
+static constexpr bool SHADOWS_ENABLED = false; // Set true to restore shadow rendering and sampling.
+static constexpr int SHADOW_MAP_SIZE = 1024;
+static constexpr float SHADOW_NEAR = 0.05f;
 static constexpr float LIGHT_ORBIT_SPEED = 0.15f;
 static constexpr float LIGHT_ORBIT_RADIUS_Y = 150.0f;
 static constexpr float LIGHT_ORBIT_RADIUS_Z = 25.0f;
@@ -213,9 +242,8 @@ void processInput();
 void update();
 void render();
 void shutdown();
-static mtx44 BuildLightSpaceMatrix();
-static void RenderShadowMapPass(const mtx44& lightSpace);
-static void DrawSceneWithShadows(const mtx44& frameVP, const mtx44& lightSpace);
+static void RenderShadowMapPass();
+static void DrawSceneWithShadows(const mtx44& frameVP);
 void progressGame();
 void failGame();
 
@@ -267,19 +295,38 @@ static RenderTexture2D LoadShadowMapRenderTexture(int width, int height) {
     return target;
 }
 
-static mtx44 BuildLightSpaceMatrix(float range) {
-    vector3 sceneCenter = player1.pEntity.location;
-    // vector3 sunDir = normalize3({lightDir.x, lightDir.y, lightDir.z});
-    // if (len3(sunDir) <= eps) sunDir = {0.f, -1.f, 0.f};
-    // vector3 lightPos3 = {
-    //     sceneCenter.x - sunDir.x * SUN_DIST,
-    //         sceneCenter.y - sunDir.y * SUN_DIST,
-    //         sceneCenter.z - sunDir.z * SUN_DIST
-    // };
-    // lightPos = {lightPos3.x, lightPos3.y, lightPos3.z};
-    mtx44 lightView = lookAtMtx44(lightPos, sceneCenter, {0.f, 1.f, 0.f});
-    mtx44 lightProj = orthoMtx44(-range, range, -range, range, SHADOW_NEAR, SHADOW_FAR);
-    return mmult4(lightProj, lightView);
+static PointShadowMap LoadPointShadowMap() {
+    PointShadowMap target;
+    target.framebuffer = rlLoadFramebuffer();
+    if (target.framebuffer == 0) return target;
+
+    // This raylib version allocates R32 cubemap faces only when data is supplied.
+    std::vector<float> emptyDepth(6 * SHADOW_MAP_SIZE * SHADOW_MAP_SIZE, 1.0f);
+    target.texture = {rlLoadTextureCubemap(emptyDepth.data(), SHADOW_MAP_SIZE,
+                      PIXELFORMAT_UNCOMPRESSED_R32, 1),
+                      SHADOW_MAP_SIZE, SHADOW_MAP_SIZE, 1, PIXELFORMAT_UNCOMPRESSED_R32};
+    unsigned int depthBuffer = rlLoadTextureDepth(SHADOW_MAP_SIZE, SHADOW_MAP_SIZE, true);
+    rlFramebufferAttach(target.framebuffer, depthBuffer, RL_ATTACHMENT_DEPTH, RL_ATTACHMENT_RENDERBUFFER, 0);
+
+    bool complete = target.texture.id != 0 && depthBuffer != 0;
+    for (int face = 0; face < 6; face++) {
+        rlFramebufferAttach(target.framebuffer, target.texture.id,
+                            RL_ATTACHMENT_COLOR_CHANNEL0, RL_ATTACHMENT_CUBEMAP_POSITIVE_X + face, 0);
+        complete = rlFramebufferComplete(target.framebuffer) && complete;
+    }
+    rlDisableFramebuffer();
+    if (!complete) {
+        TraceLog(LOG_WARNING, "Point-light shadow framebuffer incomplete");
+        if (target.texture.id != 0) rlUnloadTexture(target.texture.id);
+        // rlUnloadFramebuffer also releases the attached depth renderbuffer.
+        rlUnloadFramebuffer(target.framebuffer);
+        return {};
+    }
+
+    // Compare depth before filtering; interpolating stored distances leaks light.
+    rlCubemapParameters(target.texture.id, RL_TEXTURE_MIN_FILTER, RL_TEXTURE_FILTER_NEAREST);
+    rlCubemapParameters(target.texture.id, RL_TEXTURE_MAG_FILTER, RL_TEXTURE_FILTER_NEAREST);
+    return target;
 }
 
 void initializePlayer(player& player1) {
@@ -518,7 +565,17 @@ void initialise()
     std::cout << "instance id: " << getInstanceId() << std::endl;
     std::cout << "instance number: " << getInstanceNumber() << std::endl;
 
-    InitWindow(SCREEN_WIDTH, SCREEN_HEIGHT, "Hello raylib!");
+    int windowWidth = SCREEN_WIDTH, windowHeight = SCREEN_HEIGHT;
+    if (const char* size = std::getenv("ENGINE_WINDOW_SIZE")) {
+        int width = 0, height = 0;
+        char extra = 0;
+        if (std::sscanf(size, "%dx%d%c", &width, &height, &extra) == 2 &&
+            width >= 64 && height >= 64 && width <= 16384 && height <= 16384) {
+            windowWidth = width;
+            windowHeight = height;
+        }
+    }
+    InitWindow(windowWidth, windowHeight, "Hello raylib!");
     InitAudioDevice();
 
     jump1 = LoadSound("resources/sounds/jumps/j1.mp3");
@@ -584,16 +641,22 @@ void initialise()
     w2sShader.shader.locs[SHADER_LOC_MAP_DIFFUSE] = w2sShader.texoLoc;
     w2sShader.fadeToLoc = GetShaderLocation(w2sShader.shader, "fadeTo");
     w2sShader.vpLoc = GetShaderLocation(w2sShader.shader, "uVP");
-    w2sShader.lightSpaceMatrixLoc = GetShaderLocation(w2sShader.shader, "uLightSpaceMatrix");
     w2sShader.shadowMapLoc = GetShaderLocation(w2sShader.shader, "uShadowMap");
+    // Different sampler types must have separate units before the first draw.
+    const int diffuseSlot = 0, shadowSlot = 1;
+    SetShaderValue(w2sShader.shader, w2sShader.texoLoc, &diffuseSlot, SHADER_UNIFORM_INT);
+    SetShaderValue(w2sShader.shader, w2sShader.shadowMapLoc, &shadowSlot, SHADER_UNIFORM_INT);
     w2sShader.shadowsEnabledLoc = GetShaderLocation(w2sShader.shader, "uShadowsEnabled");
     w2sShader.timeLoc = GetShaderLocation(w2sShader.shader, "uTime");
     w2sShader.drunkennessLoc = GetShaderLocation(w2sShader.shader, "uDrunkenness");
     w2sShader.camPosLoc = GetShaderLocation(w2sShader.shader, "uCamPos");
 
-    w2sShader.shadowMapFarLoc = GetShaderLocation(w2sShader.shader, "uShadowMapFar");
-    w2sShader.lightSpaceMatrixFarLoc = GetShaderLocation(w2sShader.shader, "uLightSpaceMatrixFar");
-    w2sShader.cascadeSplitLoc = GetShaderLocation(w2sShader.shader, "uCascadeSplit");
+    pointShadowShader = LoadShader("resources/shaders/pointshadow.vs", "resources/shaders/pointshadow.fs");
+    pointShadowShader.locs[SHADER_LOC_MAP_DIFFUSE] = GetShaderLocation(pointShadowShader, "uTexo");
+    shadowLightSpaceLoc = GetShaderLocation(pointShadowShader, "uLightSpaceMatrix");
+    shadowModelLoc = GetShaderLocation(pointShadowShader, "uModel");
+    shadowLightPosLoc = GetShaderLocation(pointShadowShader, "uLightPos");
+    shadowLightRangeLoc = GetShaderLocation(pointShadowShader, "uLightRange");
 
     depthShader = LoadShader("resources/shaders/depth.vs", "resources/shaders/depth.fs");
     depthShader.locs[SHADER_LOC_MAP_DIFFUSE] = GetShaderLocation(depthShader, "uTexo");
@@ -615,8 +678,10 @@ void initialise()
     w2sShader.drankUrgencyLoc = GetShaderLocation(w2sShader.shader, "uDrankUrgency");
     w2sShader.resolutionLoc   = GetShaderLocation(w2sShader.shader, "uResolution");
 
-    shadowMapRT = LoadShadowMapRenderTexture(SHADOW_MAP_NEAR, SHADOW_MAP_NEAR);
-    shadowMapRTFar = LoadShadowMapRenderTexture(SHADOW_MAP_FAR, SHADOW_MAP_FAR);
+    if (pointShadowShader.id != rlGetShaderIdDefault() && shadowLightSpaceLoc >= 0 &&
+        shadowModelLoc >= 0 && shadowLightPosLoc >= 0 && shadowLightRangeLoc >= 0) {
+        pointShadowMap = LoadPointShadowMap();
+    }
 
     // Emissive bloom: half-res buffer + blur shader.
     emissiveRT = LoadRenderTexture(SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2);
@@ -638,18 +703,18 @@ void initialise()
     glowBiasLoc      = GetShaderLocation(glowShader, "uDepthBias");
     glowOccRadiusLoc = GetShaderLocation(glowShader, "uOccludeRadius");
 
-    glowBBShader = LoadShader(0, "resources/shaders/glowbb.fs");
-    glowBBColorLoc = GetShaderLocation(glowBBShader, "uGlowColor");
+    glowBBShader = LoadShader("resources/shaders/glowbb.vs", "resources/shaders/glowbb.fs");
+    glowBBVPLoc = GetShaderLocation(glowBBShader, "uVP");
     glowBBSceneDepthLoc = GetShaderLocation(glowBBShader, "uSceneDepth");
     glowBBScreenLoc = GetShaderLocation(glowBBShader, "uScreenSize");
     glowBBProjALoc = GetShaderLocation(glowBBShader, "uProjA");
     glowBBProjBLoc = GetShaderLocation(glowBBShader, "uProjB");
     glowBBFadeLoc = GetShaderLocation(glowBBShader, "uFadeDist");
-    sceneDepthRT = LoadShadowMapRenderTexture(SCREEN_WIDTH, SCREEN_HEIGHT);
+    sceneDepthRT = LoadShadowMapRenderTexture(GetRenderWidth(), GetRenderHeight());
     depthViewShader = LoadShader(0, "resources/shaders/depthview.fs");
 
     // Heat-shockwave warp: full-res scene capture (colour + sampleable depth) + refraction shader.
-    sceneColorRT = LoadShadowMapRenderTexture(SCREEN_WIDTH, SCREEN_HEIGHT);
+    sceneColorRT = LoadShadowMapRenderTexture(GetRenderWidth(), GetRenderHeight());
     SetTextureFilter(sceneColorRT.texture, TEXTURE_FILTER_BILINEAR);
     warpShader = LoadShader(0, "resources/shaders/warp.fs");
     warpColorLoc    = GetShaderLocation(warpShader, "uColor");
@@ -728,7 +793,7 @@ void initialise()
 
     spawnPlayers((int)NET_MAX_PLAYERS, w2sShader);
 
-    gPreviousTicks = static_cast<float>(GetTime());
+    gPreviousTicks = GetTime();
 }
 
 static bool pRot = true;
@@ -802,8 +867,8 @@ static bool gCamInterpInit = false;
 
 void update() {
 
-    auto ticks = static_cast<float>(GetTime());
-    float frameTime = ticks - gPreviousTicks;
+    double ticks = GetTime();
+    float frameTime = static_cast<float>(ticks - gPreviousTicks);
     gPreviousTicks = ticks;
     if (frameTime > 0.25f) frameTime = 0.25f; // clamp after a stall (avoid the spiral of death)
 
@@ -817,6 +882,7 @@ void update() {
     // game while the player is in another window. Gate keyboard centrally and skip
     // mouse look when unfocused (still read the delta so it doesn't snap on refocus).
     bool inputActive = IsWindowFocused();
+    gFrameWorkload.focused = inputActive;
     setInputEnabled(inputActive);
 
     // Networking test harness: 8 spawns the loopback server, 9 spawns a client
@@ -906,7 +972,7 @@ void update() {
     {
         static double lastPrintTime = 0.0;
         double now = GetTime();
-        if (now - lastPrintTime >= 0.25) { std::cout << "FPS: " << GetFPS() << "\n"; lastPrintTime = now; }
+        if (!gProfileFrames && now - lastPrintTime >= 0.25) { std::cout << "FPS: " << GetFPS() << "\n"; lastPrintTime = now; }
     }
 
     updateParticles(frameTime);
@@ -1104,72 +1170,88 @@ void update() {
     */
 }
 
-static void RenderShadowMapPass(const mtx44& nearLSM, const mtx44& farLSM) {
-    if (shadowMapRT.id == 0) return;
-
+static void RenderShadowMapPass() {
+    if (!SHADOWS_ENABLED || pointShadowMap.framebuffer == 0 || lightRange <= SHADOW_NEAR) return;
+    const float itemAlpha = gPhysicsAccumulator / PHYSICS_DT;
     auto drawCasters = [&]() {
         rlEnableBackfaceCulling();
 
         /*
-        Draw3DDepthGPU(testingplatforms, depthShader, depthModelLoc);
+        Draw3DDepthGPU(testingplatforms, pointShadowShader, shadowModelLoc);
         */
         /*
-        Draw3DDepthGPU(drank, depthShader, depthModelLoc);
+        Draw3DDepthGPU(drank, pointShadowShader, shadowModelLoc);
         */
-        drawItemsDepth(depthShader, depthModelLoc);
-        drawSpawnedPlayersDepth(depthShader, depthModelLoc);
+        drawItemsDepth(pointShadowShader, shadowModelLoc, itemAlpha);
+        drawSpawnedPlayersDepth(pointShadowShader, shadowModelLoc);
         /*
-        drawWizardAttacksDepth(depthShader, depthModelLoc);
+        drawWizardAttacksDepth(pointShadowShader, shadowModelLoc);
         */
         /*
-        Draw3DDepthGPU(testcar, depthShader, depthModelLoc);
-        Draw3DDepthGPU(testcarwheel, depthShader, depthModelLoc);
-        Draw3DDepthGPU(gasPump, depthShader, depthModelLoc);
-        Draw3DDepthGPU(gasPumpNozzle, depthShader, depthModelLoc);
-        Draw3DDepthGPU(gasPumpNozzleOff, depthShader, depthModelLoc);
-        Draw3DDepthGPU(cashRegister, depthShader, depthModelLoc);
-        Draw3DDepthGPU(dragan, depthShader, depthModelLoc);
-        Draw3DDepthGPU(tree, depthShader, depthModelLoc);
-        Draw3DDepthGPU(drank, depthShader, depthModelLoc);
-        Draw3DDepthGPU(gasStation, depthShader, depthModelLoc);
-        Draw3DDepthGPU(apt1, depthShader, depthModelLoc);
-        Draw3DDepthGPU(apt2, depthShader, depthModelLoc);
-        Draw3DDepthGPU(sketchyBuilding, depthShader, depthModelLoc);
-        Draw3DDepthGPU(farm, depthShader, depthModelLoc);
-        Draw3DDepthGPU(spawnDirt, depthShader, depthModelLoc);
-        Draw3DDepthGPU(spawnBag, depthShader, depthModelLoc);
-        Draw3DDepthGPU(spawnToilet, depthShader, depthModelLoc);
-        Draw3DDepthGPU(uberGirl, depthShader, depthModelLoc);
-        Draw3DDepthGPU(uberGuy, depthShader, depthModelLoc);
-        Draw3DDepthGPU(uberWomanInCar, depthShader, depthModelLoc);
-        Draw3DDepthGPU(uberManInCar, depthShader, depthModelLoc);
+        Draw3DDepthGPU(testcar, pointShadowShader, shadowModelLoc);
+        Draw3DDepthGPU(testcarwheel, pointShadowShader, shadowModelLoc);
+        Draw3DDepthGPU(gasPump, pointShadowShader, shadowModelLoc);
+        Draw3DDepthGPU(gasPumpNozzle, pointShadowShader, shadowModelLoc);
+        Draw3DDepthGPU(gasPumpNozzleOff, pointShadowShader, shadowModelLoc);
+        Draw3DDepthGPU(cashRegister, pointShadowShader, shadowModelLoc);
+        Draw3DDepthGPU(dragan, pointShadowShader, shadowModelLoc);
+        Draw3DDepthGPU(tree, pointShadowShader, shadowModelLoc);
+        Draw3DDepthGPU(drank, pointShadowShader, shadowModelLoc);
+        Draw3DDepthGPU(gasStation, pointShadowShader, shadowModelLoc);
+        Draw3DDepthGPU(apt1, pointShadowShader, shadowModelLoc);
+        Draw3DDepthGPU(apt2, pointShadowShader, shadowModelLoc);
+        Draw3DDepthGPU(sketchyBuilding, pointShadowShader, shadowModelLoc);
+        Draw3DDepthGPU(farm, pointShadowShader, shadowModelLoc);
+        Draw3DDepthGPU(spawnDirt, pointShadowShader, shadowModelLoc);
+        Draw3DDepthGPU(spawnBag, pointShadowShader, shadowModelLoc);
+        Draw3DDepthGPU(spawnToilet, pointShadowShader, shadowModelLoc);
+        Draw3DDepthGPU(uberGirl, pointShadowShader, shadowModelLoc);
+        Draw3DDepthGPU(uberGuy, pointShadowShader, shadowModelLoc);
+        Draw3DDepthGPU(uberWomanInCar, pointShadowShader, shadowModelLoc);
+        Draw3DDepthGPU(uberManInCar, pointShadowShader, shadowModelLoc);
         */
     };
 
-    rlViewport(0, 0, SHADOW_MAP_NEAR, SHADOW_MAP_NEAR);
-    rlEnableFramebuffer(shadowMapRT.id);
-    rlClearScreenBuffers();
-    BeginShaderMode(depthShader);
-    SetShaderValueMatrix(depthShader, depthLightSpaceLoc, ToRaylibMatrix(nearLSM));
-    drawCasters();
+    // Face order and up vectors match OpenGL cubemap sampling (+X,-X,+Y,-Y,+Z,-Z).
+    static const vector3 directions[6] = {
+        {1.f, 0.f, 0.f}, {-1.f, 0.f, 0.f}, {0.f, 1.f, 0.f},
+        {0.f, -1.f, 0.f}, {0.f, 0.f, 1.f}, {0.f, 0.f, -1.f}
+    };
+    static const vector3 ups[6] = {
+        {0.f, -1.f, 0.f}, {0.f, -1.f, 0.f}, {0.f, 0.f, 1.f},
+        {0.f, 0.f, -1.f}, {0.f, -1.f, 0.f}, {0.f, -1.f, 0.f}
+    };
+    mtx44 projection = projMtx44(0.5f * (float)M_PI, 1.0f, SHADOW_NEAR, lightRange);
+
+    rlDrawRenderBatchActive();
+    rlViewport(0, 0, SHADOW_MAP_SIZE, SHADOW_MAP_SIZE);
+    rlEnableDepthTest();
+    rlEnableDepthMask();
+    // Each color channel stores depth, so blending must not alter it.
+    rlDisableColorBlend();
+    rlClearColor(255, 255, 255, 255);
+    BeginShaderMode(pointShadowShader);
+    SetShaderValue(pointShadowShader, shadowLightPosLoc, &lightPos, SHADER_UNIFORM_VEC3);
+    SetShaderValue(pointShadowShader, shadowLightRangeLoc, &lightRange, SHADER_UNIFORM_FLOAT);
+    for (int face = 0; face < 6; face++) {
+        rlFramebufferAttach(pointShadowMap.framebuffer, pointShadowMap.texture.id,
+                            RL_ATTACHMENT_COLOR_CHANNEL0, RL_ATTACHMENT_CUBEMAP_POSITIVE_X + face, 0);
+        rlEnableFramebuffer(pointShadowMap.framebuffer);
+        rlClearScreenBuffers();
+        mtx44 view = lookAtMtx44(lightPos, lightPos + directions[face], ups[face]);
+        SetShaderValueMatrix(pointShadowShader, shadowLightSpaceLoc, ToRaylibMatrix(mmult4(projection, view)));
+        drawCasters();
+        // Flush the last caster before attaching a different cube face.
+        rlDrawRenderBatchActive();
+    }
     EndShaderMode();
     rlDisableFramebuffer();
-
-    if (shadowMapRTFar.id != 0) {
-        rlViewport(0, 0, SHADOW_MAP_FAR, SHADOW_MAP_FAR);
-        rlEnableFramebuffer(shadowMapRTFar.id);
-        rlClearScreenBuffers();
-        BeginShaderMode(depthShader);
-        SetShaderValueMatrix(depthShader, depthLightSpaceLoc, ToRaylibMatrix(farLSM));
-        drawCasters();
-        EndShaderMode();
-        rlDisableFramebuffer();
-    }
-
+    rlClearColor(0, 0, 0, 255);
+    rlEnableColorBlend();
     rlViewport(0, 0, GetRenderWidth(), GetRenderHeight());
 }
 
-static void DrawSceneWithShadows(const mtx44& frameVP, const mtx44& nearLSM, const mtx44& farLSM) {
+static void DrawSceneWithShadows(const mtx44& frameVP) {
     float t = (float)GetTime();
     BeginShaderMode(w2sShader.shader);
     SetShaderValue(w2sShader.shader, w2sShader.lightDirLoc, &lightDir, SHADER_UNIFORM_VEC3);
@@ -1290,6 +1372,7 @@ static void DrawSceneWithShadows(const mtx44& frameVP, const mtx44& nearLSM, con
         SetShaderValueV(w2sShader.shader, w2sShader.pointAmbientLoc, pointAmbient, SHADER_UNIFORM_FLOAT, pointCount);
     }
     SetShaderValue(w2sShader.shader, w2sShader.pointCountLoc, &pointCount, SHADER_UNIFORM_INT);
+    gFrameWorkload.pointLights = pointCount;
 
     // Let the smoke particles receive the same point lights the scene uses, so they
     // aren't a flat dark blob inside lit areas (e.g. the sword's impact glow).
@@ -1324,6 +1407,7 @@ static void DrawSceneWithShadows(const mtx44& frameVP, const mtx44& nearLSM, con
         SetShaderValueV(w2sShader.shader, w2sShader.beamAmbientLoc, beamAmbient, SHADER_UNIFORM_FLOAT, beamCount);
     }
     SetShaderValue(w2sShader.shader, w2sShader.beamCountLoc, &beamCount, SHADER_UNIFORM_INT);
+    gFrameWorkload.beamLights = beamCount;
 
     // Bloom-length projection: convert a WORLD-space bloom length to screen texels
     // in the emissive shader. focal = (emissiveBufferHeight/2) / tan(fovY/2).
@@ -1343,46 +1427,42 @@ static void DrawSceneWithShadows(const mtx44& frameVP, const mtx44& nearLSM, con
     float resArr[2] = { (float)GetRenderWidth(), (float)GetRenderHeight() };
     SetShaderValue(w2sShader.shader, w2sShader.resolutionLoc, resArr, SHADER_UNIFORM_VEC2);
 
-    SetShaderValueMatrix(w2sShader.shader, w2sShader.lightSpaceMatrixLoc, ToRaylibMatrix(nearLSM));
-    SetShaderValueMatrix(w2sShader.shader, w2sShader.lightSpaceMatrixFarLoc, ToRaylibMatrix(farLSM));
-    float cascadeSplit = CASCADE_SPLIT;
-    SetShaderValue(w2sShader.shader, w2sShader.cascadeSplitLoc, &cascadeSplit, SHADER_UNIFORM_FLOAT);
-    const bool hasShadowMap = shadowMapRT.depth.id != 0;
-    const Texture2D* shadowTex = hasShadowMap ? &shadowMapRT.depth : nullptr;
-    const Texture2D* shadowTexFar = (shadowMapRTFar.depth.id != 0) ? &shadowMapRTFar.depth : nullptr;
+    const bool hasShadowMap = SHADOWS_ENABLED && pointShadowMap.framebuffer != 0 && lightRange > SHADOW_NEAR;
+    // OpenGL validates sampler completeness even when its uniform branch is disabled.
+    const TextureCubemap* shadowTex = pointShadowMap.texture.id != 0 ? &pointShadowMap.texture : nullptr;
 
     auto drawScene = [&]() {
-        Draw3DGPU(testingplatforms, player1.camera, w2sShader, {255,0,0,255}, &frameVP, shadowTex, hasShadowMap, shadowTexFar);
+        Draw3DGPU(testingplatforms, player1.camera, w2sShader, {255,0,0,255}, &frameVP, shadowTex, hasShadowMap);
         /*
-        Draw3DGPU(drank, player1.camera, w2sShader, {255,0,0,255}, &frameVP, shadowTex, hasShadowMap, shadowTexFar);
+        Draw3DGPU(drank, player1.camera, w2sShader, {255,0,0,255}, &frameVP, shadowTex, hasShadowMap);
         */
         float itemAlpha = gPhysicsAccumulator / PHYSICS_DT;
-        drawItems(player1.camera, w2sShader, itemAlpha, &frameVP, shadowTex, hasShadowMap, shadowTexFar);
-        drawSpawnedPlayers(player1.camera, w2sShader, &frameVP, shadowTex, hasShadowMap, shadowTexFar);
-        drawWizardAttacks(player1.camera, w2sShader, itemAlpha, &frameVP, shadowTex, hasShadowMap, shadowTexFar);
+        drawItems(player1.camera, w2sShader, itemAlpha, &frameVP, shadowTex, hasShadowMap);
+        drawSpawnedPlayers(player1.camera, w2sShader, &frameVP, shadowTex, hasShadowMap);
+        drawWizardAttacks(player1.camera, w2sShader, itemAlpha, &frameVP, shadowTex, hasShadowMap);
         /*
         Draw3DGPU(skysphere1, player1.camera, w2sShader, {255,0,0,255}, &frameVP, shadowTex, false);
-        Draw3DGPU(testcar, player1.camera, w2sShader, {255,0,0,255}, &frameVP, shadowTex, hasShadowMap, shadowTexFar);
-        Draw3DGPU(testcarwheel, player1.camera, w2sShader, {255,0,0,255}, &frameVP, shadowTex, hasShadowMap, shadowTexFar);
-        Draw3DGPU(gasPump, player1.camera, w2sShader, {255,0,0,255}, &frameVP, shadowTex, hasShadowMap, shadowTexFar);
-        Draw3DGPU(gasPumpNozzle, player1.camera, w2sShader, {255,0,0,255}, &frameVP, shadowTex, hasShadowMap, shadowTexFar);
-        Draw3DGPU(gasPumpNozzleOff, player1.camera, w2sShader, {255,0,0,255}, &frameVP, shadowTex, hasShadowMap, shadowTexFar);
-        Draw3DGPU(cashRegister, player1.camera, w2sShader, {255,0,0,255}, &frameVP, shadowTex, hasShadowMap, shadowTexFar);
-        Draw3DGPU(drank, player1.camera, w2sShader, {255,0,0,255}, &frameVP, shadowTex, hasShadowMap, shadowTexFar);
-        Draw3DGPU(dragan, player1.camera, w2sShader, {255,0,0,255}, &frameVP, shadowTex, hasShadowMap, shadowTexFar);
-        Draw3DGPU(tree, player1.camera, w2sShader, {255,0,0,255}, &frameVP, shadowTex, hasShadowMap, shadowTexFar);
-        Draw3DGPU(gasStation, player1.camera, w2sShader, {255,0,0,255}, &frameVP, shadowTex, hasShadowMap, shadowTexFar);
-        Draw3DGPU(apt1, player1.camera, w2sShader, {255,0,0,255}, &frameVP, shadowTex, hasShadowMap, shadowTexFar);
-        Draw3DGPU(apt2, player1.camera, w2sShader, {255,0,0,255}, &frameVP, shadowTex, hasShadowMap, shadowTexFar);
-        Draw3DGPU(sketchyBuilding, player1.camera, w2sShader, {255,0,0,255}, &frameVP, shadowTex, hasShadowMap, shadowTexFar);
-        Draw3DGPU(farm, player1.camera, w2sShader, {255,0,0,255}, &frameVP, shadowTex, hasShadowMap, shadowTexFar);
-        Draw3DGPU(spawnDirt, player1.camera, w2sShader, {255,0,0,255}, &frameVP, shadowTex, hasShadowMap, shadowTexFar);
-        Draw3DGPU(spawnBag, player1.camera, w2sShader, {255,0,0,255}, &frameVP, shadowTex, hasShadowMap, shadowTexFar);
-        Draw3DGPU(spawnToilet, player1.camera, w2sShader, {255,0,0,255}, &frameVP, shadowTex, hasShadowMap, shadowTexFar);
-        Draw3DGPU(uberGirl, player1.camera, w2sShader, {255,0,0,255}, &frameVP, shadowTex, hasShadowMap, shadowTexFar);
-        Draw3DGPU(uberGuy, player1.camera, w2sShader, {255,0,0,255}, &frameVP, shadowTex, hasShadowMap, shadowTexFar);
-        Draw3DGPU(uberWomanInCar, player1.camera, w2sShader, {255,0,0,255}, &frameVP, shadowTex, hasShadowMap, shadowTexFar);
-        Draw3DGPU(uberManInCar, player1.camera, w2sShader, {255,0,0,255}, &frameVP, shadowTex, hasShadowMap, shadowTexFar);
+        Draw3DGPU(testcar, player1.camera, w2sShader, {255,0,0,255}, &frameVP, shadowTex, hasShadowMap);
+        Draw3DGPU(testcarwheel, player1.camera, w2sShader, {255,0,0,255}, &frameVP, shadowTex, hasShadowMap);
+        Draw3DGPU(gasPump, player1.camera, w2sShader, {255,0,0,255}, &frameVP, shadowTex, hasShadowMap);
+        Draw3DGPU(gasPumpNozzle, player1.camera, w2sShader, {255,0,0,255}, &frameVP, shadowTex, hasShadowMap);
+        Draw3DGPU(gasPumpNozzleOff, player1.camera, w2sShader, {255,0,0,255}, &frameVP, shadowTex, hasShadowMap);
+        Draw3DGPU(cashRegister, player1.camera, w2sShader, {255,0,0,255}, &frameVP, shadowTex, hasShadowMap);
+        Draw3DGPU(drank, player1.camera, w2sShader, {255,0,0,255}, &frameVP, shadowTex, hasShadowMap);
+        Draw3DGPU(dragan, player1.camera, w2sShader, {255,0,0,255}, &frameVP, shadowTex, hasShadowMap);
+        Draw3DGPU(tree, player1.camera, w2sShader, {255,0,0,255}, &frameVP, shadowTex, hasShadowMap);
+        Draw3DGPU(gasStation, player1.camera, w2sShader, {255,0,0,255}, &frameVP, shadowTex, hasShadowMap);
+        Draw3DGPU(apt1, player1.camera, w2sShader, {255,0,0,255}, &frameVP, shadowTex, hasShadowMap);
+        Draw3DGPU(apt2, player1.camera, w2sShader, {255,0,0,255}, &frameVP, shadowTex, hasShadowMap);
+        Draw3DGPU(sketchyBuilding, player1.camera, w2sShader, {255,0,0,255}, &frameVP, shadowTex, hasShadowMap);
+        Draw3DGPU(farm, player1.camera, w2sShader, {255,0,0,255}, &frameVP, shadowTex, hasShadowMap);
+        Draw3DGPU(spawnDirt, player1.camera, w2sShader, {255,0,0,255}, &frameVP, shadowTex, hasShadowMap);
+        Draw3DGPU(spawnBag, player1.camera, w2sShader, {255,0,0,255}, &frameVP, shadowTex, hasShadowMap);
+        Draw3DGPU(spawnToilet, player1.camera, w2sShader, {255,0,0,255}, &frameVP, shadowTex, hasShadowMap);
+        Draw3DGPU(uberGirl, player1.camera, w2sShader, {255,0,0,255}, &frameVP, shadowTex, hasShadowMap);
+        Draw3DGPU(uberGuy, player1.camera, w2sShader, {255,0,0,255}, &frameVP, shadowTex, hasShadowMap);
+        Draw3DGPU(uberWomanInCar, player1.camera, w2sShader, {255,0,0,255}, &frameVP, shadowTex, hasShadowMap);
+        Draw3DGPU(uberManInCar, player1.camera, w2sShader, {255,0,0,255}, &frameVP, shadowTex, hasShadowMap);
         */
     };
 
@@ -1417,10 +1497,160 @@ static void DrawSceneWithShadows(const mtx44& frameVP, const mtx44& nearLSM, con
     EndShaderMode();
 }
 
+struct LightCorona {
+    vector3 location;
+    float radius;
+    vector3 color;
+};
+
+static void CollectLightCoronas(std::vector<LightCorona>& coronas) {
+    coronas.clear();
+    auto emitCoronaRaw = [&](vector3 p, float rad, const float col[3]) {
+        if (rad <= 0.f || (col[0] == 0.f && col[1] == 0.f && col[2] == 0.f)) return;
+        coronas.push_back({p, rad, {col[0], col[1], col[2]}});
+    };
+    auto emitCorona = [&](meshedObject* o) {
+        if (o->emissive.t <= 0.f) return;
+        float col[3] = {
+            o->emissive.x * o->emissive.t * o->bloom.x * bloomIntensity,
+            o->emissive.y * o->emissive.t * o->bloom.x * bloomIntensity,
+            o->emissive.z * o->emissive.t * o->bloom.x * bloomIntensity
+        };
+        emitCoronaRaw(o->pEntity.location, o->bloom.y, col);
+    };
+
+    for (int e = 0; e < (int)(sizeof(gEmitters) / sizeof(gEmitters[0])); e++)
+        emitCorona(gEmitters[e]);
+    for (int i = 0; i < wizardBallCount(); i++)
+        emitCorona(wizardBallAt(i));
+    // Transient impact coronas (grow/decay halo at each explosion).
+    for (int i = 0; i < explosionLightCount(); i++) {
+        float ep[3], ec[3], er;
+        if (explosionCoronaAt(i, ep, ec, &er))
+            emitCoronaRaw({ep[0], ep[1], ep[2]}, er, ec);
+    }
+    // Darkblast beam glow: soft coronas strung along the beam segment (a real glow,
+    // depth-occluded, not a widened sprite).
+    {
+        float bs[3], be[3], bc[3], br, bsp;
+        if (darkblastGlow(bs, be, bc, &br, &bsp)) {
+            vector3 A = {bs[0], bs[1], bs[2]}, B = {be[0], be[1], be[2]};
+            vector3 seg = B - A;
+            float len = seg.mag();
+            int n = (bsp > 0.f) ? (int)(len / bsp) : 0;
+            if (n < 1) n = 1;
+            if (n > 80) n = 80; // cap the corona count
+            // Modulate each corona by the SAME sizzle the beams use, so the glow
+            // crackles in lockstep along the beam instead of reading as a flat tube.
+            for (int k = 0; k <= n; k++) {
+                float u = (float)k / (float)n;
+                float sz = darkblastSizzle(u, 0.f);
+                float sc[3] = { bc[0] * sz, bc[1] * sz, bc[2] * sz };
+                emitCoronaRaw(A + seg.fmult(u), br, sc);
+            }
+        }
+    }
+}
+
+struct GlowVertex {
+    float position[3];
+    float uv[2];
+    float color[3];
+};
+static_assert(sizeof(GlowVertex) == 8 * sizeof(float), "Unexpected glow vertex padding");
+
+static void DrawLightCoronas(const std::vector<LightCorona>& coronas, const mtx44& frameVP,
+                             int width, int height, float zNear, float zFar) {
+    if (coronas.empty() || sceneDepthRT.depth.id == 0 || glowBBVPLoc < 0) return;
+
+    float yaw = player1.camera.camTarget.x, pitch = player1.camera.camTarget.y;
+    vector3 forward = normalize3({cosf(pitch) * cosf(yaw), sinf(pitch), cosf(pitch) * sinf(yaw)});
+    vector3 right = normalize3(cross3(forward, player1.camera.up));
+    vector3 up = cross3(right, forward);
+    static std::vector<GlowVertex> vertices;
+    vertices.clear();
+    vertices.reserve(coronas.size() * 6);
+    static constexpr float uvs[4][2] = {{0,0}, {0,1}, {1,1}, {1,0}};
+    static constexpr int indices[6] = {0,1,2,0,2,3};
+    for (const LightCorona& corona : coronas) {
+        vector3 rx = right.fmult(corona.radius), uy = up.fmult(corona.radius);
+        vector3 corners[4] = {
+            corona.location - rx + uy, corona.location - rx - uy,
+            corona.location + rx - uy, corona.location + rx + uy
+        };
+        for (int index : indices) {
+            const vector3& pos = corners[index];
+            vertices.push_back({{pos.x, pos.y, pos.z}, {uvs[index][0], uvs[index][1]},
+                                {corona.color.x, corona.color.y, corona.color.z}});
+        }
+    }
+
+    rlDrawRenderBatchActive();
+    if (glowBBVao == 0) glowBBVao = rlLoadVertexArray();
+    if (glowBBVao == 0 || !rlEnableVertexArray(glowBBVao)) return;
+    int vertexCount = (int)vertices.size();
+    if (vertexCount > glowBBVertexCapacity) {
+        int capacity = std::max(6, glowBBVertexCapacity);
+        while (capacity < vertexCount) capacity *= 2;
+        if (glowBBVbo != 0) rlUnloadVertexBuffer(glowBBVbo);
+        glowBBVbo = rlLoadVertexBuffer(nullptr, capacity * (int)sizeof(GlowVertex), true);
+        glowBBVertexCapacity = glowBBVbo != 0 ? capacity : 0;
+    }
+    if (glowBBVbo == 0) {
+        rlDisableVertexArray();
+        return;
+    }
+    rlUpdateVertexBuffer(glowBBVbo, vertices.data(), vertexCount * (int)sizeof(GlowVertex), 0);
+    rlEnableVertexBuffer(glowBBVbo);
+    rlSetVertexAttribute(0, 3, RL_FLOAT, false, sizeof(GlowVertex), offsetof(GlowVertex, position));
+    rlSetVertexAttribute(1, 2, RL_FLOAT, false, sizeof(GlowVertex), offsetof(GlowVertex, uv));
+    rlSetVertexAttribute(3, 3, RL_FLOAT, false, sizeof(GlowVertex), offsetof(GlowVertex, color));
+    rlEnableVertexAttribute(0);
+    rlEnableVertexAttribute(1);
+    rlEnableVertexAttribute(3);
+    rlDisableVertexArray();
+    rlDisableVertexBuffer();
+
+    rlDisableBackfaceCulling();
+    rlDisableDepthTest(); // the shader samples scene depth for soft occlusion
+    rlDisableDepthMask();
+    BeginBlendMode(BLEND_ADDITIVE);
+    BeginShaderMode(glowBBShader);
+    SetShaderValueMatrix(glowBBShader, glowBBVPLoc, ToRaylibMatrix(frameVP));
+    float screen[2] = {(float)width, (float)height};
+    float projA = (zFar + zNear) / (zNear - zFar);
+    float projB = (2.0f * zFar * zNear) / (zNear - zFar);
+    float fade = 4.0f;
+    SetShaderValue(glowBBShader, glowBBScreenLoc, screen, SHADER_UNIFORM_VEC2);
+    SetShaderValue(glowBBShader, glowBBProjALoc, &projA, SHADER_UNIFORM_FLOAT);
+    SetShaderValue(glowBBShader, glowBBProjBLoc, &projB, SHADER_UNIFORM_FLOAT);
+    SetShaderValue(glowBBShader, glowBBFadeLoc, &fade, SHADER_UNIFORM_FLOAT);
+    // Bind once for the direct draw; per-corona colors are HDR floats in the VBO.
+    const int depthSlot = 1;
+    SetShaderValue(glowBBShader, glowBBSceneDepthLoc, &depthSlot, SHADER_UNIFORM_INT);
+    rlActiveTextureSlot(depthSlot);
+    rlEnableTexture(sceneDepthRT.depth.id);
+    rlActiveTextureSlot(0);
+    rlEnableShader(glowBBShader.id);
+    rlEnableVertexArray(glowBBVao);
+    rlDrawVertexArray(0, vertexCount);
+    rlDisableVertexArray();
+    rlDisableShader();
+    rlActiveTextureSlot(depthSlot);
+    rlDisableTexture();
+    rlActiveTextureSlot(0);
+    EndShaderMode();
+    EndBlendMode();
+    rlEnableDepthTest();
+    rlEnableDepthMask();
+    rlEnableBackfaceCulling();
+}
+
 void render()
 {
+    double renderCheckpoint = gProfileFrames ? GetTime() : 0.0;
+    if (gProfileFrames) std::fill(gRenderStageSeconds, gRenderStageSeconds + RS_COUNT, 0.0);
     ClearBackground(BLACK);
-    rlClearScreenBuffers();
 
     if (true) {
 
@@ -1432,9 +1662,7 @@ void render()
         rlMatrixMode(RL_MODELVIEW);
         rlLoadIdentity();
 
-        mtx44 nearLSM = BuildLightSpaceMatrix(SHADOW_RANGE_NEAR);
-        mtx44 farLSM = BuildLightSpaceMatrix(SHADOW_RANGE_FAR);
-        RenderShadowMapPass(nearLSM, farLSM);
+        RenderShadowMapPass();
 
         // Match the projection's aspect to the ACTUAL framebuffer. If the window is
         // not exactly SCREEN_WIDTH:SCREEN_HEIGHT (borders, DPI scaling, resize), a
@@ -1447,10 +1675,20 @@ void render()
         mtx44 frameProj = projMtx44(player1.camera.fov, player1.camera.aspect, zNear, zFar);
         mtx44 frameVP = mmult4(frameProj, frameView);
 
+        static const bool showDepthDebug = []() {
+            const char* value = std::getenv("ENGINE_DEBUG_DEPTH");
+            return value != nullptr && std::strcmp(value, "1") == 0;
+        }();
+        static std::vector<LightCorona> coronas;
+        CollectLightCoronas(coronas);
+        const bool needSceneDepth = showDepthDebug || !coronas.empty();
+        gFrameWorkload.coronas = (int)coronas.size();
+        gFrameWorkload.sceneDepth = needSceneDepth && sceneDepthRT.id != 0;
+
         // Keep the depth RT matched to the ACTUAL framebuffer size/aspect. If it's a
         // different size (DPI/borders/resize), the glow samples it at a mismatched
         // aspect and the occlusion projection misaligns with the on-screen geometry.
-        if (rw > 0 && rh > 0 && (sceneDepthRT.texture.width != rw || sceneDepthRT.texture.height != rh)) {
+        if (needSceneDepth && rw > 0 && rh > 0 && (sceneDepthRT.texture.width != rw || sceneDepthRT.texture.height != rh)) {
             if (sceneDepthRT.texture.id != 0) rlUnloadTexture(sceneDepthRT.texture.id);
             if (sceneDepthRT.depth.id != 0) rlUnloadTexture(sceneDepthRT.depth.id);
             if (sceneDepthRT.id != 0) rlUnloadFramebuffer(sceneDepthRT.id);
@@ -1470,7 +1708,7 @@ void render()
         // Opaque geometry depth from the camera's POV, so the glow pass can hide the
         // parts of each corona that sit behind scene geometry. depthShader transforms
         // by uLightSpaceMatrix*uModel, so feeding it frameVP renders camera-space depth.
-        if (sceneDepthRT.id != 0) {
+        if (needSceneDepth && sceneDepthRT.id != 0) {
             rlEnableFramebuffer(sceneDepthRT.id);
             rlViewport(0, 0, rw, rh);
             rlClearScreenBuffers();
@@ -1487,13 +1725,12 @@ void render()
             rlViewport(0, 0, GetRenderWidth(), GetRenderHeight());
         }
 
-        // --- MAIN SCENE (to the screen, or into sceneColorRT when a heat-warp is active) ---
-        // When a shockwave is live, capture the scene into sceneColorRT so the warp pass can
-        // refract it; otherwise render straight to the screen (zero extra cost the rest of the
-        // time). The scene/particle/corona passes set their own matrices, so routing them into
-        // an equally-sized RT changes nothing but the destination framebuffer.
+        // Capture the opaque scene when smoke needs its exact depth, or a shockwave needs refraction.
         bool warpActive = (shockwaveCount() > 0) && sceneColorRT.id != 0;
-        if (warpActive) {
+        bool halfResSmoke = sceneColorRT.id != 0 && lowResolutionSmokeNeeded(frameVP);
+        bool captureScene = warpActive || halfResSmoke;
+        gFrameWorkload.warp = warpActive;
+        if (captureScene) {
             rlDrawRenderBatchActive();
             rlEnableFramebuffer(sceneColorRT.id);
             rlViewport(0, 0, rw, rh);
@@ -1505,124 +1742,22 @@ void render()
         rlMatrixMode(RL_MODELVIEW);
         rlLoadIdentity();
         rlEnableDepthTest();
-        DrawSceneWithShadows(frameVP, nearLSM, farLSM);
+        RecordRenderStage(RS_DEPTH_SETUP, renderCheckpoint);
+        DrawSceneWithShadows(frameVP);
+        RecordRenderStage(RS_SCENE, renderCheckpoint);
 
         // --- FIRE PARTICLES ---
         // Additive camera-facing billboards, drawn after the opaque scene so the
         // depth buffer occludes them, and before the screen-space glow coronas.
         drawFireParticles(player1.camera.camPos, player1.camera.camTarget,
-                          player1.camera.up, frameView, frameProj);
+                          player1.camera.up, frameView, frameProj,
+                          halfResSmoke ? &sceneColorRT.depth : nullptr,
+                          captureScene ? sceneColorRT.id : 0);
+        RecordRenderStage(RS_PARTICLES, renderCheckpoint);
 
-        // --- PHYSICAL LIGHT CORONAS (bloom), spatial soft-particle billboards ---
-        // Each emitter's glow is a camera-facing additive quad at its WORLD
-        // position, sized to the world-space bloom radius, drawn with depth test ON
-        // (depth WRITE off). The scene depth buffer occludes it per-pixel, so walls
-        // block the glow instead of it bleeding through them, while the halo still
-        // peeks around wall edges into open space. Peak brightness = colour (constant
-        // with distance) and size is world-relative, same as the old screen pass.
-        {
-            // camTarget holds yaw (.x) / pitch (.y) ANGLES, not a world point — build the
-            // camera forward the same way viewMtx44 does, or the billboard mis-orients.
-            float cyw = cosf(player1.camera.camTarget.x), syw = sinf(player1.camera.camTarget.x);
-            float cpi = cosf(player1.camera.camTarget.y), spi = sinf(player1.camera.camTarget.y);
-            vector3 fwd = normalize3({cpi * cyw, spi, cpi * syw});
-            vector3 rgt = normalize3(cross3(fwd, player1.camera.up));
-            vector3 upv = cross3(rgt, fwd); // orthonormal -> already unit length
-
-            rlDrawRenderBatchActive();
-            rlSetMatrixProjection(ToRaylibMatrix(frameProj));
-            rlSetMatrixModelview(ToRaylibMatrix(frameView));
-            rlDisableBackfaceCulling();
-            rlDisableDepthTest(); // occlusion is handled softly in the shader
-            rlDisableDepthMask();
-            BeginBlendMode(BLEND_ADDITIVE);
-            BeginShaderMode(glowBBShader);
-            float gScr[2] = { (float)GetRenderWidth(), (float)GetRenderHeight() };
-            SetShaderValue(glowBBShader, glowBBScreenLoc, gScr, SHADER_UNIFORM_VEC2);
-            float gProjA = (zFar + zNear) / (zNear - zFar);
-            float gProjB = (2.0f * zFar * zNear) / (zNear - zFar);
-            SetShaderValue(glowBBShader, glowBBProjALoc, &gProjA, SHADER_UNIFORM_FLOAT);
-            SetShaderValue(glowBBShader, glowBBProjBLoc, &gProjB, SHADER_UNIFORM_FLOAT);
-            float gFade = 4.0f; // world-space soft-fade distance (tunable)
-            SetShaderValue(glowBBShader, glowBBFadeLoc, &gFade, SHADER_UNIFORM_FLOAT);
-
-            // Draw one soft billboard corona at world pos p, radius rad, additive
-            // colour col. The scene-depth sampler is bound per-corona because each
-            // per-corona flush clears that binding.
-            auto emitCoronaRaw = [&](vector3 p, float rad, const float col[3]) {
-                if (rad <= 0.f) return;
-                SetShaderValue(glowBBShader, glowBBColorLoc, col, SHADER_UNIFORM_VEC3);
-                SetShaderValueTexture(glowBBShader, glowBBSceneDepthLoc, sceneDepthRT.depth);
-                vector3 rx = { rgt.x * rad, rgt.y * rad, rgt.z * rad };
-                vector3 uy = { upv.x * rad, upv.y * rad, upv.z * rad };
-                vector3 tl = { p.x - rx.x + uy.x, p.y - rx.y + uy.y, p.z - rx.z + uy.z };
-                vector3 bl = { p.x - rx.x - uy.x, p.y - rx.y - uy.y, p.z - rx.z - uy.z };
-                vector3 br = { p.x + rx.x - uy.x, p.y + rx.y - uy.y, p.z + rx.z - uy.z };
-                vector3 tr = { p.x + rx.x + uy.x, p.y + rx.y + uy.y, p.z + rx.z + uy.z };
-                rlBegin(RL_QUADS);
-                    rlColor4ub(255, 255, 255, 255);
-                    rlTexCoord2f(0.f, 0.f); rlVertex3f(tl.x, tl.y, tl.z);
-                    rlTexCoord2f(0.f, 1.f); rlVertex3f(bl.x, bl.y, bl.z);
-                    rlTexCoord2f(1.f, 1.f); rlVertex3f(br.x, br.y, br.z);
-                    rlTexCoord2f(1.f, 0.f); rlVertex3f(tr.x, tr.y, tr.z);
-                rlEnd();
-                rlDrawRenderBatchActive();
-            };
-            auto emitCorona = [&](meshedObject* o) {
-                if (o->emissive.t <= 0.f) return;
-                float col[3] = {
-                    o->emissive.x * o->emissive.t * o->bloom.x * bloomIntensity,
-                    o->emissive.y * o->emissive.t * o->bloom.x * bloomIntensity,
-                    o->emissive.z * o->emissive.t * o->bloom.x * bloomIntensity
-                };
-                emitCoronaRaw(o->pEntity.location, o->bloom.y, col);
-            };
-
-            for (int e = 0; e < (int)(sizeof(gEmitters) / sizeof(gEmitters[0])); e++)
-                emitCorona(gEmitters[e]);
-            for (int i = 0; i < wizardBallCount(); i++)
-                emitCorona(wizardBallAt(i));
-            // Transient impact coronas (grow/decay halo at each explosion).
-            for (int i = 0; i < explosionLightCount(); i++) {
-                float ep[3], ec[3], er;
-                if (explosionCoronaAt(i, ep, ec, &er))
-                    emitCoronaRaw({ep[0], ep[1], ep[2]}, er, ec);
-            }
-            // Darkblast beam glow: soft coronas strung along the beam segment (a real glow,
-            // depth-occluded, not a widened sprite).
-            {
-                float bs[3], be[3], bc[3], br, bsp;
-                if (darkblastGlow(bs, be, bc, &br, &bsp)) {
-                    vector3 A = {bs[0], bs[1], bs[2]}, B = {be[0], be[1], be[2]};
-                    vector3 seg = B - A;
-                    float len = seg.mag();
-                    int n = (bsp > 0.f) ? (int)(len / bsp) : 0;
-                    if (n < 1) n = 1;
-                    if (n > 80) n = 80; // cap the corona count
-                    // Modulate each corona by the SAME sizzle the beams use, so the glow
-                    // crackles in lockstep along the beam instead of reading as a flat tube.
-                    for (int k = 0; k <= n; k++) {
-                        float u = (float)k / (float)n;
-                        float sz = darkblastSizzle(u, 0.f);
-                        float sc[3] = { bc[0] * sz, bc[1] * sz, bc[2] * sz };
-                        emitCoronaRaw(A + seg.fmult(u), br, sc);
-                    }
-                }
-            }
-            /*
-            // Wand-tip corona (small white) while casting.
-            {
-                float wp[3], wc[3], wr;
-                if (wandGlowCoronaAt(wp, wc, &wr))
-                    emitCoronaRaw({wp[0], wp[1], wp[2]}, wr, wc);
-            }
-            */
-            EndShaderMode();
-            EndBlendMode();
-            rlEnableDepthTest();
-            rlEnableDepthMask();
-            rlEnableBackfaceCulling();
-        }
+        // One draw for all depth-faded coronas, including HDR colors on long beams.
+        DrawLightCoronas(coronas, frameVP, rw, rh, zNear, zFar);
+        RecordRenderStage(RS_GLOW, renderCheckpoint);
 
         // --- HEAT-SHOCKWAVE WARP COMPOSITE ---
         // The scene (colour + depth) was captured into sceneColorRT; redraw it full-screen
@@ -1719,6 +1854,18 @@ void render()
             rlEnableDepthMask();
         }
 
+        if (captureScene && !warpActive) {
+            // Smoke and full-res additive effects are already composited into the captured scene.
+            rlDrawRenderBatchActive();
+            rlBindFramebuffer(RL_READ_FRAMEBUFFER, sceneColorRT.id);
+            rlBindFramebuffer(RL_DRAW_FRAMEBUFFER, 0);
+            constexpr int colorBufferBit = 0x00004000; // GL_COLOR_BUFFER_BIT
+            rlBlitFramebuffer(0, 0, rw, rh, 0, 0, rw, rh, colorBufferBit);
+            rlDisableFramebuffer();
+            rlViewport(0, 0, rw, rh);
+        }
+        RecordRenderStage(RS_WARP, renderCheckpoint);
+
         /*
         // --- PHYSICAL LIGHT CORONAS (bloom) ---
         // Project each emissive object's world position + world-space bloom radius
@@ -1798,7 +1945,7 @@ void render()
         // DEBUG: full camera-view depth in the top-right, oriented like your view
         // (negative source height un-flips the render texture), amplified so geometry
         // shows (raw depth sits near 1.0). Remove when done.
-        if (sceneDepthRT.depth.id != 0) {
+        if (showDepthDebug && sceneDepthRT.depth.id != 0) {
             rlDrawRenderBatchActive();
             rlDisableDepthTest();
             rlMatrixMode(RL_PROJECTION); rlLoadIdentity();
@@ -1887,6 +2034,7 @@ void render()
             {0, 0, 0, (unsigned char)(int)fadeOverlayAlpha});
         */
     }
+    RecordRenderStage(RS_OTHER, renderCheckpoint);
 }
 
 void shutdown()
@@ -1928,12 +2076,9 @@ void shutdown()
 
     UnloadShader(w2sShader.shader);
     UnloadShader(depthShader);
-    if (shadowMapRT.texture.id != 0) rlUnloadTexture(shadowMapRT.texture.id);
-    if (shadowMapRT.depth.id != 0) rlUnloadTexture(shadowMapRT.depth.id);
-    if (shadowMapRT.id != 0) rlUnloadFramebuffer(shadowMapRT.id);
-    if (shadowMapRTFar.texture.id != 0) rlUnloadTexture(shadowMapRTFar.texture.id);
-    if (shadowMapRTFar.depth.id != 0) rlUnloadTexture(shadowMapRTFar.depth.id);
-    if (shadowMapRTFar.id != 0) rlUnloadFramebuffer(shadowMapRTFar.id);
+    UnloadShader(pointShadowShader);
+    if (pointShadowMap.texture.id != 0) rlUnloadTexture(pointShadowMap.texture.id);
+    if (pointShadowMap.framebuffer != 0) rlUnloadFramebuffer(pointShadowMap.framebuffer);
     if (sceneDepthRT.texture.id != 0) rlUnloadTexture(sceneDepthRT.texture.id);
     if (sceneDepthRT.depth.id != 0) rlUnloadTexture(sceneDepthRT.depth.id);
     if (sceneDepthRT.id != 0) rlUnloadFramebuffer(sceneDepthRT.id);
@@ -1947,7 +2092,11 @@ void shutdown()
     if (bloomShader.id != 0) UnloadShader(bloomShader);
     if (glowShader.id != 0) UnloadShader(glowShader);
     if (glowBBShader.id != 0) UnloadShader(glowBBShader);
+    if (glowBBVao != 0) rlUnloadVertexArray(glowBBVao);
+    if (glowBBVbo != 0) rlUnloadVertexBuffer(glowBBVbo);
 
+    skysphere1.mesh.gpu.reset();
+    cube.mesh.gpu.reset();
     free(skysphere1.mesh.tris);
     free(skysphere1.mesh.trisO);
     free(testingplatforms.mesh.tris);
@@ -1975,16 +2124,89 @@ int main(void)
     std::cout << "Hello, World!" << std::endl;
     initialise();
 
+    const char* profileEnv = std::getenv("ENGINE_PROFILE");
+    gProfileFrames = profileEnv != nullptr && std::strcmp(profileEnv, "1") == 0;
+    double profileUpdate = 0.0, profileRender = 0.0, profilePresent = 0.0;
+    double profileLastPrint = GetTime();
+    double profileLastFrameEnd = profileLastPrint;
+    std::vector<double> profileFrameMs;
+    int focusedFrames = 0, depthFrames = 0, glowFrames = 0, warpFrames = 0;
+    int peakCoronas = 0, peakPointLights = 0, peakBeamLights = 0;
+    int peakParticles = 0, peakVisibleParticles = 0, peakParticleQuads = 0;
+    int smokeWidth = 0, smokeHeight = 0;
+    double profileStages[RS_COUNT] = {};
+
     while (gAppStatus == RUNNING)
     {
+        double frameStart = gProfileFrames ? GetTime() : 0.0;
         update();
+        double updateEnd = gProfileFrames ? GetTime() : 0.0;
         BeginDrawing();
         render();
+        double renderEnd = gProfileFrames ? GetTime() : 0.0;
         EndDrawing();
 #ifdef _WIN32
 
         pumpMessages();
 #endif
+        if (gProfileFrames) {
+            double frameEnd = GetTime();
+            profileUpdate += updateEnd - frameStart;
+            profileRender += renderEnd - updateEnd;
+            profilePresent += frameEnd - renderEnd;
+            // End-to-end intervals include logging and profiler bookkeeping between frames.
+            profileFrameMs.push_back((frameEnd - profileLastFrameEnd) * 1000.0);
+            profileLastFrameEnd = frameEnd;
+            focusedFrames += gFrameWorkload.focused ? 1 : 0;
+            depthFrames += gFrameWorkload.sceneDepth ? 1 : 0;
+            glowFrames += gFrameWorkload.coronas > 0 ? 1 : 0;
+            warpFrames += gFrameWorkload.warp ? 1 : 0;
+            peakCoronas = std::max(peakCoronas, gFrameWorkload.coronas);
+            peakPointLights = std::max(peakPointLights, gFrameWorkload.pointLights);
+            peakBeamLights = std::max(peakBeamLights, gFrameWorkload.beamLights);
+            const ParticleRenderStats& particles = particleRenderStats();
+            peakParticles = std::max(peakParticles, particles.alive);
+            peakVisibleParticles = std::max(peakVisibleParticles, particles.visible);
+            peakParticleQuads = std::max(peakParticleQuads, particles.quads);
+            smokeWidth = std::max(smokeWidth, particles.smokeWidth);
+            smokeHeight = std::max(smokeHeight, particles.smokeHeight);
+            for (int stage = 0; stage < RS_COUNT; stage++) profileStages[stage] += gRenderStageSeconds[stage];
+            if (frameEnd - profileLastPrint >= 1.0) {
+                const int profileCount = (int)profileFrameMs.size();
+                double msPerFrame = 1000.0 / profileCount;
+                double averageMs = (frameEnd - profileLastPrint) * msPerFrame;
+                std::sort(profileFrameMs.begin(), profileFrameMs.end());
+                auto percentile = [&](int percent) {
+                    // Nearest-rank percentile, including the full one-second sample window.
+                    size_t rank = ((size_t)percent * profileFrameMs.size() + 99) / 100;
+                    return profileFrameMs[rank - 1];
+                };
+                std::printf("[frame time] avg %.3f ms | p50 %.3f | p95 %.3f | p99 %.3f | max %.3f | avg FPS %.0f\n",
+                            averageMs, percentile(50), percentile(95), percentile(99),
+                            profileFrameMs.back(), 1000.0 / averageMs);
+                std::printf("[frame CPU] update %.3f ms | render submission %.3f ms | present/events %.3f ms | framebuffer %dx%d | window %dx%d\n",
+                            profileUpdate * msPerFrame, profileRender * msPerFrame,
+                            profilePresent * msPerFrame, GetRenderWidth(), GetRenderHeight(),
+                            GetScreenWidth(), GetScreenHeight());
+                std::printf("[render CPU] depth/setup %.3f ms | scene %.3f | particles %.3f | glow %.3f | warp/copy %.3f | other %.3f\n",
+                            profileStages[RS_DEPTH_SETUP] * msPerFrame, profileStages[RS_SCENE] * msPerFrame,
+                            profileStages[RS_PARTICLES] * msPerFrame, profileStages[RS_GLOW] * msPerFrame,
+                            profileStages[RS_WARP] * msPerFrame, profileStages[RS_OTHER] * msPerFrame);
+                std::printf("[frame work] focus %.1f%% (%d/%d frames) | depth %d | glow %d | warp %d | peak coronas %d | point lights %d | beam lights %d\n",
+                            100.0 * focusedFrames / profileCount, focusedFrames, profileCount,
+                            depthFrames, glowFrames, warpFrames, peakCoronas, peakPointLights, peakBeamLights);
+                std::printf("[particles peak] alive %d | in frustum %d | submitted quads %d | half-res smoke %dx%d\n",
+                            peakParticles, peakVisibleParticles, peakParticleQuads, smokeWidth, smokeHeight);
+                profileUpdate = profileRender = profilePresent = 0.0;
+                profileFrameMs.clear();
+                focusedFrames = depthFrames = glowFrames = warpFrames = peakCoronas = 0;
+                peakPointLights = peakBeamLights = 0;
+                peakParticles = peakVisibleParticles = peakParticleQuads = 0;
+                smokeWidth = smokeHeight = 0;
+                std::fill(profileStages, profileStages + RS_COUNT, 0.0);
+                profileLastPrint = frameEnd;
+            }
+        }
     }
 
     RawMouseShutdown();

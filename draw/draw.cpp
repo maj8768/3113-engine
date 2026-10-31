@@ -6,8 +6,128 @@
 #include <cmath>
 #include <stdio.h>
 #include <iostream>
+#include <cstddef>
+#include <cstdlib>
+#include <cstring>
 
-void Draw3DGPU(const meshedObject& object, const camera& cam, shaderStore& shader, vector4 color, const mtx44* precomputedVP, const Texture2D* shadowTex, bool receiveShadows, const Texture2D* shadowTexFar) {
+// Shared ownership keeps projectile copies from deleting each other's buffers.
+struct GpuMesh {
+    struct Part { unsigned int texture; int firstVertex; int vertexCount; };
+    unsigned int vao = 0;
+    unsigned int vbo = 0;
+    int vertexCount = 0;
+    std::vector<Part> parts;
+
+    ~GpuMesh() {
+        // Source objects normally release buffers during shutdown, before CloseWindow.
+        if (!IsWindowReady()) return;
+        if (vao != 0) rlUnloadVertexArray(vao);
+        if (vbo != 0) rlUnloadVertexBuffer(vbo);
+    }
+};
+
+namespace {
+
+struct MeshVertex {
+    float position[3];
+    float texcoord[2];
+    float normal[3];
+};
+static_assert(sizeof(MeshVertex) == 8 * sizeof(float), "Unexpected mesh vertex padding");
+
+bool useStreamedVertices() {
+    static const bool enabled = []() {
+        const char* value = std::getenv("ENGINE_STREAM_VERTICES");
+        return value != nullptr && std::strcmp(value, "1") == 0;
+    }();
+    return enabled;
+}
+
+GpuMesh* cachedMesh(const triDomMesh& mesh) {
+    if (mesh.count <= 0 || mesh.trisO == nullptr) return nullptr;
+    if (mesh.gpu && !mesh.gpuDirty) return mesh.gpu.get();
+
+    // An edited instance gets its own buffers; unchanged instances retain theirs.
+    if (!mesh.gpu || !mesh.gpu.unique()) mesh.gpu = std::make_shared<GpuMesh>();
+    GpuMesh& gpu = *mesh.gpu;
+    std::vector<MeshVertex> vertices;
+    vertices.reserve(mesh.count * 3);
+    gpu.parts.clear();
+    for (int i = 0; i < mesh.count; i++) {
+        const tri& triangle = mesh.trisO[i];
+        unsigned int texture = triangle.textureId != 0 ? triangle.textureId : rlGetTextureIdDefault();
+        // Preserve triangle order, including translucent surfaces; only merge adjacent materials.
+        if (gpu.parts.empty() || gpu.parts.back().texture != texture)
+            gpu.parts.push_back({texture, i * 3, 0});
+        gpu.parts.back().vertexCount += 3;
+        for (int j = 0; j < 3; j++) {
+            vertices.push_back({
+                {triangle.v[j].x, triangle.v[j].y, triangle.v[j].z},
+                {triangle.t[j].x, triangle.t[j].y},
+                {triangle.n[j].x, triangle.n[j].y, triangle.n[j].z}
+            });
+        }
+    }
+
+    if (gpu.vao == 0) gpu.vao = rlLoadVertexArray();
+    if (gpu.vao == 0 || !rlEnableVertexArray(gpu.vao)) return nullptr;
+    int vertexCount = (int)vertices.size();
+    int bufferSize = vertexCount * (int)sizeof(MeshVertex);
+    if (gpu.vbo != 0 && gpu.vertexCount == vertexCount) {
+        rlUpdateVertexBuffer(gpu.vbo, vertices.data(), bufferSize, 0);
+    } else {
+        if (gpu.vbo != 0) rlUnloadVertexBuffer(gpu.vbo);
+        gpu.vbo = rlLoadVertexBuffer(vertices.data(), bufferSize, false);
+    }
+    if (gpu.vbo == 0) {
+        rlDisableVertexArray();
+        return nullptr;
+    }
+    rlEnableVertexBuffer(gpu.vbo);
+    rlSetVertexAttribute(0, 3, RL_FLOAT, false, sizeof(MeshVertex), offsetof(MeshVertex, position));
+    rlSetVertexAttribute(1, 2, RL_FLOAT, false, sizeof(MeshVertex), offsetof(MeshVertex, texcoord));
+    rlSetVertexAttribute(2, 3, RL_FLOAT, false, sizeof(MeshVertex), offsetof(MeshVertex, normal));
+    rlEnableVertexAttribute(0);
+    rlEnableVertexAttribute(1);
+    rlEnableVertexAttribute(2);
+    // Color changes per object; use a constant attribute instead of uploading it per vertex.
+    rlDisableVertexAttribute(3);
+    rlDisableVertexArray();
+    rlDisableVertexBuffer();
+    gpu.vertexCount = vertexCount;
+    mesh.gpuDirty = false;
+    return &gpu;
+}
+
+bool drawCachedMesh(const triDomMesh& mesh, Shader shader, const float color[4]) {
+    if (useStreamedVertices()) return false;
+    GpuMesh* gpu = cachedMesh(mesh);
+    if (gpu == nullptr) return false;
+
+    rlEnableShader(shader.id);
+    rlEnableVertexArray(gpu->vao);
+    rlSetVertexAttributeDefault(3, color, RL_SHADER_ATTRIB_VEC4, 4);
+    const int diffuseSlot = 0;
+    rlSetUniform(shader.locs[SHADER_LOC_MAP_DIFFUSE], &diffuseSlot, SHADER_UNIFORM_INT, 1);
+    rlActiveTextureSlot(diffuseSlot);
+    for (const GpuMesh::Part& part : gpu->parts) {
+        rlEnableTexture(part.texture);
+        rlDrawVertexArray(part.firstVertex, part.vertexCount);
+    }
+    rlDisableTexture();
+    rlDisableVertexArray();
+    rlDisableVertexBuffer();
+    rlDisableShader();
+    return true;
+}
+
+} // namespace
+
+void UploadMeshGPU(const triDomMesh& mesh) {
+    if (!useStreamedVertices()) cachedMesh(mesh);
+}
+
+void Draw3DGPU(const meshedObject& object, const camera& cam, shaderStore& shader, vector4 color, const mtx44* precomputedVP, const TextureCubemap* shadowTex, bool receiveShadows) {
     const triDomMesh& mesh = object.mesh;
     mtx44 vp;
     if (precomputedVP) {
@@ -24,18 +144,15 @@ void Draw3DGPU(const meshedObject& object, const camera& cam, shaderStore& shade
         const int shadowFlag = receiveShadows ? 1 : 0;
         SetShaderValue(shader.shader, shader.shadowsEnabledLoc, &shadowFlag, SHADER_UNIFORM_INT);
     }
-    // Diffuse maps use the batch's texture unit 0. Bind shadow maps to fixed
-    // units so internal batch flushes cannot reset/reassign their samplers.
-    const int nearSlot = 1, farSlot = 2;
-    if (shadowTex != nullptr && shadowTex->id != 0 && shader.shadowMapLoc >= 0) {
-        SetShaderValue(shader.shader, shader.shadowMapLoc, &nearSlot, SHADER_UNIFORM_INT);
-        rlActiveTextureSlot(nearSlot);
-        rlEnableTexture(shadowTex->id);
+    // Keep the cubemap on a fixed unit across internal diffuse-texture batch flushes.
+    const int shadowSlot = 1;
+    // Samplers of different types must use different units even when shadows are disabled.
+    if (shader.shadowMapLoc >= 0) {
+        SetShaderValue(shader.shader, shader.shadowMapLoc, &shadowSlot, SHADER_UNIFORM_INT);
     }
-    if (shadowTexFar != nullptr && shadowTexFar->id != 0 && shader.shadowMapFarLoc >= 0) {
-        SetShaderValue(shader.shader, shader.shadowMapFarLoc, &farSlot, SHADER_UNIFORM_INT);
-        rlActiveTextureSlot(farSlot);
-        rlEnableTexture(shadowTexFar->id);
+    if (shadowTex != nullptr && shadowTex->id != 0 && shader.shadowMapLoc >= 0) {
+        rlActiveTextureSlot(shadowSlot);
+        rlEnableTextureCubemap(shadowTex->id);
     }
     rlActiveTextureSlot(0);
     SetShaderValue(shader.shader, shader.emissiveLoc, &object.emissive, SHADER_UNIFORM_VEC4);
@@ -44,28 +161,29 @@ void Draw3DGPU(const meshedObject& object, const camera& cam, shaderStore& shade
     mtx44 model = buildModelMatrix(object.pEntity.location, object.pEntity.rot, object.offset);
     SetShaderValueMatrix(shader.shader, shader.modelLoc, ToRaylibMatrix(model));
 
-    rlBegin(RL_TRIANGLES);
-    rlColor4ub(color.x, color.y, color.z, color.t);
-    for (int i = 0; i < mesh.count; i++) {
-        rlSetTexture(mesh.trisO[i].textureId);
-        rlNormal3f(mesh.trisO[i].n[0].x, mesh.trisO[i].n[0].y, mesh.trisO[i].n[0].z);
-        rlTexCoord2f(mesh.trisO[i].t[0].x, mesh.trisO[i].t[0].y);
-        rlVertex3f(mesh.trisO[i].v[0].x, mesh.trisO[i].v[0].y, mesh.trisO[i].v[0].z);
+    const float vertexColor[4] = {color.x / 255.f, color.y / 255.f, color.z / 255.f, color.t / 255.f};
+    if (!drawCachedMesh(mesh, shader.shader, vertexColor)) {
+        rlBegin(RL_TRIANGLES);
+        rlColor4ub(color.x, color.y, color.z, color.t);
+        for (int i = 0; i < mesh.count; i++) {
+            rlSetTexture(mesh.trisO[i].textureId);
+            rlNormal3f(mesh.trisO[i].n[0].x, mesh.trisO[i].n[0].y, mesh.trisO[i].n[0].z);
+            rlTexCoord2f(mesh.trisO[i].t[0].x, mesh.trisO[i].t[0].y);
+            rlVertex3f(mesh.trisO[i].v[0].x, mesh.trisO[i].v[0].y, mesh.trisO[i].v[0].z);
 
-        rlNormal3f(mesh.trisO[i].n[1].x, mesh.trisO[i].n[1].y, mesh.trisO[i].n[1].z);
-        rlTexCoord2f(mesh.trisO[i].t[1].x, mesh.trisO[i].t[1].y);
-        rlVertex3f(mesh.trisO[i].v[1].x, mesh.trisO[i].v[1].y, mesh.trisO[i].v[1].z);
+            rlNormal3f(mesh.trisO[i].n[1].x, mesh.trisO[i].n[1].y, mesh.trisO[i].n[1].z);
+            rlTexCoord2f(mesh.trisO[i].t[1].x, mesh.trisO[i].t[1].y);
+            rlVertex3f(mesh.trisO[i].v[1].x, mesh.trisO[i].v[1].y, mesh.trisO[i].v[1].z);
 
-        rlNormal3f(mesh.trisO[i].n[2].x, mesh.trisO[i].n[2].y, mesh.trisO[i].n[2].z);
-        rlTexCoord2f(mesh.trisO[i].t[2].x, mesh.trisO[i].t[2].y);
-        rlVertex3f(mesh.trisO[i].v[2].x, mesh.trisO[i].v[2].y, mesh.trisO[i].v[2].z);
+            rlNormal3f(mesh.trisO[i].n[2].x, mesh.trisO[i].n[2].y, mesh.trisO[i].n[2].z);
+            rlTexCoord2f(mesh.trisO[i].t[2].x, mesh.trisO[i].t[2].y);
+            rlVertex3f(mesh.trisO[i].v[2].x, mesh.trisO[i].v[2].y, mesh.trisO[i].v[2].z);
+        }
+        rlEnd();
+        rlDrawRenderBatchActive();
     }
-    rlEnd();
-    rlDrawRenderBatchActive();
-    rlActiveTextureSlot(nearSlot);
-    rlDisableTexture();
-    rlActiveTextureSlot(farSlot);
-    rlDisableTexture();
+    rlActiveTextureSlot(shadowSlot);
+    rlDisableTextureCubemap();
     rlActiveTextureSlot(0);
     rlSetTexture(rlGetTextureIdDefault());
 }
@@ -77,18 +195,22 @@ void Draw3DDepthGPU(const meshedObject& object, Shader depthShader, int modelLoc
     mtx44 model = buildModelMatrix(object.pEntity.location, object.pEntity.rot, object.offset);
     SetShaderValueMatrix(depthShader, modelLoc, ToRaylibMatrix(model));
 
-    rlBegin(RL_TRIANGLES);
-    for (int i = 0; i < mesh.count; i++) {
-        rlSetTexture(mesh.trisO[i].textureId);
-        rlTexCoord2f(mesh.trisO[i].t[0].x, mesh.trisO[i].t[0].y);
-        rlVertex3f(mesh.trisO[i].v[0].x, mesh.trisO[i].v[0].y, mesh.trisO[i].v[0].z);
-        rlTexCoord2f(mesh.trisO[i].t[1].x, mesh.trisO[i].t[1].y);
-        rlVertex3f(mesh.trisO[i].v[1].x, mesh.trisO[i].v[1].y, mesh.trisO[i].v[1].z);
-        rlTexCoord2f(mesh.trisO[i].t[2].x, mesh.trisO[i].t[2].y);
-        rlVertex3f(mesh.trisO[i].v[2].x, mesh.trisO[i].v[2].y, mesh.trisO[i].v[2].z);
+    const float vertexColor[4] = {1.f, 1.f, 1.f, 1.f};
+    if (!drawCachedMesh(mesh, depthShader, vertexColor)) {
+        rlBegin(RL_TRIANGLES);
+        for (int i = 0; i < mesh.count; i++) {
+            rlSetTexture(mesh.trisO[i].textureId);
+            rlTexCoord2f(mesh.trisO[i].t[0].x, mesh.trisO[i].t[0].y);
+            rlVertex3f(mesh.trisO[i].v[0].x, mesh.trisO[i].v[0].y, mesh.trisO[i].v[0].z);
+            rlTexCoord2f(mesh.trisO[i].t[1].x, mesh.trisO[i].t[1].y);
+            rlVertex3f(mesh.trisO[i].v[1].x, mesh.trisO[i].v[1].y, mesh.trisO[i].v[1].z);
+            rlTexCoord2f(mesh.trisO[i].t[2].x, mesh.trisO[i].t[2].y);
+            rlVertex3f(mesh.trisO[i].v[2].x, mesh.trisO[i].v[2].y, mesh.trisO[i].v[2].z);
+        }
+        rlEnd();
+        rlSetTexture(0);
+        rlDrawRenderBatchActive();
     }
-    rlEnd();
-    rlSetTexture(0);
 }
 
 void DrawColliderGPU(int cPlaneCount, const planeMtx* colliders, const camera& cam, shaderStore& shader, vector4 color, const mtx44* precomputedVP) {

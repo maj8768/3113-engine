@@ -451,6 +451,7 @@ void deformGasPump(meshedObject& gasPump, meshedObject& gasPumpNozzleOff) {
         centroid.z /= affectedCount;
     }
 
+    gasPumpNozzleOff.mesh.gpuDirty = true;
     for (int i = 0; i < affectedCount; i++) {
         float relX = affected[i].orig.x - centroid.x;
         float relZ = affected[i].orig.z - centroid.z;
@@ -685,12 +686,11 @@ int spawnedPlayerCount() {
 }
 
 void drawSpawnedPlayers(const camera& cam, shaderStore& shader, const mtx44* vp,
-                        const Texture2D* shadowTex, bool receiveShadows,
-                        const Texture2D* shadowTexFar) {
+                        const TextureCubemap* shadowTex, bool receiveShadows) {
     for (int i = 0; i < gPlayerPoolSize; i++) {
         if (!gPlayers[i].active || !gPlayers[i].built) continue;
         Draw3DGPU(gPlayers[i].obj, cam, shader, {255, 0, 0, 255}, vp,
-                  shadowTex, receiveShadows, shadowTexFar);
+                  shadowTex, receiveShadows);
     }
 }
 

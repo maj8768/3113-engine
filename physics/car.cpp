@@ -186,6 +186,7 @@ void processCar(meshedObject& car, meshedObject& wheel, player& player, float de
         wheelOriginalTris = (tri*)malloc(sizeof(tri) * wheel.mesh.count);
         memcpy(wheelOriginalTris, wheel.mesh.trisO, sizeof(tri) * wheel.mesh.count);
     }
+    wheel.mesh.gpuDirty = true;
     memcpy(wheel.mesh.trisO, wheelOriginalTris, sizeof(tri) * wheel.mesh.count);
 
     float wheelAngle = steeringAngle * 1.5f;

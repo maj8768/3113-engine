@@ -146,6 +146,8 @@ float getHypot(float a, float b) {
 }
 
 void unloadObjectTextures(meshedObject& object) {
+    object.mesh.gpu.reset();
+    object.mesh.gpuDirty = true;
     for (const Texture2D& texture : object.diffuseTextures) UnloadTexture(texture);
     object.diffuseTextures.clear();
     object.texo = {};

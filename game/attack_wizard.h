@@ -62,7 +62,7 @@ void updateWizardAttacks(float deltaTime, world& worldInstance, player& player);
 
 // Render all live projectiles: main lit pass and shadow depth pass.
 void drawWizardAttacks(const camera& cam, shaderStore& shader, float alpha, const mtx44* vp,
-                       const Texture2D* shadowTex, bool receiveShadows, const Texture2D* shadowTexFar);
+                       const TextureCubemap* shadowTex, bool receiveShadows);
 void drawWizardAttacksDepth(Shader depthShader, int modelLoc);
 
 // Live projectiles, exposed so the corona/glow pass can emit from each ball.

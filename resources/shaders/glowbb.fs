@@ -1,6 +1,6 @@
 #version 330
 
-// NOTE: 330 to pair with raylib's default vertex shader (LoadShader(0, ...)).
+// Colors come from the batch's vertex buffer, including brightness above 1.0.
 
 // =============================================================================
 // glowbb.fs — soft depth-faded billboard light corona.
@@ -12,9 +12,9 @@
 // =============================================================================
 
 in vec2 fragTexCoord;
+in vec3 vGlowColor;
 out vec4 finalColor;
 
-uniform vec3 uGlowColor;       // peak brightness (light colour; may exceed 1)
 uniform sampler2D uSceneDepth; // camera-view scene depth
 uniform vec2 uScreenSize;      // framebuffer size in pixels
 uniform float uProjA;          // perspective depth coeff A (from projMtx44)
@@ -28,9 +28,12 @@ float linearDist(float dwin) {
 }
 
 void main() {
-    float d = distance(fragTexCoord, vec2(0.5));
+    vec2 offset = fragTexCoord - vec2(0.5);
+    float radiusSquared = dot(offset, offset);
+    if (radiusSquared >= 0.25) discard; // the square corners contribute no light
+    float d = sqrt(radiusSquared);
     float x = clamp(1.0 - d * 2.0, 0.0, 1.0);
-    vec3 core = uGlowColor * x * x;
+    vec3 core = vGlowColor * x * x;
 
     float sd = texture(uSceneDepth, gl_FragCoord.xy / uScreenSize).r;
     float sceneDist = (sd >= 0.9999) ? 1e30 : linearDist(sd); // cleared/background = far

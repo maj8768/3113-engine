@@ -158,6 +158,7 @@ void spawnShockShell(vector3 origin, float radius) {
 // scratch tris buffer are per-instance so instances never stomp each other; the
 // GPU texture is SHARED (its id is just copied), so it is not unloaded per shot.
 physicalAttack* instantiateFromTemplate(const meshedObject& tmpl) {
+    UploadMeshGPU(tmpl.mesh); // Copies share immutable geometry until an instance edits trisO.
     physicalAttack* a = new physicalAttack();
     a->obj = tmpl; // shallow copy: scalars, texo id, emissive/bloom, and pointers
 
@@ -538,7 +539,7 @@ void updateWizardAttacks(float deltaTime, world& worldInstance, player& player) 
 }
 
 void drawWizardAttacks(const camera& cam, shaderStore& shader, float alpha, const mtx44* vp,
-                       const Texture2D* shadowTex, bool receiveShadows, const Texture2D* shadowTexFar) {
+                       const TextureCubemap* shadowTex, bool receiveShadows) {
     for (physicalAttack* a : gAttacks) {
         // Render BETWEEN the last two physics ticks: draw at lerp(prev, current, alpha),
         // matching the camera's interpolation so motion is smooth at any framerate.
@@ -552,7 +553,7 @@ void drawWizardAttacks(const camera& cam, shaderStore& shader, float alpha, cons
             float av = a->landed ? landedFade(a->landedAge) * 255.f : 255.f;
             bool  blend = av < 255.f;
             if (blend) BeginBlendMode(BLEND_ALPHA);
-            Draw3DGPU(a->obj, cam, shader, {255.f, 255.f, 255.f, av}, vp, shadowTex, receiveShadows, shadowTexFar);
+            Draw3DGPU(a->obj, cam, shader, {255.f, 255.f, 255.f, av}, vp, shadowTex, receiveShadows);
             if (blend) EndBlendMode();
         }
         a->obj.pEntity.location = real; // restore the true physics state for the next tick
