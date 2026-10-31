@@ -77,3 +77,13 @@ ENGINE_PROFILE=1 ENGINE_SMOKE_HALF_RES=0 ./therewillnotbeafoldernamedthis
 Use the same camera angle and spell for both runs. The profiler reports the actual
 half-resolution smoke target dimensions; `0x0` means that path was inactive during
 the sample window. On Windows, use `sh build-mingw.sh` and the `.exe` executable.
+
+The captured scene is presented with a full-screen textured draw. To compare the
+framebuffer-blit backend using the same build:
+
+```sh
+ENGINE_PROFILE=1 ENGINE_SCENE_COPY=blit ./therewillnotbeafoldernamedthis
+```
+
+`warp/copy` is a CPU submission measurement and can include waits for earlier GPU
+work; it is not a direct measurement of GPU copy time.

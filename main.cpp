@@ -153,6 +153,10 @@ static Shader depthViewShader = {0};       // DEBUG: amplified depth visualiser
 // full-screen through warpShader, which reconstructs world position from depth and refracts
 // only the pixels whose true 3D distance to the blast is within the sphere's shell band.
 static RenderTexture2D sceneColorRT = {0};  // colour + sampleable depth (LoadShadowMapRenderTexture)
+static Shader scenePresentShader = {0};
+static int scenePresentColorLoc = -1;
+static unsigned int scenePresentVao = 0;
+static bool useBlitSceneCopy = false;
 static Shader warpShader = {0};
 static int warpColorLoc = -1, warpDepthLoc = -1, warpResLoc = -1, warpTimeLoc = -1;
 static int warpProjALoc = -1, warpProjBLoc = -1;
@@ -716,6 +720,11 @@ void initialise()
     // Heat-shockwave warp: full-res scene capture (colour + sampleable depth) + refraction shader.
     sceneColorRT = LoadShadowMapRenderTexture(GetRenderWidth(), GetRenderHeight());
     SetTextureFilter(sceneColorRT.texture, TEXTURE_FILTER_BILINEAR);
+    scenePresentShader = LoadShader("resources/shaders/smoke_composite.vs", "resources/shaders/scene_present.fs");
+    scenePresentColorLoc = GetShaderLocation(scenePresentShader, "uScene");
+    if (scenePresentColorLoc >= 0) scenePresentVao = rlLoadVertexArray();
+    const char* sceneCopy = std::getenv("ENGINE_SCENE_COPY");
+    useBlitSceneCopy = sceneCopy != nullptr && std::strcmp(sceneCopy, "blit") == 0;
     warpShader = LoadShader(0, "resources/shaders/warp.fs");
     warpColorLoc    = GetShaderLocation(warpShader, "uColor");
     warpDepthLoc    = GetShaderLocation(warpShader, "uDepth");
@@ -1646,6 +1655,39 @@ static void DrawLightCoronas(const std::vector<LightCorona>& coronas, const mtx4
     rlEnableBackfaceCulling();
 }
 
+static void PresentCapturedScene(int width, int height) {
+    rlDrawRenderBatchActive();
+    if (useBlitSceneCopy || scenePresentVao == 0 || scenePresentColorLoc < 0) {
+        rlBindFramebuffer(RL_READ_FRAMEBUFFER, sceneColorRT.id);
+        rlBindFramebuffer(RL_DRAW_FRAMEBUFFER, 0);
+        constexpr int colorBufferBit = 0x00004000; // GL_COLOR_BUFFER_BIT
+        rlBlitFramebuffer(0, 0, width, height, 0, 0, width, height, colorBufferBit);
+        rlDisableFramebuffer();
+        rlViewport(0, 0, width, height);
+        return;
+    }
+    rlDisableFramebuffer();
+    rlViewport(0, 0, width, height);
+    rlDisableDepthTest();
+    rlDisableDepthMask();
+    rlDisableColorBlend();
+    BeginShaderMode(scenePresentShader);
+    const int sceneSlot = 0;
+    SetShaderValue(scenePresentShader, scenePresentColorLoc, &sceneSlot, SHADER_UNIFORM_INT);
+    rlActiveTextureSlot(sceneSlot);
+    rlEnableTexture(sceneColorRT.texture.id);
+    rlEnableShader(scenePresentShader.id);
+    rlEnableVertexArray(scenePresentVao);
+    rlDrawVertexArray(0, 3);
+    rlDisableVertexArray();
+    rlDisableShader();
+    rlDisableTexture();
+    EndShaderMode();
+    rlEnableColorBlend();
+    rlEnableDepthMask();
+    rlEnableDepthTest();
+}
+
 void render()
 {
     double renderCheckpoint = gProfileFrames ? GetTime() : 0.0;
@@ -1854,16 +1896,7 @@ void render()
             rlEnableDepthMask();
         }
 
-        if (captureScene && !warpActive) {
-            // Smoke and full-res additive effects are already composited into the captured scene.
-            rlDrawRenderBatchActive();
-            rlBindFramebuffer(RL_READ_FRAMEBUFFER, sceneColorRT.id);
-            rlBindFramebuffer(RL_DRAW_FRAMEBUFFER, 0);
-            constexpr int colorBufferBit = 0x00004000; // GL_COLOR_BUFFER_BIT
-            rlBlitFramebuffer(0, 0, rw, rh, 0, 0, rw, rh, colorBufferBit);
-            rlDisableFramebuffer();
-            rlViewport(0, 0, rw, rh);
-        }
+        if (captureScene && !warpActive) PresentCapturedScene(rw, rh);
         RecordRenderStage(RS_WARP, renderCheckpoint);
 
         /*
@@ -2087,6 +2120,8 @@ void shutdown()
     if (sceneColorRT.depth.id != 0) rlUnloadTexture(sceneColorRT.depth.id);
     if (sceneColorRT.id != 0) rlUnloadFramebuffer(sceneColorRT.id);
     if (warpShader.id != 0) UnloadShader(warpShader);
+    if (scenePresentShader.id != 0) UnloadShader(scenePresentShader);
+    if (scenePresentVao != 0) rlUnloadVertexArray(scenePresentVao);
 
     if (emissiveRT.id != 0) UnloadRenderTexture(emissiveRT);
     if (bloomShader.id != 0) UnloadShader(bloomShader);
