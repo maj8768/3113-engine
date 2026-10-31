@@ -378,6 +378,25 @@ void create3dObject(meshedObject& object, const char* path, const char* collider
 
     std::cout << "loading: " << path << std::endl;
     Model model = LoadModel(path);
+    // UnloadModel frees geometry/material arrays, but leaves material textures
+    // alive. Retain every diffuse map until the source object is shut down.
+    for (int i = 0; model.materials && i < model.materialCount; i++) {
+        if (!model.materials[i].maps) continue;
+        MaterialMap& diffuse = model.materials[i].maps[MATERIAL_MAP_DIFFUSE];
+        Texture2D texture = diffuse.texture;
+        if ((texture.id == 0 || texture.id == rlGetTextureIdDefault()) &&
+            (diffuse.color.r != 255 || diffuse.color.g != 255 ||
+             diffuse.color.b != 255 || diffuse.color.a != 255)) {
+            Image image = GenImageColor(1, 1, diffuse.color);
+            texture = diffuse.texture = LoadTextureFromImage(image);
+            UnloadImage(image);
+        }
+        if (texture.id == 0 || texture.id == rlGetTextureIdDefault()) continue;
+        bool retained = false;
+        for (const Texture2D& existing : object.diffuseTextures)
+            if (existing.id == texture.id) retained = true;
+        if (!retained) object.diffuseTextures.push_back(texture);
+    }
     std::cout << "meshes: " << model.meshCount << std::endl;
 
     int totalTriangles = 0;
@@ -422,15 +441,19 @@ void create3dObject(meshedObject& object, const char* path, const char* collider
     for (int i = 0; i < model.meshCount; i++) {
         Mesh* m = &model.meshes[i];
         if (!m->vertices || m->triangleCount <= 0) continue;
+        unsigned int textureId = rlGetTextureIdDefault();
         if (model.materials && model.meshMaterial && model.materialCount > 0) {
             int matIdx = model.meshMaterial[i];
-            if (matIdx >= 0 && matIdx < model.materialCount)
-            object.texo = model.materials[matIdx].maps[MATERIAL_MAP_DIFFUSE].texture;
+            if (matIdx >= 0 && matIdx < model.materialCount && model.materials[matIdx].maps) {
+                object.texo = model.materials[matIdx].maps[MATERIAL_MAP_DIFFUSE].texture;
+                if (object.texo.id != 0) textureId = object.texo.id;
+            }
         }
         bool indexed = (m->indices != nullptr);
         for (int j = 0; j < m->triangleCount; j++) {
             tri t;
             tri ot;
+            t.textureId = ot.textureId = textureId;
             int a, b, c;
             if (indexed) {
                 a = m->indices[j*3+0];
@@ -558,6 +581,7 @@ void initialise()
     w2sShader.ambientLoc = GetShaderLocation(w2sShader.shader, "uAmbient");
     w2sShader.normalLoc = GetShaderLocation(w2sShader.shader, "uNormal");
     w2sShader.texoLoc = GetShaderLocation(w2sShader.shader, "uTexo");
+    w2sShader.shader.locs[SHADER_LOC_MAP_DIFFUSE] = w2sShader.texoLoc;
     w2sShader.fadeToLoc = GetShaderLocation(w2sShader.shader, "fadeTo");
     w2sShader.vpLoc = GetShaderLocation(w2sShader.shader, "uVP");
     w2sShader.lightSpaceMatrixLoc = GetShaderLocation(w2sShader.shader, "uLightSpaceMatrix");
@@ -572,6 +596,7 @@ void initialise()
     w2sShader.cascadeSplitLoc = GetShaderLocation(w2sShader.shader, "uCascadeSplit");
 
     depthShader = LoadShader("resources/shaders/depth.vs", "resources/shaders/depth.fs");
+    depthShader.locs[SHADER_LOC_MAP_DIFFUSE] = GetShaderLocation(depthShader, "uTexo");
     /* gasPumpPortrait = LoadTexture("resources/levels/testing/gaspfp.PNG"); */
     depthLightSpaceLoc = GetShaderLocation(depthShader, "uLightSpaceMatrix");
     depthModelLoc = GetShaderLocation(depthShader, "uModel");
@@ -1875,6 +1900,10 @@ void shutdown()
 
     shutdownParticles();
     shutdownWizardAttacks();
+    unloadObjectTextures(testingplatforms);
+    unloadObjectTextures(drank);
+    unloadObjectTextures(wand);
+    unloadObjectTextures(hand);
 
     UnloadSound(jump1);
     UnloadSound(jump2);

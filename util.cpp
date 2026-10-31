@@ -145,6 +145,12 @@ float getHypot(float a, float b) {
     return sqrtf(powf(a,2) + powf(b,2));
 }
 
+void unloadObjectTextures(meshedObject& object) {
+    for (const Texture2D& texture : object.diffuseTextures) UnloadTexture(texture);
+    object.diffuseTextures.clear();
+    object.texo = {};
+}
+
 void objToQuads(const char* path, meshedObject& mesh, float scale, player& player, bool playerObj) {
     int vertexCount = 0;
     int faceCount = 0;

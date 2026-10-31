@@ -24,11 +24,20 @@ void Draw3DGPU(const meshedObject& object, const camera& cam, shaderStore& shade
         const int shadowFlag = receiveShadows ? 1 : 0;
         SetShaderValue(shader.shader, shader.shadowsEnabledLoc, &shadowFlag, SHADER_UNIFORM_INT);
     }
-    if (shadowTex != nullptr && shadowTex->id != 0 && shader.shadowMapLoc >= 0)
-    SetShaderValueTexture(shader.shader, shader.shadowMapLoc, *shadowTex);
-    if (shadowTexFar != nullptr && shadowTexFar->id != 0 && shader.shadowMapFarLoc >= 0)
-    SetShaderValueTexture(shader.shader, shader.shadowMapFarLoc, *shadowTexFar);
-    SetShaderValueTexture(shader.shader, shader.texoLoc, object.texo);
+    // Diffuse maps use the batch's texture unit 0. Bind shadow maps to fixed
+    // units so internal batch flushes cannot reset/reassign their samplers.
+    const int nearSlot = 1, farSlot = 2;
+    if (shadowTex != nullptr && shadowTex->id != 0 && shader.shadowMapLoc >= 0) {
+        SetShaderValue(shader.shader, shader.shadowMapLoc, &nearSlot, SHADER_UNIFORM_INT);
+        rlActiveTextureSlot(nearSlot);
+        rlEnableTexture(shadowTex->id);
+    }
+    if (shadowTexFar != nullptr && shadowTexFar->id != 0 && shader.shadowMapFarLoc >= 0) {
+        SetShaderValue(shader.shader, shader.shadowMapFarLoc, &farSlot, SHADER_UNIFORM_INT);
+        rlActiveTextureSlot(farSlot);
+        rlEnableTexture(shadowTexFar->id);
+    }
+    rlActiveTextureSlot(0);
     SetShaderValue(shader.shader, shader.emissiveLoc, &object.emissive, SHADER_UNIFORM_VEC4);
     SetShaderValue(shader.shader, shader.bloomParamsLoc, &object.bloom, SHADER_UNIFORM_VEC2);
     SetShaderValueMatrix(shader.shader, shader.vpLoc, ToRaylibMatrix(vp));
@@ -38,6 +47,7 @@ void Draw3DGPU(const meshedObject& object, const camera& cam, shaderStore& shade
     rlBegin(RL_TRIANGLES);
     rlColor4ub(color.x, color.y, color.z, color.t);
     for (int i = 0; i < mesh.count; i++) {
+        rlSetTexture(mesh.trisO[i].textureId);
         rlNormal3f(mesh.trisO[i].n[0].x, mesh.trisO[i].n[0].y, mesh.trisO[i].n[0].z);
         rlTexCoord2f(mesh.trisO[i].t[0].x, mesh.trisO[i].t[0].y);
         rlVertex3f(mesh.trisO[i].v[0].x, mesh.trisO[i].v[0].y, mesh.trisO[i].v[0].z);
@@ -51,6 +61,13 @@ void Draw3DGPU(const meshedObject& object, const camera& cam, shaderStore& shade
         rlVertex3f(mesh.trisO[i].v[2].x, mesh.trisO[i].v[2].y, mesh.trisO[i].v[2].z);
     }
     rlEnd();
+    rlDrawRenderBatchActive();
+    rlActiveTextureSlot(nearSlot);
+    rlDisableTexture();
+    rlActiveTextureSlot(farSlot);
+    rlDisableTexture();
+    rlActiveTextureSlot(0);
+    rlSetTexture(rlGetTextureIdDefault());
 }
 
 void Draw3DDepthGPU(const meshedObject& object, Shader depthShader, int modelLoc) {
@@ -60,9 +77,9 @@ void Draw3DDepthGPU(const meshedObject& object, Shader depthShader, int modelLoc
     mtx44 model = buildModelMatrix(object.pEntity.location, object.pEntity.rot, object.offset);
     SetShaderValueMatrix(depthShader, modelLoc, ToRaylibMatrix(model));
 
-    rlSetTexture(object.texo.id);
     rlBegin(RL_TRIANGLES);
     for (int i = 0; i < mesh.count; i++) {
+        rlSetTexture(mesh.trisO[i].textureId);
         rlTexCoord2f(mesh.trisO[i].t[0].x, mesh.trisO[i].t[0].y);
         rlVertex3f(mesh.trisO[i].v[0].x, mesh.trisO[i].v[0].y, mesh.trisO[i].v[0].z);
         rlTexCoord2f(mesh.trisO[i].t[1].x, mesh.trisO[i].t[1].y);

@@ -629,13 +629,13 @@ void shutdownWizardAttacks() {
     }
 
     if (gTemplateLoaded) {
-        if (gTemplate.texo.id > 1) UnloadTexture(gTemplate.texo);
+        unloadObjectTextures(gTemplate);
         free(gTemplate.mesh.tris);
         free(gTemplate.mesh.trisO);
         delete[] gTemplate.collider;
         delete[] gTemplate.colliderO;
 
-        if (gSwordTemplate.texo.id > 1) UnloadTexture(gSwordTemplate.texo);
+        unloadObjectTextures(gSwordTemplate);
         free(gSwordTemplate.mesh.tris);
         free(gSwordTemplate.mesh.trisO);
         delete[] gSwordTemplate.collider;

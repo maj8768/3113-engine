@@ -704,6 +704,7 @@ void drawSpawnedPlayersDepth(Shader depthShader, int modelLoc) {
 void shutdownSpawnedPlayers() {
     for (int i = 0; i < (int)NET_MAX_PLAYERS; i++) {
         if (!gPlayers[i].built) continue;
+        unloadObjectTextures(gPlayers[i].obj);
         free(gPlayers[i].obj.mesh.tris);
         free(gPlayers[i].obj.mesh.trisO);
         gPlayers[i].obj.mesh.tris = nullptr;

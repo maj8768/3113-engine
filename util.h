@@ -1,6 +1,7 @@
 #pragma once
 #include "raylib.h"
 #include <cmath>
+#include <vector>
 
 #ifndef M_PI
 #define M_PI 3.14159
@@ -326,6 +327,7 @@ struct tri {
     vector3 v[3];
     vector3 n[3];
     vector2 t[3];
+    unsigned int textureId;
 };
 
 struct triDomMesh {
@@ -341,6 +343,7 @@ struct meshedObject {
     int cPlaneCount;
     float scale;
     Texture2D texo;
+    std::vector<Texture2D> diffuseTextures; // Owned by the source object; instances share GPU ids.
     vector4 emissive = {0.f, 0.f, 0.f, 0.f}; // rgb = glow color, .t = emission amount (0..1)
     vector2 bloom = {1.f, 1.f};              // bloom: x = brightness, y = length/spread (0..1)
     bool noCull = false;
@@ -354,6 +357,7 @@ struct meshedObject {
 };
 
 void objToQuads(const char* path, meshedObject& mesh, float scale, player& player, bool playerObj);
+void unloadObjectTextures(meshedObject& object);
 
 mtx44 mmult4(const mtx44&, const mtx44&);
 
