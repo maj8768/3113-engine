@@ -5,7 +5,6 @@
 #include "raylib.h"
 #include "physics.h"
 #include "sounds.h"
-#include "../music/engine_synth.h"
 #include "string"
 
 void processCar(meshedObject& car, meshedObject& wheel, player& player, float deltaTime, Music& engineSound) {
@@ -109,11 +108,6 @@ void processCar(meshedObject& car, meshedObject& wheel, player& player, float de
         else {
             rpm = fmaxf(rpm - gearRpmFall[gear - 1] * deltaTime, 0.f);
         }
-    }
-
-    if (gearChanged && gear >= 0) {
-        if (shiftIsUp) engineSynth_upshift(rpm);
-        else engineSynth_downshift(rpm);
     }
 
     if (gear == 0) {
@@ -222,17 +216,10 @@ void processCar(meshedObject& car, meshedObject& wheel, player& player, float de
     player.pState.rightTurn = 0.f;
 
     if (player.pState.inCar) {
-        engineSynth_setRPM(rpm);
-        engineSynth_setThrottle(throttleInput);
-        engineSynth_setVolume(0.1f);
-        engineSynth_setGear(gear);
+        processCarEngine(engineSound, car, gearTopSpeeds[numGears-1], deltaTime);
     }
     else {
-        engineSynth_setThrottle(0.f);
         stopCarEngine(engineSound);
     }
-    engineSynth_update();
-
-    float absRPM = 1500.f + rpm * (6000.f - 1500.f);
 
 }

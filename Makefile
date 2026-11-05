@@ -5,11 +5,14 @@
 
 CXX := g++
 TARGET := TheGame
-SRC := $(shell find . -name "*.cpp" -not -path "./vendor/*")
+# The legacy engine synth is unlinked; game audio uses raylib only.
+SRC := $(shell find . -name "*.cpp" -not -path "./vendor/*" -not -path "./music/engine_synth.cpp")
 
 UNAME_S := $(shell uname -s 2>/dev/null)
 
 ifeq ($(OS),Windows_NT)
+    PLATFORM := WINDOWS
+else ifneq ($(filter MINGW% MSYS% CYGWIN%,$(UNAME_S)),)
     PLATFORM := WINDOWS
 else ifeq ($(UNAME_S),Darwin)
     PLATFORM := MACOS
@@ -66,7 +69,7 @@ ifeq ($(PLATFORM),WINDOWS)
         INCLUDES :=
         LIBDIRS  :=
     endif
-    LIBS     := -lraylib -lopengl32 -lgdi32 -lwinmm -lws2_32
+    LIBS     := -lraylib -lopengl32 -lgdi32 -lwinmm -lws2_32 -luser32
 endif
 
 ifneq ($(HAS_STEAM),)

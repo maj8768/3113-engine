@@ -1,135 +1,121 @@
-#ifdef _WIN32
-
-#define WIN32_LEAN_AND_MEAN
-#include <windows.h>
 #include "mouse.h"
-#include <iostream>
 
-static HWND g_hwnd = nullptr;
-static WNDPROC g_oldWndProc = nullptr;
-static LONG g_mouseDx = 0;
-static LONG g_mouseDy = 0;
+#if defined(_WIN32) || defined(_WIN64) || defined(WIN32)
 
-static LRESULT CALLBACK RawMouseWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
-{
-    switch (msg)
-    {
-        case WM_INPUT:
-            {
-            UINT size = 0;
-            if (GetRawInputData(
-                reinterpret_cast<HRAWINPUT>(lParam),
-                RID_INPUT,
-                nullptr,
-                &size,
-                sizeof(RAWINPUTHEADER)) != 0)
-            {
-                break;
-            }
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
 
-            BYTE buffer[sizeof(RAWINPUT)] = {};
-            size = sizeof(buffer);
+namespace {
+HWND gWindow = nullptr;
+WNDPROC gPreviousProc = nullptr;
+float gDeltaX = 0.f;
+float gDeltaY = 0.f;
+bool gFocused = false;
 
-            UINT read = GetRawInputData(
-                reinterpret_cast<HRAWINPUT>(lParam),
-                RID_INPUT,
-                buffer,
-                &size,
-                sizeof(RAWINPUTHEADER));
+void clearDelta() { gDeltaX = gDeltaY = 0.f; }
 
-            if (read == size)
-            {
-                RAWINPUT* raw = reinterpret_cast<RAWINPUT*>(buffer);
-
-                if (raw->header.dwType == RIM_TYPEMOUSE) {
-                    g_mouseDx += raw->data.mouse.lLastX;
-                    g_mouseDy += raw->data.mouse.lLastY;
-                }
-                return DefWindowProc(hwnd, msg, wParam, lParam);
-            }
-            break;
+LRESULT CALLBACK rawMouseProc(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
+    if (message == WM_KILLFOCUS || message == WM_SETFOCUS) {
+        gFocused = message == WM_SETFOCUS;
+        clearDelta(); // never apply motion accumulated while switching windows
+    } else if (message == WM_INPUT) {
+        // A RAWINPUT object provides alignment without a heap allocation or a
+        // separate size query for each mouse packet.
+        RAWINPUT input{};
+        UINT size = sizeof(input);
+        UINT read = GetRawInputData(reinterpret_cast<HRAWINPUT>(lParam), RID_INPUT,
+                                    &input, &size, sizeof(RAWINPUTHEADER));
+        if (read != static_cast<UINT>(-1) && read >= sizeof(RAWINPUT) &&
+            input.header.dwType == RIM_TYPEMOUSE && gFocused &&
+            !(input.data.mouse.usFlags & MOUSE_MOVE_ABSOLUTE)) {
+            gDeltaX += static_cast<float>(input.data.mouse.lLastX);
+            gDeltaY += static_cast<float>(input.data.mouse.lLastY);
         }
+        // Forward to GLFW/raylib, including WM_INPUT cleanup and ordinary input.
     }
-
-    return CallWindowProc(g_oldWndProc, hwnd, msg, wParam, lParam);
+    return gPreviousProc ? CallWindowProc(gPreviousProc, window, message, wParam, lParam)
+                         : DefWindowProc(window, message, wParam, lParam);
 }
+} // namespace
 
-bool RawMouseInitFromHWND(void* windowHandle)
-{
-    if (!windowHandle) return false;
+bool RawMouseInitFromHWND(void* windowHandle) {
+    HWND window = static_cast<HWND>(windowHandle);
+    if (!window || !IsWindow(window)) return false;
+    if (gWindow == window && gPreviousProc) return true;
+    RawMouseShutdown();
 
-    g_hwnd = static_cast<HWND>(windowHandle);
+    WNDPROC previous = reinterpret_cast<WNDPROC>(
+        SetWindowLongPtr(window, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(rawMouseProc)));
+    if (!previous) return false;
 
-    g_oldWndProc = reinterpret_cast<WNDPROC>(
-        SetWindowLongPtr(g_hwnd, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(RawMouseWndProc))
-    );
-
-    if (!g_oldWndProc) return false;
-
-    RAWINPUTDEVICE rid = {};
-    rid.usUsagePage = 0x01;
-    rid.usUsage = 0x02;
-    rid.dwFlags = 0;
-    rid.hwndTarget = g_hwnd;
-
-    if (!RegisterRawInputDevices(&rid, 1, sizeof(rid)))
-    {
-        SetWindowLongPtr(g_hwnd, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(g_oldWndProc));
-        g_oldWndProc = nullptr;
-        g_hwnd = nullptr;
+    RAWINPUTDEVICE device{};
+    device.usUsagePage = 0x01; // generic desktop
+    device.usUsage = 0x02;     // mouse
+    device.hwndTarget = window;
+    // No INPUTSINK or NOLEGACY: foreground motion with normal mouse buttons.
+    if (!RegisterRawInputDevices(&device, 1, sizeof(device))) {
+        SetWindowLongPtr(window, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(previous));
         return false;
     }
-
+    gWindow = window;
+    gPreviousProc = previous;
+    gFocused = GetForegroundWindow() == window;
+    clearDelta();
     return true;
 }
 
-void RawMouseShutdown()
-{
-    if (g_hwnd && g_oldWndProc)
-    {
-        SetWindowLongPtr(g_hwnd, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(g_oldWndProc));
+void RawMouseShutdown() {
+    if (gWindow) {
+        RAWINPUTDEVICE device{};
+        device.usUsagePage = 0x01;
+        device.usUsage = 0x02;
+        device.dwFlags = RIDEV_REMOVE;
+        device.hwndTarget = nullptr; // required when removing a registration
+        RegisterRawInputDevices(&device, 1, sizeof(device));
+        if (IsWindow(gWindow) && gPreviousProc)
+            SetWindowLongPtr(gWindow, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(gPreviousProc));
     }
-
-    g_oldWndProc = nullptr;
-    g_hwnd = nullptr;
-    g_mouseDx = 0;
-    g_mouseDy = 0;
+    gPreviousProc = nullptr;
+    gWindow = nullptr;
+    gFocused = false;
+    clearDelta();
 }
 
-void RawMouseGetDelta(float& dx, float& dy)
-{
-    dx = static_cast<float>(g_mouseDx);
-    dy = static_cast<float>(g_mouseDy);
-    g_mouseDx = 0;
-    g_mouseDy = 0;
+void RawMouseGetDelta(float& dx, float& dy) {
+    dx = gFocused ? gDeltaX : 0.f;
+    dy = gFocused ? gDeltaY : 0.f;
+    clearDelta();
 }
 
 void pumpMessages() {
-    MSG msg;
+    MSG message;
     int limit = 50;
-    while (limit-- && PeekMessage(&msg, nullptr, 0, 0, PM_REMOVE))
-    {
-        TranslateMessage(&msg);
-        DispatchMessage(&msg);
+    while (limit-- && PeekMessage(&message, nullptr, 0, 0, PM_REMOVE)) {
+        if (message.message == WM_QUIT) {
+            PostQuitMessage(static_cast<int>(message.wParam));
+            break;
+        }
+        TranslateMessage(&message);
+        DispatchMessage(&message);
     }
 }
 
-#endif
+#else
 
-#if defined(__APPLE__) || defined(__linux__)
-#include "mouse.h"
 #include "raylib.h"
 
-bool RawMouseInitFromHWND(void* windowHandle) {return true;}
+bool RawMouseInitFromHWND(void*) { return true; }
 void RawMouseShutdown() {}
-
-void RawMouseGetDelta(float& dx, float& dy)
-{
+void RawMouseGetDelta(float& dx, float& dy) {
     Vector2 delta = GetMouseDelta();
     dx = delta.x;
     dy = delta.y;
 }
-
 void pumpMessages() {}
 
 #endif

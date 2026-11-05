@@ -1,15 +1,8 @@
-#ifdef _WIN32
+#pragma once
 
+// The declarations are available regardless of platform defines. Only the
+// implementation selects Windows raw input or raylib's mouse delta.
 bool RawMouseInitFromHWND(void* windowHandle);
 void RawMouseShutdown();
 void RawMouseGetDelta(float& dx, float& dy);
 void pumpMessages();
-
-#elif defined(__APPLE__) || defined(__linux__)
-
-bool RawMouseInitFromHWND(void* windowHandle);
-void RawMouseShutdown();
-void RawMouseGetDelta(float& dx, float& dy);
-void pumpMessages();
-
-#endif

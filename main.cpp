@@ -2087,7 +2087,7 @@ void shutdown()
     UnloadSound(magic2);
     UnloadSound(magic3);
     stopCarEngineThread();
-    UnloadMusicStream(carEngine);
+    if (IsMusicValid(carEngine)) UnloadMusicStream(carEngine);
     UnloadMusicStream(bgMusic1);
     UnloadMusicStream(bgMusic2);
     UnloadMusicStream(bgMusic3);

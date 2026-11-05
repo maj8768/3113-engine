@@ -7,4 +7,4 @@ if [ -f vendor/steamworks/include/steam/steam_api.h ]; then
     cp -f vendor/steamworks/bin/steam_api64.dll .
 fi
 
-g++ -O2 -std=c++17 $(find . -name "*.cpp" -not -path "./vendor/*") -o therewillnotbeafoldernamedthis.exe -Ivendor/raylib/include $STEAM_INC -Lvendor/raylib/lib $STEAM_LIB -lraylib -lopengl32 -lgdi32 -lwinmm -lws2_32 && ./therewillnotbeafoldernamedthis.exe
+g++ -O2 -std=c++17 $(find . -name "*.cpp" -not -path "./vendor/*" -not -path "./music/engine_synth.cpp") -o therewillnotbeafoldernamedthis.exe -Ivendor/raylib/include $STEAM_INC -Lvendor/raylib/lib $STEAM_LIB -lraylib -lopengl32 -lgdi32 -lwinmm -lws2_32 -luser32 && ./therewillnotbeafoldernamedthis.exe

@@ -33,6 +33,9 @@ Dependencies live in ``vendor/``, which is gitignored, so after cloning run:
 
 ``sh setup-steamworks.sh`` - Steamworks SDK (optional)
 
+Game audio uses raylib's audio device. The legacy `music/engine_synth.cpp` is
+excluded from all builds, so its separate miniaudio implementation is not required.
+
 Steamworks is picked up automatically by every build script when
 ``vendor/steamworks`` exists, and the matching ``steam_api`` runtime gets copied
 next to the executable. Wrap Steam code in ``#ifdef STEAMWORKS_AVAILABLE`` so
@@ -54,7 +57,7 @@ If nothing else works you can try with g++ stuffs
 
   
 
-``sh buil-mingwd.sh`` - windows mingw
+``sh build-mingw.sh`` - Windows 11 / MinGW (run in Git Bash or MSYS2)
 
 Smoke rendering and profiling:
 =
