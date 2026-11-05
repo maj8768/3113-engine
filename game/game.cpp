@@ -16,8 +16,6 @@
 #include <cmath>
 #include <cstdlib>
 
-static meshedObject gDarkblastMesh = {}; // empty placeholder passed to fireDarkblast for now
-
 Sound sndShopIntro = {0};
 Sound sndShopBye = {0};
 Sound sndShopThank = {0};
@@ -54,7 +52,7 @@ static float wandChargeIntensity(float age) {
 // aim from the player instead simply ignore it.
 void castFireball(player& p, vector3 origin)    { fireWizardAttack(p, origin); }
 void castHeavenSword(player& p, vector3 origin) { (void)origin; fireHeavenSword(p); }
-void castDarkblast(player& p, vector3 origin)   { (void)origin; fireDarkblast(p, gDarkblastMesh); }
+void castDarkblast(player& p, vector3 origin)   { fireDarkblast(p, origin); }
 
 namespace {
 
@@ -102,7 +100,7 @@ void spellsUpdate(player& player, float dt, vector3 castOrigin,
     const float CHARGE_END = 0.9f; // glow fully faded by here (wandChargeIntensity)
 
     vector3 wandTip = castOrigin;
-    meshedObject* held = heldItemObject();
+    meshedObject* held = heldItemObject(player);
 
     for (int i = 0; i < gSpellCount; i++)
         if (gSpells[i].cooldownLeft > 0.f) gSpells[i].cooldownLeft -= dt;
@@ -237,12 +235,12 @@ void updateWandHold(player& player, meshedObject& wand) {
 
 static bool locked = false;
 static bool interacting = true;
-static bool interactingG = true;
+static bool interactingDrinkDrop = true;
 
 void resetLevelLogicState() {
     locked = false;
     interacting = true;
-    interactingG = true;
+    interactingDrinkDrop = true;
 }
 static vector3 PumpStorage = {0.f, 0.f, 0.f};
 
@@ -303,19 +301,19 @@ void checkGasPump(player& player, float deltaTime, gameData& gData, meshedObject
 
 void interact(player& player, float deltaTime, gameData& gData, meshedObject& car, meshedObject& gasPump, meshedObject& gasPumpNozzle, meshedObject& gasPumpNozzleOff, meshedObject& drank, Sound swallow) {
 
-    if (getAsyncKeyStateWrapper(KEY_G)) {
-        if (player.pState.hasDrank && interactingG) {
+    if (getAsyncKeyStateWrapper(KEY_T)) {
+        if (player.pState.hasDrank && interactingDrinkDrop) {
             drank.pEntity.location = {0.f, 0.f, 0.f};
             drank.pEntity.magnitude = {0.f, 0.f, 0.f};
             drank.pEntity.collidingY = false;
             player.pState.hasDrank = false;
             player.pState.canPickDrank = false;
             player.pState.canBuy = false;
-            interactingG = false;
+            interactingDrinkDrop = false;
         }
     }
     else {
-        interactingG = true;
+        interactingDrinkDrop = true;
     }
     if (getAsyncKeyStateWrapper(KEY_F) && !player.pState.uberMenuOpen) {
         if (player.pState.canGasPump && interacting) {
@@ -585,7 +583,7 @@ void registerHeldLight(meshedObject* item, vector3 color, float intensity, float
 void heldLightUpdate(player& player) {
     gHeldLightActive = false;
 
-    meshedObject* held = heldItemObject();
+    meshedObject* held = heldItemObject(player);
     if (!held) return;
 
     for (int i = 0; i < gHeldLightCount; i++) {

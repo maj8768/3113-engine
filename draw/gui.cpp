@@ -129,7 +129,9 @@ void guiDrawStartPopup(float p1X, float p1Y, float width, float height, Color co
         "E / Q        Shift up / down",
         "R              Reverse",
         "F              Interact",
-        "G              Drop drink",
+        "T              Drop drink",
+        "1-6          Select inventory slot",
+        "G / H / J   Fireball / sword / beam",
         "N              Noclip (debug)",
         "ESC          Pause menu",
     };

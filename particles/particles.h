@@ -15,6 +15,27 @@ void setParticleLights(int count, const float* pos, const float* color, const fl
 int  spawnBurst(vector3 pos, float maxSize, float life, Color color); // one-shot glowing puff: grows fast, shrinks slow
 void spawnWisp(vector3 pos, Color color, float sizeScale = 1.f); // twinkling additive mote (magic wisp); sizeScale enlarges it
 void spawnExplosion(vector3 pos, float scale); // fireball flash + smoke + tapering fire/smoke emitter + bright transient light
+enum class SmokeShape { Volume, Shell };
+struct SmokeSettings {
+    int count = 1;
+    SmokeShape shape = SmokeShape::Volume;
+    float radius = 0.f; // world-space spawn radius
+    float speedMin = 0.f, speedMax = 0.f; // radial outward speed, world units/s
+    float lifeMin = 1.f, lifeMax = 1.f; // seconds
+    float puffSize = 1.f; // world-space diameter
+    // Hold full opacity until holdTime + life * holdFraction, then fade out.
+    // Both zero selects the smoke's short fade-in followed by fade-out.
+    float holdTime = 0.f, holdFraction = 0.f;
+    // A shared random shade is added to RGB, preserving the chosen tint.
+    Color color = {6, 6, 6, 140};
+    int shadeVariation = 14;
+    Color secondaryColor = {38, 38, 44, 120};
+    int secondaryShadeVariation = 26;
+    float primaryColorChance = 0.85f;
+};
+// Shared smoke emission for any spell. All puffs use the same pool, simulation,
+// lighting, and half-resolution rendering; existing helpers below are presets.
+void spawnSmoke(vector3 pos, const SmokeSettings& settings);
 void spawnSmokeBlast(vector3 pos, float scale); // only the one-shot smoke batch (no fire/corona/light)
 void spawnImpactRays(vector3 pos, float scale); // fire-coloured vertical rays that shoot up and fade over 3s
 void spawnShockSmoke(vector3 origin, float radius, float scale); // one smoke shell on the sphere of `radius` (called as a shockwave expands)

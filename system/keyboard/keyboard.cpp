@@ -25,10 +25,16 @@ int rlToMacKey(int key) {
         case 81: return 12;
         case 70: return 3;
         case 71: return 5;
+        case 72: return 4;  // H: heaven sword
+        case 74: return 38; // J: beam
+        case 84: return 17; // T: legacy drink drop
         case 78: return 45;
         case 49: return 18;
         case 50: return 19;
         case 51: return 20;
+        case 52: return 21; // 4
+        case 53: return 23; // 5
+        case 54: return 22; // 6
         case 80: return 35;
         case 340: return 56;
         case 341: return 59;

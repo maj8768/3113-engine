@@ -318,37 +318,19 @@ void emitCore(const Emitter& e) {
     p.fadeStart = 0.f;
 }
 
-// Explosion smoke: pre-spread grey haze that rises, expands, and fades on the
-// same 0.8..1.2s window as the fire.
-void emitExplosionSmoke(const Emitter& e) {
-    Particle& p = gParticles[gCursor];
-    gCursor = (gCursor + 1) % MAX_PARTICLES;
-
-    float a = frand() * TAU;
-    float z = frand2();                 // -1..1 (full sphere, no upward bias)
-    float r = sqrtf(1.f - z * z);
-    vector3 dir = { r * cosf(a), z, r * sinf(a) }; // uniform direction over a sphere
-    float rad = 0.9f * e.scale * SMOKE_SPREAD_MULT * powf(frand(), 0.3333f); // uniform through the (4x) sphere volume
-    p.pos  = { e.pos.x + dir.x * rad, e.pos.y + dir.y * rad, e.pos.z + dir.z * rad };
-    float spd = EXPL_EXPAND_SPEED * e.scale * (0.3f + frand() * 0.7f) * SMOKE_SPREAD_MULT; // travels ~4x the fireball radius (shared drag)
-    p.vel  = { dir.x * spd, dir.y * spd, dir.z * spd }; // fast symmetric burst (drag bounds it)
-    p.age  = 0.f;
-    p.life = EXPL_LIFE + SMOKE_EXTRA_LIFE; // persists 0.3s longer than the fireball
-    p.fadeStart = EXPL_FADE_START;
-    p.seed = frand() * TAU;
-    p.alive = true;
-    p.kind = PK_SMOKE;
-    gHasSmoke = true;
-    p.maxSize = SMOKE_SIZE_END * e.scale;
-    if (frand() < 0.85f) {                 // mostly black sooty smoke (alpha-blended -> darkens scene)
-        unsigned char g = (unsigned char)(6 + GetRandomValue(0, 14));
-        p.cr = g; p.cg = g; p.cb = g;
-        p.ca = (unsigned char)(SMOKE_ALPHA + 20.f);
-    } else {                               // lighter grey smoke
-        unsigned char g = (unsigned char)(38 + GetRandomValue(0, 26));
-        p.cr = g; p.cg = g; p.cb = (unsigned char)(g + 6);
-        p.ca = (unsigned char)SMOKE_ALPHA;
-    }
+// The explosion preset is shared by instant impacts and the timed emitter path.
+SmokeSettings explosionSmokeSettings(float scale, int count) {
+    SmokeSettings smoke;
+    smoke.count = count;
+    smoke.radius = 0.9f * scale * SMOKE_SPREAD_MULT;
+    smoke.speedMin = EXPL_EXPAND_SPEED * scale * SMOKE_SPREAD_MULT * 0.3f;
+    smoke.speedMax = EXPL_EXPAND_SPEED * scale * SMOKE_SPREAD_MULT;
+    smoke.lifeMin = smoke.lifeMax = EXPL_LIFE + SMOKE_EXTRA_LIFE;
+    smoke.holdTime = EXPL_FADE_START;
+    smoke.puffSize = SMOKE_SIZE_END * scale;
+    smoke.color.a = (unsigned char)(SMOKE_ALPHA + 20.f);
+    smoke.secondaryColor.a = (unsigned char)SMOKE_ALPHA;
+    return smoke;
 }
 
 // Fire gradient: hot white core -> yellow -> orange -> deep red as t (0..1) rises.
@@ -420,6 +402,67 @@ void compositeSmoke(const Texture2D& opaqueDepth, unsigned int sceneFramebuffer,
     rlEnableDepthTest();
 }
 
+void drawParticleRange(const ParticleBuffer& buffer, const ParticleRange& range, unsigned int texture) {
+    if (range.count == 0) return;
+    rlEnableVertexArray(buffer.vao);
+    rlEnableVertexBuffer(buffer.vbo);
+    int base = range.first * (int)sizeof(ParticleInstance);
+    int stride = (int)sizeof(ParticleInstance);
+    rlSetVertexAttribute(0, 3, RL_FLOAT, false, stride, base + offsetof(ParticleInstance, center));
+    rlSetVertexAttribute(1, 3, RL_FLOAT, false, stride, base + offsetof(ParticleInstance, right));
+    rlSetVertexAttribute(2, 3, RL_FLOAT, false, stride, base + offsetof(ParticleInstance, up));
+    rlSetVertexAttribute(3, 4, RL_UNSIGNED_BYTE, true, stride, base + offsetof(ParticleInstance, bottomColor));
+    rlSetVertexAttribute(4, 4, RL_UNSIGNED_BYTE, true, stride, base + offsetof(ParticleInstance, topColor));
+    rlSetVertexAttribute(5, 4, RL_FLOAT, false, stride, base + offsetof(ParticleInstance, uv));
+    for (int attribute = 0; attribute < 6; attribute++) {
+        rlEnableVertexAttribute(attribute);
+        rlSetVertexAttributeDivisor(attribute, 1);
+    }
+    rlActiveTextureSlot(0);
+    rlEnableTexture(texture);
+    // A blend-state change may flush rlgl and disable the actual GL program.
+    rlEnableShader(gParticleShader.id);
+    rlDrawVertexArrayInstanced(0, 6, range.count);
+}
+
+// All smoke shares this pass, regardless of the spell or preset that emitted it.
+// The particle shader is active on entry and is restored after compositing.
+void drawSmokeInstances(const ParticleBuffer& buffer, const ParticleRange& range,
+                        const Texture2D* opaqueDepth, unsigned int sceneFramebuffer,
+                        const float coefficients[2]) {
+    const int normalPass = 0, smokePass = 1;
+    bool lowRes = gHalfResolutionSmoke && range.count > 0 && opaqueDepth != nullptr &&
+                  opaqueDepth->id != 0 && sceneFramebuffer != 0 && gSmokeCompositeVao != 0 &&
+                  gCompositeSmokeLoc >= 0 && ensureSmokeTarget(opaqueDepth->width, opaqueDepth->height, sceneFramebuffer);
+    if (lowRes) {
+        gRenderStats.smokeWidth = gSmokeTarget.texture.width;
+        gRenderStats.smokeHeight = gSmokeTarget.texture.height;
+        rlEnableFramebuffer(gSmokeTarget.id);
+        rlViewport(0, 0, gSmokeTarget.texture.width, gSmokeTarget.texture.height);
+        rlDisableDepthTest();
+        rlClearColor(0, 0, 0, 0);
+        rlClearScreenBuffers();
+        rlClearColor(0, 0, 0, 255);
+        const float resolution[2] = {(float)gSmokeTarget.texture.width, (float)gSmokeTarget.texture.height};
+        SetShaderValue(gParticleShader, gSmokePassLoc, &smokePass, SHADER_UNIFORM_INT);
+        SetShaderValue(gParticleShader, gSmokeResolutionLoc, resolution, SHADER_UNIFORM_VEC2);
+        rlActiveTextureSlot(1); rlEnableTexture(opaqueDepth->id);
+        rlActiveTextureSlot(0);
+        // RGB accumulates premultiplied radiance; alpha accumulates coverage, not alpha squared.
+        rlSetBlendFactorsSeparate(RL_SRC_ALPHA, RL_ONE_MINUS_SRC_ALPHA, RL_ONE, RL_ONE_MINUS_SRC_ALPHA,
+                                  RL_FUNC_ADD, RL_FUNC_ADD);
+        BeginBlendMode(BLEND_CUSTOM_SEPARATE);
+        drawParticleRange(buffer, range, gSoft.id);
+        EndShaderMode();
+        compositeSmoke(*opaqueDepth, sceneFramebuffer, coefficients);
+        BeginShaderMode(gParticleShader);
+        SetShaderValue(gParticleShader, gSmokePassLoc, &normalPass, SHADER_UNIFORM_INT);
+    } else {
+        BeginBlendMode(BLEND_ALPHA);
+        drawParticleRange(buffer, range, gSoft.id);
+    }
+}
+
 void drawParticleInstances(const ParticleRange ranges[5], const mtx44& vp, const mtx44& proj,
                            const Texture2D* opaqueDepth, unsigned int sceneFramebuffer) {
     if (gInstances.empty() || gParticleVPLoc < 0) return;
@@ -450,7 +493,7 @@ void drawParticleInstances(const ParticleRange ranges[5], const mtx44& vp, const
     const float tint[4] = {1.f, 1.f, 1.f, 1.f};
     SetShaderValue(gParticleShader, gParticleTextureLoc, &spriteSlot, SHADER_UNIFORM_INT);
     SetShaderValue(gParticleShader, gParticleTintLoc, tint, SHADER_UNIFORM_VEC4);
-    const int depthSlot = 1, normalPass = 0, smokePass = 1;
+    const int depthSlot = 1, normalPass = 0;
     const float coefficients[2] = {proj.m[2][2], proj.m[2][3]};
     SetShaderValue(gParticleShader, gSmokePassLoc, &normalPass, SHADER_UNIFORM_INT);
     SetShaderValue(gParticleShader, gOpaqueDepthLoc, &depthSlot, SHADER_UNIFORM_INT);
@@ -458,61 +501,10 @@ void drawParticleInstances(const ParticleRange ranges[5], const mtx44& vp, const
     rlActiveTextureSlot(1); rlEnableTexture(rlGetTextureIdDefault());
     rlActiveTextureSlot(0);
 
-    auto drawRange = [&](int group) {
-        const ParticleRange& range = ranges[group];
-        if (range.count == 0) return;
-        rlEnableVertexArray(buffer.vao);
-        rlEnableVertexBuffer(buffer.vbo);
-        int base = range.first * (int)sizeof(ParticleInstance);
-        int stride = (int)sizeof(ParticleInstance);
-        rlSetVertexAttribute(0, 3, RL_FLOAT, false, stride, base + offsetof(ParticleInstance, center));
-        rlSetVertexAttribute(1, 3, RL_FLOAT, false, stride, base + offsetof(ParticleInstance, right));
-        rlSetVertexAttribute(2, 3, RL_FLOAT, false, stride, base + offsetof(ParticleInstance, up));
-        rlSetVertexAttribute(3, 4, RL_UNSIGNED_BYTE, true, stride, base + offsetof(ParticleInstance, bottomColor));
-        rlSetVertexAttribute(4, 4, RL_UNSIGNED_BYTE, true, stride, base + offsetof(ParticleInstance, topColor));
-        rlSetVertexAttribute(5, 4, RL_FLOAT, false, stride, base + offsetof(ParticleInstance, uv));
-        for (int attribute = 0; attribute < 6; attribute++) {
-            rlEnableVertexAttribute(attribute);
-            rlSetVertexAttributeDivisor(attribute, 1);
-        }
-        rlActiveTextureSlot(0);
-        rlEnableTexture(group == 2 ? gStar.id : gSoft.id);
-        // A blend-state change may flush rlgl and disable the actual GL program.
-        rlEnableShader(gParticleShader.id);
-        rlDrawVertexArrayInstanced(0, 6, range.count);
-    };
-    bool lowRes = gHalfResolutionSmoke && ranges[0].count > 0 && opaqueDepth != nullptr &&
-                  opaqueDepth->id != 0 && sceneFramebuffer != 0 && gSmokeCompositeVao != 0 &&
-                  gCompositeSmokeLoc >= 0 && ensureSmokeTarget(opaqueDepth->width, opaqueDepth->height, sceneFramebuffer);
-    if (lowRes) {
-        gRenderStats.smokeWidth = gSmokeTarget.texture.width;
-        gRenderStats.smokeHeight = gSmokeTarget.texture.height;
-        rlEnableFramebuffer(gSmokeTarget.id);
-        rlViewport(0, 0, gSmokeTarget.texture.width, gSmokeTarget.texture.height);
-        rlDisableDepthTest();
-        rlClearColor(0, 0, 0, 0);
-        rlClearScreenBuffers();
-        rlClearColor(0, 0, 0, 255);
-        const float resolution[2] = {(float)gSmokeTarget.texture.width, (float)gSmokeTarget.texture.height};
-        SetShaderValue(gParticleShader, gSmokePassLoc, &smokePass, SHADER_UNIFORM_INT);
-        SetShaderValue(gParticleShader, gSmokeResolutionLoc, resolution, SHADER_UNIFORM_VEC2);
-        rlActiveTextureSlot(1); rlEnableTexture(opaqueDepth->id);
-        rlActiveTextureSlot(0);
-        // RGB accumulates premultiplied radiance; alpha accumulates coverage, not alpha squared.
-        rlSetBlendFactorsSeparate(RL_SRC_ALPHA, RL_ONE_MINUS_SRC_ALPHA, RL_ONE, RL_ONE_MINUS_SRC_ALPHA,
-                                  RL_FUNC_ADD, RL_FUNC_ADD);
-        BeginBlendMode(BLEND_CUSTOM_SEPARATE);
-        drawRange(0);
-        EndShaderMode();
-        compositeSmoke(*opaqueDepth, sceneFramebuffer, coefficients);
-        BeginShaderMode(gParticleShader);
-        SetShaderValue(gParticleShader, gSmokePassLoc, &normalPass, SHADER_UNIFORM_INT);
-    } else {
-        BeginBlendMode(BLEND_ALPHA);
-        drawRange(0);
-    }
+    drawSmokeInstances(buffer, ranges[0], opaqueDepth, sceneFramebuffer, coefficients);
     BeginBlendMode(BLEND_ADDITIVE);
-    for (int group = 1; group < 5; group++) drawRange(group);
+    for (int group = 1; group < 5; group++)
+        drawParticleRange(buffer, ranges[group], group == 2 ? gStar.id : gSoft.id);
     EndBlendMode();
     rlActiveTextureSlot(1);
     rlDisableTexture();
@@ -537,67 +529,76 @@ float darkblastSizzle(float u, float phase) {
     return 1.f - BEAM_SIZZLE_DEPTH * (1.f - m);
 }
 
-// Emit one shell of smoke puffs on the sphere of `radius` around `origin` (random points
-// over the sphere), each drifting slightly outward. Called repeatedly as a shockwave sphere
-// expands, so the accumulated shells read as a fast smoke wall sweeping outward.
-void spawnShockSmoke(vector3 origin, float radius, float scale) {
-    for (int k = 0; k < SHOCK_SMOKE_COUNT; k++) {
+void spawnSmoke(vector3 pos, const SmokeSettings& settings) {
+    if (!gInit || settings.count <= 0 || settings.puffSize <= 0.f ||
+        settings.lifeMin <= 0.f || settings.lifeMax < settings.lifeMin ||
+        settings.radius < 0.f || settings.speedMax < settings.speedMin) return;
+
+    for (int k = 0; k < settings.count; k++) {
         float a = frand() * TAU;
-        float z = frand2();                 // -1..1 (uniform over the full sphere)
+        float z = frand2();
         float r = sqrtf(1.f - z * z);
-        vector3 dir = { r * cosf(a), z, r * sinf(a) };
+        vector3 dir = {r * cosf(a), z, r * sinf(a)};
+        float radius = settings.radius;
+        if (settings.shape == SmokeShape::Volume) radius *= powf(frand(), 0.3333f);
+        float speed = settings.speedMin + (settings.speedMax - settings.speedMin) * frand();
+
         Particle& p = gParticles[gCursor];
         gCursor = (gCursor + 1) % MAX_PARTICLES;
-        p.pos = { origin.x + dir.x * radius, origin.y + dir.y * radius, origin.z + dir.z * radius };
-        float spd = SHOCK_SMOKE_SPEED * scale * (0.5f + frand() * 0.7f);
-        p.vel = { dir.x * spd, dir.y * spd, dir.z * spd };
+        p.pos = {pos.x + dir.x * radius, pos.y + dir.y * radius, pos.z + dir.z * radius};
+        p.vel = {dir.x * speed, dir.y * speed, dir.z * speed};
         p.age = 0.f;
-        p.life = SHOCK_SMOKE_LIFE * (0.8f + frand() * 0.4f);
-        p.fadeStart = 0.f;                  // auto fade-in then out (see PK_SMOKE draw)
+        p.life = settings.lifeMin;
+        if (settings.lifeMax > settings.lifeMin)
+            p.life += (settings.lifeMax - settings.lifeMin) * frand();
+        p.fadeStart = std::clamp(settings.holdTime + p.life * settings.holdFraction, 0.f, p.life);
         p.seed = frand() * TAU;
         p.alive = true;
         p.kind = PK_SMOKE;
-        gHasSmoke = true;
-        p.maxSize = SHOCK_SMOKE_SIZE * scale;
-        unsigned char g = (unsigned char)(30 + GetRandomValue(0, 40));
-        p.cr = g; p.cg = g; p.cb = (unsigned char)(g + 4);
-        p.ca = SHOCK_SMOKE_ALPHA;
+        p.maxSize = settings.puffSize;
+        bool primary = settings.primaryColorChance >= 1.f ||
+                       (settings.primaryColorChance > 0.f && frand() < settings.primaryColorChance);
+        Color color = primary ? settings.color : settings.secondaryColor;
+        int variation = primary ? settings.shadeVariation : settings.secondaryShadeVariation;
+        int shade = GetRandomValue(0, std::max(0, variation));
+        p.cr = (unsigned char)std::min(255, color.r + shade);
+        p.cg = (unsigned char)std::min(255, color.g + shade);
+        p.cb = (unsigned char)std::min(255, color.b + shade);
+        p.ca = color.a;
     }
+    gHasSmoke = true;
 }
 
-// A huge smoke cloud that blooms at `pos` (filling a sphere of world radius `scale`) and
-// dissipates quickly. Puffs are seeded uniformly through the volume with a gentle outward
-// drift, and fade out over most of their short life (holdFade), so the cloud clears fast.
+// Emit a shell as a shockwave expands; it shares the same smoke path as clouds.
+void spawnShockSmoke(vector3 origin, float radius, float scale) {
+    SmokeSettings smoke;
+    smoke.count = SHOCK_SMOKE_COUNT;
+    smoke.shape = SmokeShape::Shell;
+    smoke.radius = radius;
+    smoke.speedMin = SHOCK_SMOKE_SPEED * scale * 0.5f;
+    smoke.speedMax = SHOCK_SMOKE_SPEED * scale * 1.2f;
+    smoke.lifeMin = SHOCK_SMOKE_LIFE * 0.8f;
+    smoke.lifeMax = SHOCK_SMOKE_LIFE * 1.2f;
+    smoke.puffSize = SHOCK_SMOKE_SIZE * scale;
+    smoke.color = {30, 30, 34, SHOCK_SMOKE_ALPHA};
+    smoke.shadeVariation = 40;
+    smoke.primaryColorChance = 1.f;
+    spawnSmoke(origin, smoke);
+}
+
 void spawnSmokeCloud(vector3 pos, float scale) {
-    for (int k = 0; k < CLOUD_BATCH; k++) {
-        float a = frand() * TAU;
-        float z = frand2();                     // -1..1 (uniform over the sphere)
-        float r = sqrtf(1.f - z * z);
-        vector3 dir = { r * cosf(a), z, r * sinf(a) };
-        float rad = scale * powf(frand(), 0.3333f); // uniform through the sphere volume
-        Particle& p = gParticles[gCursor];
-        gCursor = (gCursor + 1) % MAX_PARTICLES;
-        p.pos = { pos.x + dir.x * rad, pos.y + dir.y * rad, pos.z + dir.z * rad };
-        float spd = CLOUD_EXPAND * scale * (0.2f + frand() * 0.8f);
-        p.vel = { dir.x * spd, dir.y * spd, dir.z * spd };
-        p.age = 0.f;
-        p.life = CLOUD_LIFE * (0.7f + frand() * 0.6f);
-        p.fadeStart = p.life * CLOUD_HOLD;      // brief hold, then clears over the rest of its life
-        p.seed = frand() * TAU;
-        p.alive = true;
-        p.kind = PK_SMOKE;
-        gHasSmoke = true;
-        p.maxSize = CLOUD_PUFF;
-        if (frand() < 0.85f) {                  // mostly dark sooty smoke
-            unsigned char g = (unsigned char)(6 + GetRandomValue(0, 14));
-            p.cr = g; p.cg = g; p.cb = g;
-            p.ca = (unsigned char)(CLOUD_ALPHA + 20);
-        } else {                                // lighter grey
-            unsigned char g = (unsigned char)(38 + GetRandomValue(0, 26));
-            p.cr = g; p.cg = g; p.cb = (unsigned char)(g + 6);
-            p.ca = CLOUD_ALPHA;
-        }
-    }
+    SmokeSettings smoke;
+    smoke.count = CLOUD_BATCH;
+    smoke.radius = scale;
+    smoke.speedMin = CLOUD_EXPAND * scale * 0.2f;
+    smoke.speedMax = CLOUD_EXPAND * scale;
+    smoke.lifeMin = CLOUD_LIFE * 0.7f;
+    smoke.lifeMax = CLOUD_LIFE * 1.3f;
+    smoke.holdFraction = CLOUD_HOLD;
+    smoke.puffSize = CLOUD_PUFF;
+    smoke.color.a = (unsigned char)(CLOUD_ALPHA + 20);
+    smoke.secondaryColor.a = CLOUD_ALPHA;
+    spawnSmoke(pos, smoke);
 }
 
 void setParticleLights(int count, const float* pos, const float* color, const float* radius) {
@@ -748,7 +749,7 @@ void spawnExplosion(vector3 pos, float scale) {
     batch.pos = pos;
     batch.scale = scale;
     for (int k = 0; k < FIRE_BATCH; k++)  emitExplosionFire(batch);
-    for (int k = 0; k < SMOKE_BATCH; k++) emitExplosionSmoke(batch);
+    spawnSmokeBlast(pos, scale);
 
     /*
     for (int i = 0; i < MAX_EMITTERS; i++) {
@@ -786,11 +787,7 @@ void spawnExplosion(vector3 pos, float scale) {
 // Just the SMOKE half of an explosion: the instant one-shot smoke batch at `scale`,
 // no fire / corona / light. Used by the heaven sword's impact.
 void spawnSmokeBlast(vector3 pos, float scale) {
-    if (!gInit) return;
-    Emitter batch = {};
-    batch.pos = pos;
-    batch.scale = scale;
-    for (int k = 0; k < SMOKE_BATCH; k++) emitExplosionSmoke(batch);
+    spawnSmoke(pos, explosionSmokeSettings(scale, SMOKE_BATCH));
 }
 
 // A burst of fire-coloured vertical rays that shoot up from `pos` and fade out by RAY_LIFE.
@@ -835,7 +832,7 @@ static void darkblastColor(float f, unsigned char& r, unsigned char& g, unsigned
     }
 }
 
-// A bundle of darkblast beams drawn FROM `from` (the caster's centre mass) TO `to` (the
+// A bundle of darkblast beams drawn FROM `from` (the wand tip) TO `to` (the
 // raycast hit). Beams are offset radially around the axis: white centre -> UV -> red edge.
 void spawnDarkblast(vector3 from, vector3 to, float scale) {
     if (!gInit) return;
@@ -853,7 +850,7 @@ void spawnDarkblast(vector3 from, vector3 to, float scale) {
         float f  = sqrtf(frand());               // 0..1 radial fraction (uniform over the disc)
         float rr = BEAM_SPREAD * f;              // filled cross-section (white centre -> red edge)
         vector3 off = (perp1.fmult(cosf(a)) + perp2.fmult(sinf(a))).fmult(rr);
-        p.pos  = from + off;                     // A: start (near centre mass)
+        p.pos  = from + off;                     // A: start (around wand tip)
         p.vel  = to + off;                       // B: end (near the hit point)
         p.age  = 0.f;
         p.life = BEAM_LIFE;
@@ -1004,7 +1001,7 @@ void updateParticles(float dt) {
             for (int k = 0; k < nf; k++) emitExplosionFire(e);
             e.smokeAccum += EXPL_SMOKE_RATE * rf * dt;
             int ns = (int)e.smokeAccum; e.smokeAccum -= (float)ns;
-            for (int k = 0; k < ns; k++) emitExplosionSmoke(e);
+            spawnSmoke(e.pos, explosionSmokeSettings(e.scale, ns));
         } else if (e.kind == EK_CORE) {
             if (!e.active) continue;
             e.accum += CORE_RATE * dt;

@@ -62,6 +62,24 @@ Smoke uses a half-resolution off-screen target by default, with scene-depth occl
 soft intersections, and depth-aware upsampling. Fire, sparks, rays, and beams render
 at full resolution. The particle count is the same in both smoke modes.
 
+Spells can emit smoke through `spawnSmoke(position, settings)` from
+`particles/particles.h`. `SmokeSettings` controls count, volume or shell radius,
+outward speed, lifetime, puff size, fade timing, and colors. For example:
+
+```cpp
+SmokeSettings smoke;
+smoke.count = 100;
+smoke.radius = 2.f;
+smoke.speedMin = 1.f;
+smoke.speedMax = 3.f;
+smoke.puffSize = 2.f;
+spawnSmoke(impactPosition, smoke);
+```
+
+`spawnSmokeBlast`, `spawnShockSmoke`, and `spawnSmokeCloud` are presets calling
+this function; fireball explosions use it too. The renderer batches their smoke
+together automatically, so spells only emit particles and do not draw smoke directly.
+
 Build and profile on macOS:
 
 ```sh

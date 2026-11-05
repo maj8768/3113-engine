@@ -171,7 +171,7 @@ static const float WARP_STRENGTH_PX     = 40.0f;
 static float bloomSpread = 32.0f;      // GLOBAL max blur radius in texels (the halo cap).
                                        // A world-space bloom length projects to more texels
                                        // the closer the camera is; it's clamped to this.
-static constexpr bool SHADOWS_ENABLED = false; // Set true to restore shadow rendering and sampling.
+static constexpr bool SHADOWS_ENABLED = true; // Set true to restore shadow rendering and sampling.
 static constexpr int SHADOW_MAP_SIZE = 1024;
 static constexpr float SHADOW_NEAR = 0.05f;
 static constexpr float LIGHT_ORBIT_SPEED = 0.15f;
@@ -345,6 +345,7 @@ void initializePlayer(player& player1) {
     player1.camera.fov = 90.0f * M_PI / 180.0f;
     player1.controls = {'W', 'A', 'S', 'D'};
     player1.canMove = true;
+    player1.inventory = {};
     player1.pState = {false, false, 0.f, 0.f, 100.f};
 
     // Box collider (playercollider_box.obj) — avoids the sideways-weave the pointed
@@ -776,9 +777,9 @@ void initialise()
     // Spells are data: every one is always live and fires only when the item it
     // names is the held item. All three existing spells require the wand; the hand
     // is deliberately absent, so holding it casts nothing.
-    registerSpell(KEY_ONE,   &wand, 2.0f,  castFireball);
-    registerSpell(KEY_TWO,   &wand, 10.0f, castHeavenSword);
-    registerSpell(KEY_THREE, &wand, 3.0f,  castDarkblast);
+    registerSpell(KEY_G, &wand, 2.0f,  castFireball);
+    registerSpell(KEY_H, &wand, 10.0f, castHeavenSword);
+    registerSpell(KEY_J, &wand, 3.0f,  castDarkblast);
 
     /*
     // The hand glows red whenever it is held — no cast, no envelope, always on.
@@ -942,7 +943,7 @@ void update() {
     }
 
     // Held item tracks the finalised (interpolated) camera, so update it here.
-    handleItemInput(player1);
+    handleItemInput(player1, !gData.escapeMenuOpen);
 
     // Publish this instance's position for the network threads to send on their
     // tick, and pull the latest snapshot onto the spawned bodies. Both are plain
@@ -959,20 +960,8 @@ void update() {
 
     // Spell casting (per-frame). Every registered spell is evaluated; each fires only
     // when the item it requires is the held one, so this needs no per-item branch.
-    // castOrigin = held item's tip (its centre + look-forward offset), so the charge FX
-    // and projectiles follow whatever is in hand.
-    meshedObject* heldObj = heldItemObject();
-    vector3 castOrigin = heldObj ? heldObj->pEntity.location : player1.camera.camPos;
-    if (heldObj) {
-        float cyw = cosf(player1.camera.camTarget.x), syw = sinf(player1.camera.camTarget.x);
-        float cpi = cosf(player1.camera.camTarget.y), spi = sinf(player1.camera.camTarget.y);
-        vector3 F = normalize3({cpi * cyw, spi, cpi * syw});
-        vector3 R = normalize3(cross3(F, player1.camera.up));
-        vector3 U = cross3(R, F);
-        // Tip anchor, in camera space (tuned to sit at the wand's tip):
-        // forward = distance ahead of the eye, right = matches the held item, up = height.
-        castOrigin = player1.camera.camPos + F.fmult(2.2f) + R.fmult(1.0f) + U.fmult(0.3f);
-    }
+    // The selected item's transformed tip is shared by sparkles, fireballs, and beams.
+    vector3 castOrigin = heldItemTip(player1);
     spellsUpdate(player1, frameTime, castOrigin, magic1, magic2, magic3);
 
     // Lights an item emits purely by being held (the hand's red glow).
@@ -1191,7 +1180,7 @@ static void RenderShadowMapPass() {
         /*
         Draw3DDepthGPU(drank, pointShadowShader, shadowModelLoc);
         */
-        drawItemsDepth(pointShadowShader, shadowModelLoc, itemAlpha);
+        drawItemsDepth(player1, pointShadowShader, shadowModelLoc, itemAlpha);
         drawSpawnedPlayersDepth(pointShadowShader, shadowModelLoc);
         /*
         drawWizardAttacksDepth(pointShadowShader, shadowModelLoc);
@@ -1446,7 +1435,7 @@ static void DrawSceneWithShadows(const mtx44& frameVP) {
         Draw3DGPU(drank, player1.camera, w2sShader, {255,0,0,255}, &frameVP, shadowTex, hasShadowMap);
         */
         float itemAlpha = gPhysicsAccumulator / PHYSICS_DT;
-        drawItems(player1.camera, w2sShader, itemAlpha, &frameVP, shadowTex, hasShadowMap);
+        drawItems(player1, w2sShader, itemAlpha, &frameVP, shadowTex, hasShadowMap);
         drawSpawnedPlayers(player1.camera, w2sShader, &frameVP, shadowTex, hasShadowMap);
         drawWizardAttacks(player1.camera, w2sShader, itemAlpha, &frameVP, shadowTex, hasShadowMap);
         /*
@@ -2072,6 +2061,7 @@ void render()
 
 void shutdown()
 {
+    clearItems(); // detach inventory UUIDs before the source objects are destroyed
     // Joins both threads before the std::thread objects die; a joinable thread
     // destroyed un-joined calls std::terminate.
     stopServerThread();

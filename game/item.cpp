@@ -16,9 +16,6 @@ const float   HELD_RIGHT      = 1.0f;   // offset to the right
 const float   HELD_UP         = -0.8f;  // offset down
 const vector3 HELD_ROT_OFFSET = {0.f, 0.f, 0.f}; // base orientation tweak
 
-std::vector<item*> gItems;
-int gHeldIndex = -1; // index of the held item in gItems, or -1 if none
-
 // View-bob for the held item while the player moves.
 const float BOB_FREQ      = 3.0f;   // oscillation speed
 const float BOB_AMP       = 0.06f;  // magnitude in camera-space units
@@ -52,15 +49,16 @@ void rotateItemMeshY(meshedObject* o, float ang) {
         }
 }
 
-vector3 itemRenderLocation(const item& it, int index, float alpha) {
-    if (index == gHeldIndex) return it.obj->pEntity.location;
+vector3 itemRenderLocation(const item& it, float alpha) {
+    if (it.state == itemState::player) return it.obj->pEntity.location;
     return it.prevLoc + (it.obj->pEntity.location - it.prevLoc).fmult(alpha);
 }
 
 } // namespace
 
 item createItem(meshedObject* obj, float pickupDistance, float lookatRadius) {
-    item it;
+    item it{};
+    it.uuid = generateItemUuid();
     it.obj = obj;
     it.pickupDistance = pickupDistance;
     it.lookatRadius = lookatRadius;
@@ -68,60 +66,32 @@ item createItem(meshedObject* obj, float pickupDistance, float lookatRadius) {
     initializePhysicsEntity(obj->pEntity, 1.f, COMPLEX);
     applyAcceleration(ITEM_GRAVITY, obj->pEntity); // fall like everything else when free
     rotateItemMeshY(obj, ITEM_FORWARD_FIX);        // align the model's forward to -Z
+    initializeItemBody(it.body, *obj);
     return it;
 }
 
-void addItem(item* it) {
-    gItems.push_back(it);
-}
-
-meshedObject* heldItemObject() {
-    if (gHeldIndex < 0 || gHeldIndex >= (int)gItems.size()) return nullptr;
-    return gItems[gHeldIndex]->obj;
-}
-
 void updateItemsPhysics(player& player, float deltaTime, world& worldInstance) {
-    bool end = false;
-    int target = 0;
-    for (int i = 0; i < (int)gItems.size(); i++) {
-        if (i == gHeldIndex) continue; // held items don't simulate
-        item* it = gItems[i];
+    for (item* it : registeredItems()) {
+        if (it->state != itemState::ground) continue; // equipped AND stowed items don't simulate
         it->prevLoc = it->obj->pEntity.location; // for interpolation
-        updateColliderLocation(*it->obj, player, false);
-        processPhysics(deltaTime, 0, it->obj->pEntity, worldInstance, end, target,
-                       false, true, it->obj->collider, it->obj->cPlaneCount);
+        bool wasSleeping = it->body.sleeping;
+        stepItemBody(it->body, it->obj->pEntity, deltaTime, worldInstance);
+        if (!wasSleeping || !it->body.sleeping) updateColliderLocation(*it->obj, player, false);
     }
 }
 
-void handleItemInput(player& player) {
-    if (getKeyPressedOnce(KEY_F)) {
-        if (gHeldIndex >= 0) {
-            // Drop the held item; it resumes gravity from rest.
-            item* it = gItems[gHeldIndex];
-            it->obj->pEntity.magnitude = {0.f, 0.f, 0.f};
-            it->obj->pEntity.collidingY = false;
-            it->prevLoc = it->obj->pEntity.location;
-            gHeldIndex = -1;
-        } else {
-            // Pick up the first item the player is aiming at within its range.
-            for (int i = 0; i < (int)gItems.size(); i++) {
-                item* it = gItems[i];
-                if (canInteract(player, it->obj->collider, it->obj->cPlaneCount,
-                                it->pickupDistance, (float)GetScreenWidth(),
-                                (float)GetScreenHeight(), it->lookatRadius)) {
-                    it->obj->pEntity.magnitude = {0.f, 0.f, 0.f};
-                    gHeldIndex = i;
-                    break;
-                }
-            }
-        }
+void handleItemInput(player& player, bool actionsEnabled) {
+    bool canAct = actionsEnabled && !player.pState.buying && !player.pState.gasMenuOpen
+               && !player.pState.uberMenuOpen && !player.pState.inCar;
+    // Poll even while blocked so a key held through a menu does not act on close.
+    for (int i = 0; i < playerInventory::SLOT_COUNT; ++i) {
+        bool pressed = getKeyPressedOnce(KEY_ONE + i);
+        if (pressed && canAct) selectInventorySlot(player, i+1);
     }
+    bool interact = getKeyPressedOnce(KEY_F);
 
-    if (gHeldIndex < 0) return;
-
-    // Place the held item in front of the POV. Uses the same forward vector the view
-    // matrix builds (see viewMtx44), so it follows where you look.
-    item* it = gItems[gHeldIndex];
+    // One current-frame hold/drop pose, including bob. A newly selected item must
+    // be dropped here, rather than at its stale position from when it was stowed.
     float cyw = cosf(player.camera.camTarget.x), syw = sinf(player.camera.camTarget.x);
     float cpi = cosf(player.camera.camTarget.y), spi = sinf(player.camera.camTarget.y);
     vector3 F = normalize3({cpi * cyw, spi, cpi * syw});
@@ -139,38 +109,80 @@ void handleItemInput(player& player) {
     float hbob = sinf(gBobPhase)        * BOB_AMP * gBobAmount;
     float vbob = sinf(gBobPhase * 2.f)  * BOB_AMP * gBobAmount;
 
-    it->obj->pEntity.location = player.camera.camPos
-                              + F.fmult(HELD_FORWARD)
-                              + R.fmult(HELD_RIGHT + hbob)
-                              + U.fmult(HELD_UP + vbob);
+    vector3 location = player.camera.camPos + F.fmult(HELD_FORWARD)
+                     + R.fmult(HELD_RIGHT + hbob) + U.fmult(HELD_UP + vbob);
     // With the model re-aligned to -Z forward, this is the clean Ry(yaw)*Rx(pitch)
     // look: pitch on rot.x, yaw on rot.y (atan2 keeps it full-range and continuous,
     // no snap past 90 deg), roll left at 0. Flip camPitch's sign if it tilts the
     // wrong way. Verified correct at all yaw/pitch angles.
     float camYaw   = player.camera.camTarget.x;
     float camPitch = player.camera.camTarget.y;
-    it->obj->pEntity.rot = { camPitch + HELD_ROT_OFFSET.x,
-                             atan2f(-cosf(camYaw), -sinf(camYaw)) + HELD_ROT_OFFSET.y,
-                             HELD_ROT_OFFSET.z };
+    vector3 rotation = {camPitch + HELD_ROT_OFFSET.x,
+                       atan2f(-cosf(camYaw), -sinf(camYaw)) + HELD_ROT_OFFSET.y,
+                       HELD_ROT_OFFSET.z};
+
+    if (interact && canAct) {
+        item* target = nullptr;
+        float nearest = INFINITY;
+        for (item* candidate : registeredItems()) {
+            if (candidate->state != itemState::ground) continue;
+            if (!canInteract(player, candidate->obj->collider, candidate->obj->cPlaneCount,
+                             candidate->pickupDistance, (float)GetScreenWidth(),
+                             (float)GetScreenHeight(), candidate->lookatRadius)) continue;
+            vector3 d = candidate->obj->pEntity.location - player.camera.camPos;
+            float distance = dot3(d, d);
+            if (distance < nearest) { target = candidate; nearest = distance; }
+        }
+        item* dropped = selectedItem(player);
+        if (target) {
+            if (!pickUpItem(player, target->uuid, location, rotation, F)) dropped = nullptr;
+        } else dropped = dropSelectedItem(player, location, rotation, F);
+        if (dropped) updateColliderLocation(*dropped->obj, player, false);
+    }
+
+    item* it = selectedItem(player);
+    if (!it) return;
+    it->obj->pEntity.location = location;
+    it->obj->pEntity.rot = rotation;
+    updateColliderLocation(*it->obj, player, false);
 }
 
-void drawItems(const camera& cam, shaderStore& shader, float alpha, const mtx44* vp,
+vector3 heldItemTip(const player& player) {
+    item* it = selectedItem(player);
+    if (!it) return player.camera.camPos;
+    // The wand extends along local +Y. Its collider top is within a few cm of
+    // the mesh tip. Transform this point with the actual held pose (including bob).
+    vector3 tip = it->body.localCenter + vector3{0.f, it->body.halfSize.y, 0.f};
+    mtx44 model = buildModelMatrix(it->obj->pEntity.location, it->obj->pEntity.rot, {});
+    vector4 p = modmmult(model, {tip.x, tip.y, tip.z, 1.f});
+    return {p.x, p.y, p.z};
+}
+
+void drawItems(const player& player, shaderStore& shader, float alpha, const mtx44* vp,
                const TextureCubemap* shadowTex, bool receiveShadows) {
-    for (int i = 0; i < (int)gItems.size(); i++) {
-        item* it = gItems[i];
+    item* equipped = selectedItem(player);
+    for (item* it : registeredItems()) {
+        if (it->state == itemState::player && it != equipped) continue;
         vector3 real = it->obj->pEntity.location;
-        it->obj->pEntity.location = itemRenderLocation(*it, i, alpha);
-        Draw3DGPU(*it->obj, cam, shader, {255, 255, 255, 255}, vp, shadowTex, receiveShadows);
+        vector3 realRot = it->obj->pEntity.rot;
+        it->obj->pEntity.location = itemRenderLocation(*it, alpha);
+        if (it->state == itemState::ground) it->obj->pEntity.rot = itemBodyRenderRotation(it->body, alpha);
+        Draw3DGPU(*it->obj, player.camera, shader, {255, 255, 255, 255}, vp, shadowTex, receiveShadows);
         it->obj->pEntity.location = real;
+        it->obj->pEntity.rot = realRot;
     }
 }
 
-void drawItemsDepth(Shader depthShader, int modelLoc, float alpha) {
-    for (int i = 0; i < (int)gItems.size(); i++) {
-        item* it = gItems[i];
+void drawItemsDepth(const player& player, Shader depthShader, int modelLoc, float alpha) {
+    item* equipped = selectedItem(player);
+    for (item* it : registeredItems()) {
+        if (it->state == itemState::player && it != equipped) continue;
         vector3 real = it->obj->pEntity.location;
-        it->obj->pEntity.location = itemRenderLocation(*it, i, alpha);
+        vector3 realRot = it->obj->pEntity.rot;
+        it->obj->pEntity.location = itemRenderLocation(*it, alpha);
+        if (it->state == itemState::ground) it->obj->pEntity.rot = itemBodyRenderRotation(it->body, alpha);
         Draw3DDepthGPU(*it->obj, depthShader, modelLoc);
         it->obj->pEntity.location = real;
+        it->obj->pEntity.rot = realRot;
     }
 }

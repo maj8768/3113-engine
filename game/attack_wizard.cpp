@@ -77,11 +77,10 @@ const float   SHOCK_FADE_TIME   = 0.35f;              // seconds to linger/fade 
 const float   SHOCK_EMIT_STEP   = 3.5f;               // spawn a fresh smoke shell every this many units of growth (tight = dense wall)
 const float   SWORD_CLOUD_SCALE = 22.0f;              // radius (world units) of the huge quick-dissipating impact smoke cloud
 
-// Darkblast: a raycast beam attack. Beams spawn at the ray's hit point; a purple light
-// rides above the player. Both hold, then fade over the last quarter of DARK_LIFE.
+// Darkblast: raycast from the shared wand-tip origin. The beam and its purple
+// segment light hold, then fade over the last quarter of DARK_LIFE.
 const float   DARK_RANGE       = 100.0f;  // raycast reach (or the nearer collider)
 const float   DARK_BEAM_SCALE  = 1.5f;    // size of the beam burst
-const float   DARK_ORIGIN_UP   = 3.5f;    // beams start this far above the player's feet (centre mass)
 const float   DARK_LIFE        = 2.0f;    // full until DARK_HOLD, then fade to 0 by here
 const float   DARK_HOLD        = 1.5f;    // instant/full until this age
 const vector3 DARK_LIGHT_COLOR = {0.6f, 0.1f, 1.0f}; // purple
@@ -345,26 +344,20 @@ void fireHeavenSword(player& player) {
     gAttacks.push_back(a);
 }
 
-void fireDarkblast(player& player, meshedObject& mesh) {
-    (void)mesh; // empty for now — placeholder for a future beam mesh
-
-    // Raycast forward from the eye: reach DARK_RANGE units, or stop at the nearest collider.
+void fireDarkblast(player& player, vector3 origin) {
+    // Use the same wand-tip point as charge sparkles and fireballs, including bob.
+    // Raycast from the muzzle so nearby cover can also block the beam.
     float cy = cosf(player.camera.camTarget.x), sy = sinf(player.camera.camTarget.x);
     float cp = cosf(player.camera.camTarget.y), sp = sinf(player.camera.camTarget.y);
     vector3 dir = normalize3({cp * cy, sp, cp * sy});
-    vector3 origin = player.camera.camPos;
     float dist = gWorld ? raycastWorld(origin, dir, DARK_RANGE, *gWorld) : DARK_RANGE;
     vector3 hit = origin + dir.fmult(dist);
 
-    // Beams are drawn from the caster's centre mass to the hit point.
-    vector3 centerMass = { player.pEntity.location.x,
-                           player.pEntity.location.y + DARK_ORIGIN_UP,
-                           player.pEntity.location.z };
-    spawnDarkblast(centerMass, hit, DARK_BEAM_SCALE);
+    spawnDarkblast(origin, hit, DARK_BEAM_SCALE);
 
     // darkblast.wav positioned at the middle of the beam.
     if (gSoundsLoaded) {
-        vector3 mid = (centerMass + hit).fmult(0.5f);
+        vector3 mid = (origin + hit).fmult(0.5f);
         setAudioListener(player.camera.camPos, player.camera.camTarget.x, player.camera.camTarget.y);
         playPositional(gDarkblastSound, mid, IMPACT_VOLUME, IMPACT_MAXDIST);
     }
@@ -372,7 +365,7 @@ void fireDarkblast(player& player, meshedObject& mesh) {
     // Purple segment light spanning the whole beam (start -> hit).
     gDarkLight.active = true;
     gDarkLight.age = 0.f;
-    gDarkLight.start = centerMass;
+    gDarkLight.start = origin;
     gDarkLight.end = hit;
 }
 

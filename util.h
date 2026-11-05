@@ -1,5 +1,6 @@
 #pragma once
 #include "raylib.h"
+#include "game/inventory.h"
 #include <cmath>
 #include <vector>
 #include <memory>
@@ -308,6 +309,7 @@ struct player {
     bool canMove;
     struct physicsEntity pEntity;
     struct playerState pState;
+    playerInventory inventory;
 };
 
 struct worldSegment {

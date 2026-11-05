@@ -39,11 +39,10 @@ void fireWizardAttack(player& player, vector3 origin);
 // units up), with gravity enabled so it plummets straight down onto that spot.
 void fireHeavenSword(player& player);
 
-// Darkblast: raycast forward (50 units or to the nearest collider) and spawn a burst of
-// vertical beams (white centre -> ultraviolet -> red) at the hit, plus a purple point
-// light above the player. `mesh` is an unused placeholder for now. Beams/light last 1.5s
+// Darkblast: raycast from the supplied wand tip up to 100 units or the nearest
+// collider. The beam, glow, and segment light share that same start. Hold for 1.5s,
 // then fade out by 2s.
-void fireDarkblast(player& player, meshedObject& mesh);
+void fireDarkblast(player& player, vector3 origin);
 // Purple darkblast SEGMENT light: the whole beam emits (the shader lights from the closest
 // point on start..end). count is 0 or 1; *At fills start[3]/end[3]/color[3]/radius.
 int  darkblastBeamCount();
