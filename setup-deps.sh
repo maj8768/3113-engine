@@ -34,9 +34,30 @@ curl -fL -o "$ARCHIVE" "$URL"
 
 echo "Extracting..."
 if [ "$EXT" = "zip" ]; then
-    unzip -q "$ARCHIVE"
+    # Git Bash/MinGW may not ship unzip. Prefer Windows' ZIP-capable tar over
+    # the GNU tar that can also be on PATH; PowerShell covers older Windows.
+    WINDOWS_TAR="${SYSTEMROOT:-C:/Windows}/System32/tar.exe"
+    if command -v cygpath >/dev/null 2>&1; then
+        WINDOWS_TAR="$(cygpath -u "$WINDOWS_TAR")"
+    fi
+    if command -v unzip >/dev/null 2>&1; then
+        unzip -qo "$ARCHIVE"
+    elif [ -x "$WINDOWS_TAR" ]; then
+        "$WINDOWS_TAR" -xf "$ARCHIVE"
+    elif command -v powershell.exe >/dev/null 2>&1; then
+        powershell.exe -NoProfile -NonInteractive -Command \
+            '$ErrorActionPreference = "Stop"; Expand-Archive -LiteralPath "raylib-dl.zip" -DestinationPath "." -Force'
+    else
+        echo "Cannot extract ZIP: need unzip, Windows tar.exe, or powershell.exe." >&2
+        exit 1
+    fi
 else
     tar -xzf "$ARCHIVE"
+fi
+
+if [ ! -f "$PKG/include/raylib.h" ]; then
+    echo "Extraction failed: $PKG/include/raylib.h is missing; leaving $DEST untouched." >&2
+    exit 1
 fi
 
 rm -rf "$DEST"
